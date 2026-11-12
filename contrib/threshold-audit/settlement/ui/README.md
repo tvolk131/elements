@@ -77,3 +77,11 @@ ELEMENTS_UI_NODE=/absolute/path/to/node PYTHONPATH=contrib/threshold-audit \
 No test issues money or contacts a real bank. Running the built web server by
 itself requires a launcher-generated private configuration; it is normally
 started through `manage.py`, not as an extra development server.
+
+## Visual review coverage
+
+Inspect each changed component at reading size, including the sidebar/footer,
+wrapping headings, icons, and supporting text. Whole-page screenshots alone do
+not establish that these details were checked. Check wallet and guardian variants
+at 1440, 1280, and 1024px widths, a short desktop window, and the mobile breakpoint.
+Record the inspected states and unresolved findings before reporting a visual pass.

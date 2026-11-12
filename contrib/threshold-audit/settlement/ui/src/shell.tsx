@@ -75,23 +75,23 @@ export function Shell() {
         </nav>
         <div className="sidebar-foot">
           <div className="security-card">
-            <Icon name="lock" />
-            <strong>
-              {app.guardian
-                ? "Independent institution authority"
-                : "Institutional access controls"}
-            </strong>
+            <div className="security-card-heading">
+              <Icon name="lock" />
+              <strong>
+                {app.guardian ? "Independent approvals" : "Separate approval"}
+              </strong>
+            </div>
             <p>
               {app.guardian
-                ? "Approvals use your institution’s configured signer. Private shares stay outside this browser."
-                : "Your account determines your access. Payment approvals require a separate authorized person."}
+                ? "Review and sign in your institution’s separate approval window."
+                : "Requests need approval from a second authorized person."}
             </p>
           </div>
-          <p>
-            LOCAL DEVELOPMENT ENVIRONMENT
-            <br />
-            Sandbox issuer · Legal entity undecided
-          </p>
+          <div className="sidebar-environment">
+            <strong>Local sandbox</strong>
+            <span>Sandbox issuer</span>
+            <span>Legal entity undecided</span>
+          </div>
         </div>
       </aside>
       <div className="shell-main">
