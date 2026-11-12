@@ -97,6 +97,26 @@ guardian identities or replace the chain. Runtime contents contain test keys,
 RPC credentials and user passwords. Keep them private. This is a same-user
 local process fixture, not isolation from a compromised host administrator.
 
+## Wallet journeys
+
+Select a wallet account first. The **Move funds** actions distinguish the four
+routes: **Add funds from bank** (bank to chain / peg in), **Withdraw to bank**
+(chain to bank / peg out), **Send on-chain**, and **Receive on-chain**. Requests
+show the next actor and separate bank evidence from chain confirmation. Account
+balances distinguish the total token balance from amounts reserved for pending
+requests. Bank simulator tools and transaction hashes are secondary details.
+
+Funding requests currently require a bank maker or bank administrator. Corporate
+makers can request sends and withdrawals; the interface explains role limits
+without changing authorization. Approval and execution remain separate actions
+subject to the existing maker/checker and institution quorum policy.
+
+On-chain sends currently support configured accounts accessible to the sender.
+Receive displays managed account instructions and a copyable account reference,
+**not a blockchain address**. Arbitrary-address send and automatic reconciliation
+of outside receipts are not implemented in this pilot. Do not send directly to
+an underlying wallet address expecting the application ledger to credit it.
+
 ## Components and authority
 
 * One actual Elements daemon, with Bitcoin peg-in verification disabled. Its
