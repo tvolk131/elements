@@ -23,6 +23,7 @@ import {
   safeFilename,
 } from "./domain";
 import { Quorum, Receive } from "./wallet";
+import { ApprovalProgress } from "./approval-progress";
 import type { Currency, Kind, Operation } from "./types";
 
 function Footer({ children }: { children: ReactNode }) {
@@ -431,34 +432,24 @@ function OperationDetail({ id }: { id: string }) {
         {!op && !query.error && <p role="status">Loading request…</p>}
         {op && (
           <>
-            <div className="wallet-request-next">
-              <strong>
-                {viewerNextAction(op)
-                  ? "Your next action"
-                  : "What happens next"}
-              </strong>
-              <p>{viewerNextAction(op) || nextStep(op)}</p>
-              {viewerNextAction(op) && op.state === "awaiting_approval" && (
-                <div className="approval-requirements">
-                  <span>
-                    User review: {op.user_approved ? "recorded" : "pending"}
-                  </span>
-                  <span>
-                    Institution certificates: {op.guardian_approvals} /{" "}
-                    {op.guardian_threshold}
-                  </span>
-                  <small>
-                    Both requirements must be complete before the request can be
-                    submitted.
-                  </small>
-                </div>
-              )}
-            </div>
             <div className="detail-type">{human(op.kind)} request</div>
             <div className="detail-amount number">
               {money(op.amount_minor)} <span>Test{op.currency}</span>
             </div>
             <Badge status={op.state} />
+            {["awaiting_approval", "ready"].includes(op.state) ? (
+              <ApprovalProgress operation={op} />
+            ) : (
+              <div className="wallet-request-next">
+                <strong>
+                  {viewerNextAction(op)
+                    ? "Your next action"
+                    : "What happens next"}
+                </strong>
+                <p>{viewerNextAction(op) || nextStep(op)}</p>
+              </div>
+            )}
+
             <div className="status-pair">
               <div className="status-box">
                 <span>ELEMENTS CHAIN</span>
@@ -591,6 +582,11 @@ function OperationDetail({ id }: { id: string }) {
                 "cancel",
               ].includes(a),
             )
+            .filter(
+              (action) =>
+                !["awaiting_approval", "ready"].includes(op.state) ||
+                !["approve", "guardian-approve", "execute"].includes(action),
+            )
             .map((action) => (
               <Button
                 key={action}
@@ -605,7 +601,7 @@ function OperationDetail({ id }: { id: string }) {
                 }
               >
                 {action === "approve"
-                  ? "Approve request"
+                  ? "Review and approve"
                   : action === "guardian-approve"
                     ? "Review institution approval"
                     : action === "execute"

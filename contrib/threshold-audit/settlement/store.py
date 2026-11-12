@@ -827,6 +827,28 @@ class Settlement:
                            "payout_mode": bank["payout_mode"]})
         return result
 
+    def approval_workflow(self, operation):
+        """Describe existing authority without granting it or exposing credentials."""
+        account = self.account(operation["account_id"])
+        users = [json.loads(row[0]) for row in self.db.execute("SELECT data FROM users ORDER BY id")]
+        def identity(candidate):
+            return {"id": candidate["id"], "name": candidate.get("name", candidate["id"]),
+                    "role": candidate.get("role", "")}
+        active = [candidate for candidate in users if not candidate.get("disabled")
+                  and ROLES.get(candidate.get("role")) and self.can_view(candidate, account)]
+        maker = next((candidate for candidate in users if candidate["id"] == operation["maker"]),
+                     {"id": operation["maker"]})
+        # A historic request describes its bound policy, not a later roster.
+        policy = getattr(self.verifier, "history", {}).get(operation["policy_version"], self.verifier)
+        return {"maker": identity(maker),
+                "user_reviewers": [identity(candidate) for candidate in active
+                    if "approve" in ROLES[candidate["role"]] and candidate["id"] != operation["maker"]],
+                "submitters": [identity(candidate) for candidate in active
+                    if "execute" in ROLES[candidate["role"]]],
+                "institution_ids": sorted(policy.public_keys),
+                "required_institutions": policy.threshold,
+                "approved_institution_ids": sorted({signature["guardian_id"] for signature in self.signatures(operation["id"])})}
+
     def public_operation(self, user, operation):
         # Never return raw transactions or private account details in list views.
         result = {key: value for key, value in operation.items() if key not in {"certificate", "destination"}}
@@ -836,6 +858,7 @@ class Settlement:
         result["guardian_approvals"] = len(self.signatures(operation["id"]))
         result["guardian_threshold"] = self.verifier.threshold
         result["user_approved"] = self.approved(operation)
+        result["approval_workflow"] = self.approval_workflow(operation)
         result["allowed_actions"] = []
         permissions = ROLES[user["role"]]
         if operation["state"] in {"awaiting_approval", "ready"}:

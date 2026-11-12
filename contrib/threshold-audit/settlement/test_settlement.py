@@ -407,6 +407,28 @@ class SettlementTests(unittest.TestCase):
                 minor_units(amount)
         self.assertEqual(minor_units("001.20"), 120)
 
+    def test_approval_workflow_names_only_account_scoped_active_actors(self):
+        operation = self.create_deposit()
+        workflow = operation["approval_workflow"]
+        self.assertEqual(workflow["maker"]["id"], "maker")
+        self.assertEqual({actor["id"] for actor in workflow["user_reviewers"]}, {"approver", "corp-approver"})
+        self.assertEqual({actor["id"] for actor in workflow["submitters"]}, {"approver", "corp-approver"})
+        self.assertEqual(set(workflow["institution_ids"]), set(self.secrets))
+        self.assertEqual(workflow["required_institutions"], self.verifier.threshold)
+        self.assertEqual(workflow["approved_institution_ids"], [])
+        self.assertNotIn("password", json.dumps(workflow))
+        # Disabled and unrelated reviewers must not appear in the handoff.
+        disabled = dict(self.users["approver"], disabled=True)
+        unrelated = dict(self.users["corp-approver"], id="other-reviewer", username="other-reviewer", tenant="corp-beta")
+        self.store.register_users([unrelated])
+        with self.store.transaction():
+            self.store.db.execute("UPDATE users SET data=? WHERE id=?",
+                (self.store.encode({key: value for key, value in disabled.items() if key != "password"}), disabled["id"]))
+        workflow = self.store.operation(self.users["maker"], operation["id"])["approval_workflow"]
+        self.assertEqual([actor["id"] for actor in workflow["user_reviewers"]], ["corp-approver"])
+        self.assertEqual([actor["id"] for actor in workflow["submitters"]], ["corp-approver"])
+        self.assertEqual(self.store.operation(self.users["maker"], operation["id"])["state"], "awaiting_bank")
+
     def test_http_auth_csrf_and_origin(self):
         server = create_server(self.store)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

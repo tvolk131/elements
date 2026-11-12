@@ -42,6 +42,19 @@ export interface ApprovalRequest {
   destination?: string;
   [key: string]: unknown;
 }
+export interface WorkflowActor {
+  id: string;
+  name: string;
+  role: string;
+}
+export interface ApprovalWorkflow {
+  maker: WorkflowActor;
+  user_reviewers: WorkflowActor[];
+  submitters: WorkflowActor[];
+  institution_ids: string[];
+  required_institutions: number;
+  approved_institution_ids: string[];
+}
 export interface Operation {
   id: string;
   kind: Kind;
@@ -59,6 +72,8 @@ export interface Operation {
   issuer?: string;
   created_at: number;
   expires_at?: number;
+  maker?: string;
+  approval_workflow?: ApprovalWorkflow;
   user_approved: boolean;
   guardian_approvals: number;
   guardian_threshold: number;

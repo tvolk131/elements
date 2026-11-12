@@ -3297,3 +3297,141 @@ td,
     font-size: 16px;
   }
 }
+
+.payment-approval-progress {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 17px;
+  margin: 20px 0;
+  background: var(--paper);
+}
+.payment-approval-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+.payment-approval-heading > svg {
+  flex-shrink: 0;
+  color: var(--teal);
+  margin-top: 2px;
+}
+.payment-approval-heading h3 {
+  font-size: 15px;
+  line-height: 1.5;
+}
+.payment-not-sent {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  margin: 10px 0 18px;
+}
+.payment-not-sent strong {
+  color: var(--ink);
+}
+.payment-approval-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 17px;
+}
+.payment-approval-steps > li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+}
+.payment-step-number {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--white);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+.payment-step-number > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--teal);
+}
+.payment-step-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 10px;
+}
+.payment-step-title h4 {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.payment-step-title .badge {
+  font-size: 10px;
+  white-space: normal;
+}
+.payment-approval-steps p {
+  font-size: 12px;
+  line-height: 1.75;
+  margin-top: 7px;
+  color: var(--ink-soft);
+}
+.payment-approval-steps code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.payment-approval-steps .payment-viewer-note {
+  color: var(--ink);
+  font-weight: 500;
+}
+.payment-approval-steps .payment-step-help {
+  font-size: 11px;
+}
+.payment-approval-steps .button {
+  margin-top: 9px;
+}
+.payment-institutions {
+  margin-top: 9px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+.payment-institutions summary {
+  cursor: pointer;
+  color: var(--teal-deep);
+}
+.payment-institutions ul {
+  list-style: none;
+  padding: 0;
+  margin-top: 8px;
+}
+.payment-institutions li {
+  display: grid;
+  gap: 2px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.payment-policy-note {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 16px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+@media (max-width: 480px) {
+  .payment-approval-progress {
+    padding: 14px 13px;
+  }
+  .payment-approval-steps > li {
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .payment-step-title {
+    align-items: flex-start;
+  }
+  .payment-approval-steps code {
+    font-size: 10px;
+  }
+}

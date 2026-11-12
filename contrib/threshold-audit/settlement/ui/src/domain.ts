@@ -18,6 +18,7 @@ export const human = (value?: string): string =>
     corporatemaker: "Corporate payment maker",
     corporateapprover: "Corporate payment approver",
     institutionguardian: "Institution guardian",
+    awaiting_approval: "Payment approvals needed",
     payment_failed: "Bank payout failed",
     refund_requested: "Escrow return requested",
   })[value || ""] ||
@@ -128,8 +129,12 @@ export function nextStep(op: Operation): string {
   if (op.state === "awaiting_bank")
     return "Next: a bank administrator records the matching simulated bank credit. Tokens have not been issued yet.";
   if (op.state === "awaiting_approval") {
-    if (!op.user_approved)
-      return "Next: a separate authorized user reviews and approves this request.";
+    if (!op.user_approved) {
+      const reviewers = op.approval_workflow?.user_reviewers
+        .map((actor) => actor.name)
+        .join(" or ");
+      return `Waiting for ${reviewers || "a bank or corporate payment approver"} to perform the second-person check. Institution payment approvals are also required before submission.`;
+    }
     const remaining = Math.max(
       0,
       op.guardian_threshold - op.guardian_approvals,
