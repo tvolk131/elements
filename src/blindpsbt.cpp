@@ -3,6 +3,9 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <blindpsbt.h>
+#include <chainparams.h>
+#include <consensus/validation.h>
+#include <threshold_audit_validation.h>
 
 #include <hash.h>
 #include <primitives/transaction.h>
@@ -34,6 +37,10 @@ std::string GetBlindingStatusError(const BlindingStatus& status)
         return "Unable to create a value rangeproof for an output";
     case BlindingStatus::INVALID_AMOUNT:
         return "Zero-valued output to a spendable script cannot be blinded";
+    case BlindingStatus::AUDIT_UNSUPPORTED:
+        return "Audit PSET blinding currently requires one owner to blind all pending outputs, a current audit key, and explicit issuance amounts";
+    case BlindingStatus::AUDIT_PROOF_UNABLE:
+        return "Unable to create or validate mandatory audit recovery proofs for the final PSET template; check the asset registry or reblind after a key/template change";
     }
     assert(false);
 }
@@ -392,7 +399,7 @@ bool ComputeAndAddToScalarOffset(uint256& a, CAmount value, const uint256& asset
     return true;
 }
 
-BlindingStatus BlindPSBT(PartiallySignedTransaction& psbt, std::map<uint32_t, std::tuple<CAmount, CAsset, uint256, uint256>> our_input_data, std::map<uint32_t, std::pair<CKey, CKey>> our_issuances_to_blind)
+static BlindingStatus BlindPSBTImpl(PartiallySignedTransaction& psbt, std::map<uint32_t, std::tuple<CAmount, CAsset, uint256, uint256>> our_input_data, std::map<uint32_t, std::pair<CKey, CKey>> our_issuances_to_blind, const threshold_audit::Policy& audit_policy)
 {
     unsigned int num_blinded = 0;
     std::vector<uint32_t> to_blind;
@@ -401,10 +408,28 @@ BlindingStatus BlindPSBT(PartiallySignedTransaction& psbt, std::map<uint32_t, st
         if (output.IsFullyBlinded()) num_blinded++;
         if (output.IsBlinded()) to_blind.push_back(i);
     }
+    if (g_threshold_audit_enabled) {
+        if (audit_policy.key.size() != 33 || !our_issuances_to_blind.empty()) return BlindingStatus::AUDIT_UNSUPPORTED;
+        for (const auto& input : psbt.inputs) {
+            if (input.m_issuance_value_commitment.IsCommitment() || input.m_issuance_inflation_keys_commitment.IsCommitment()) return BlindingStatus::AUDIT_UNSUPPORTED;
+        }
+        for (uint32_t index : to_blind) {
+            const auto& output = psbt.outputs[index];
+            if (!output.IsFullyBlinded() && (!output.m_blinder_index || !our_input_data.contains(*output.m_blinder_index))) {
+                return BlindingStatus::AUDIT_UNSUPPORTED;
+            }
+        }
+    }
     if (num_blinded == to_blind.size()) {
         // All outputs are blinded, nothing left to do
+        if (g_threshold_audit_enabled) {
+            TxValidationState state;
+            if (!threshold_audit::CheckTransaction(CTransaction{psbt.GetUnsignedTx()}, Params().GetConsensus(), audit_policy, state)) return BlindingStatus::AUDIT_PROOF_UNABLE;
+        }
         return BlindingStatus::OK;
     }
+
+    std::vector<std::optional<threshold_audit::Opening>> audit_openings(psbt.outputs.size());
 
     std::vector<secp256k1_fixed_asset_tag> fixed_input_tags; // Explicit Asset IDs for the inputs we know. Blinded for unknown ones
     std::vector<secp256k1_generator> ephemeral_input_tags; // Blinded Asset IDs. Explicit Asset ID blinded with 0 if not blinded
@@ -630,6 +655,15 @@ BlindingStatus BlindPSBT(PartiallySignedTransaction& psbt, std::map<uint32_t, st
         output.m_blind_value_proof = blind_value_proof;
         output.m_blind_asset_proof = blind_asset_proof;
 
+        if (g_threshold_audit_enabled) {
+            threshold_audit::Opening opening;
+            std::copy(asset.begin(), asset.end(), opening.asset.begin());
+            opening.amount = *output.amount;
+            std::copy(asset_blinder.begin(), asset_blinder.end(), opening.asset_blinder.begin());
+            std::copy(value_blinder.begin(), value_blinder.end(), opening.value_blinder.begin());
+            audit_openings[i] = opening;
+        }
+
         our_blinds++;
     }
 
@@ -646,5 +680,22 @@ BlindingStatus BlindPSBT(PartiallySignedTransaction& psbt, std::map<uint32_t, st
         return BlindingStatus::NO_BLIND_OUTPUTS;
     }
 
+    if (g_threshold_audit_enabled) {
+        CMutableTransaction transaction = psbt.GetUnsignedTx();
+        if (!threshold_audit::AttachTransactionProofs(transaction, Params().GetConsensus(), audit_policy, audit_openings)) return BlindingStatus::AUDIT_PROOF_UNABLE;
+        for (size_t index = 0; index < psbt.outputs.size(); ++index) psbt.outputs[index].m_audit_proof = std::move(transaction.witness.vtxoutwit[index].vchAuditProof);
+    }
+
     return BlindingStatus::OK;
+}
+
+BlindingStatus BlindPSBT(PartiallySignedTransaction& psbt, std::map<uint32_t, std::tuple<CAmount, CAsset, uint256, uint256>> our_input_data, std::map<uint32_t, std::pair<CKey, CKey>> our_issuances_to_blind, const threshold_audit::Policy& audit_policy)
+{
+    if (!g_threshold_audit_enabled) return BlindPSBTImpl(psbt, std::move(our_input_data), std::move(our_issuances_to_blind), audit_policy);
+    // A failed proof or unsupported multi-party workflow must not publish a
+    // partially mutated PSET as a completed blinding operation.
+    PartiallySignedTransaction staged{psbt};
+    const auto result = BlindPSBTImpl(staged, std::move(our_input_data), std::move(our_issuances_to_blind), audit_policy);
+    if (result == BlindingStatus::OK) psbt = std::move(staged);
+    return result;
 }

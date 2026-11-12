@@ -4,6 +4,7 @@
 
 #include <blind.h>
 #include <chainparams.h>
+#include <threshold_audit_validation.h>
 
 #include <array>
 #include <hash.h>
@@ -289,8 +290,15 @@ void CreateValueCommitment(CConfidentialValue& conf_value, secp256k1_pedersen_co
     assert(conf_value.IsValid());
 }
 
-int BlindTransaction(std::vector<uint256 >& input_value_blinding_factors, const std::vector<uint256 >& input_asset_blinding_factors, const std::vector<CAsset >& input_assets, const std::vector<CAmount >& input_amounts, std::vector<uint256 >& out_val_blind_factors, std::vector<uint256 >& out_asset_blind_factors, const std::vector<CPubKey>& output_pubkeys, const std::vector<CKey>& issuance_blinding_privkey, const std::vector<CKey>& token_blinding_privkey, CMutableTransaction& tx, std::vector<std::vector<unsigned char> >* auxiliary_generators)
+int BlindTransaction(std::vector<uint256 >& input_value_blinding_factors, const std::vector<uint256 >& input_asset_blinding_factors, const std::vector<CAsset >& input_assets, const std::vector<CAmount >& input_amounts, std::vector<uint256 >& out_val_blind_factors, std::vector<uint256 >& out_asset_blind_factors, const std::vector<CPubKey>& output_pubkeys, const std::vector<CKey>& issuance_blinding_privkey, const std::vector<CKey>& token_blinding_privkey, CMutableTransaction& tx, std::vector<std::vector<unsigned char> >* auxiliary_generators, const threshold_audit::Policy& audit_policy)
 {
+    std::optional<CMutableTransaction> audit_unblinded;
+    if (g_threshold_audit_enabled) {
+        if (audit_policy.key.size() != 33 ||
+            std::any_of(issuance_blinding_privkey.begin(), issuance_blinding_privkey.end(), [](const CKey& key) { return key.IsValid(); }) ||
+            std::any_of(token_blinding_privkey.begin(), token_blinding_privkey.end(), [](const CKey& key) { return key.IsValid(); })) return -1;
+        audit_unblinded = tx;
+    }
     // Sanity check input data and output_pubkey size, clear other output data
     assert(tx.vout.size() >= output_pubkeys.size());
     assert(tx.vin.size() >= issuance_blinding_privkey.size());
@@ -606,7 +614,8 @@ int BlindTransaction(std::vector<uint256 >& input_value_blinding_factors, const 
                 // abort and not blind and the math adds up.
                 // Count as success(to signal caller that nothing wrong) and return early
                 if (memcmp(diff_zero, &blind[num_blind_attempts-1][0], 32) == 0) {
-                    return ++num_blinded;
+                    ++num_blinded;
+                    break;
                 }
             }
 
@@ -642,6 +651,23 @@ int BlindTransaction(std::vector<uint256 >& input_value_blinding_factors, const 
         }
     }
 
+    if (audit_unblinded) {
+        std::vector<std::optional<threshold_audit::Opening>> openings(tx.vout.size());
+        for (size_t index = 0; index < tx.vout.size(); ++index) {
+            const auto& original = audit_unblinded->vout[index];
+            if (tx.vout[index].nAsset.IsCommitment() && tx.vout[index].nValue.IsCommitment() &&
+                original.nAsset.IsExplicit() && original.nValue.IsExplicit()) {
+                threshold_audit::Opening opening;
+                const CAsset asset = original.nAsset.GetAsset();
+                std::copy(asset.begin(), asset.end(), opening.asset.begin());
+                opening.amount = original.nValue.GetAmount();
+                std::copy(out_asset_blind_factors[index].begin(), out_asset_blind_factors[index].end(), opening.asset_blinder.begin());
+                std::copy(out_val_blind_factors[index].begin(), out_val_blind_factors[index].end(), opening.value_blinder.begin());
+                openings[index] = opening;
+            }
+        }
+        if (!threshold_audit::AttachTransactionProofs(tx, Params().GetConsensus(), audit_policy, openings)) return -1;
+    }
     return num_blinded;
 }
 

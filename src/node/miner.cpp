@@ -20,6 +20,7 @@
 #include <policy/policy.h>
 #include <pow.h>
 #include <primitives/transaction.h>
+#include <threshold_audit_validation.h>
 #include <util/moneystr.h>
 #include <util/time.h>
 #include <validation.h>
@@ -117,6 +118,7 @@ void ApplyArgsManOptions(const ArgsManager& args, BlockAssembler::Options& optio
 void BlockAssembler::resetBlock()
 {
     inBlock.clear();
+    m_audit_outputs = 0;
 
     // Reserve space for fixed-size block header, txs count, and coinbase tx.
     nBlockWeight = m_options.block_reserved_weight;
@@ -274,9 +276,14 @@ bool BlockAssembler::TestPackage(uint64_t packageSize, int64_t packageSigOpsCost
 // - transaction finality (locktime)
 bool BlockAssembler::TestPackageTransactions(const CTxMemPool::setEntries& package) const
 {
+    size_t audit_outputs{m_audit_outputs};
     for (CTxMemPool::txiter it : package) {
         if (!IsFinalTx(it->GetTx(), nHeight, m_lock_time_cutoff)) {
             return false;
+        }
+        if (chainparams.GetConsensus().threshold_audit) {
+            audit_outputs += threshold_audit::ConfidentialOutputCount(it->GetTx());
+            if (audit_outputs > threshold_audit::MAX_OUTPUTS_PER_BLOCK) return false;
         }
     }
     return true;
@@ -288,6 +295,7 @@ void BlockAssembler::AddToBlock(CTxMemPool::txiter iter)
     pblocktemplate->vTxFees.push_back(iter->GetFee());
     pblocktemplate->vTxSigOpsCost.push_back(iter->GetSigOpCost());
     nBlockWeight += iter->GetTxWeight();
+    if (chainparams.GetConsensus().threshold_audit) m_audit_outputs += threshold_audit::ConfidentialOutputCount(iter->GetTx());
     ++nBlockTx;
     nBlockSigOpsCost += iter->GetSigOpCost();
     nFees += iter->GetFee();

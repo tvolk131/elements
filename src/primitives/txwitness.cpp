@@ -6,6 +6,7 @@
 
 #include <hash.h>
 
+bool g_threshold_audit_enabled = false;
 
 /**
  * The input witness consists of four elements, three of which are
@@ -39,6 +40,9 @@ uint256 CTxOutWitness::GetHash() const
     std::vector<uint256> leaves;
     leaves.push_back((HashWriter{} << vchSurjectionproof).GetHash());
     leaves.push_back((HashWriter{} << vchRangeproof).GetHash());
+    if (g_threshold_audit_enabled) {
+        leaves.push_back((HashWriter{} << vchAuditProof).GetHash());
+    }
     return ComputeFastMerkleRoot(leaves);
 }
 

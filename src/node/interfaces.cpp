@@ -11,6 +11,7 @@
 #include <consensus/merkle.h>
 #include <consensus/validation.h>
 #include <deploymentstatus.h>
+#include <dynafed.h>
 #include <external_signer.h>
 #include <index/blockfilterindex.h>
 #include <init.h>
@@ -877,6 +878,11 @@ public:
     }
 
 // ELEMENTS
+    threshold_audit::Policy getAuditPolicy() override {
+        LOCK(::cs_main);
+        if (!chainman().GetConsensus().threshold_audit || !chainman().ActiveChain().Tip()) return {};
+        return ComputeNextBlockFullCurrentParameters(chainman().ActiveChain().Tip(), chainman().GetConsensus()).GetAuditPolicy();
+    }
     MempoolAcceptResult testPeginClaimAcceptance(const CTransactionRef tx) override {
         LOCK(::cs_main);
         return ::AcceptToMemoryPool(chainman().ActiveChainstate(), tx, GetTime(), false /* bypass_limits */, true /* test_accept */);

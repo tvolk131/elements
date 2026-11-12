@@ -32,6 +32,11 @@ Scripts and notes for Mac builds.
 Test and Verify Tools
 ---------------------
 
+### [Threshold Audit Experiment](/contrib/threshold-audit) ###
+A research prototype for verifiable confidential-output recovery, threshold
+decryption and simulated federation handoff, with opt-in native enforcement on
+custom test chains. See its README for limitations and run instructions.
+
 ### [TestGen](/contrib/testgen) ###
 Utilities to generate test vectors for the data-driven Bitcoin tests.
 

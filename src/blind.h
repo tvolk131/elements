@@ -6,6 +6,7 @@
 
 #include <addresstype.h>
 #include <key.h>
+#include <threshold_audit.h>
 #include <pubkey.h>
 #include <primitives/transaction.h>
 #include <primitives/confidential.h>
@@ -71,7 +72,7 @@ void CreateValueCommitment(CConfidentialValue& conf_value, secp256k1_pedersen_co
  * @param[in/out]   tx - The transaction to be modified.
  * @param[in] auxiliary_generators - a list of generators to create surjection proofs when inputs are not owned by caller. Passing in non-empty elements results in ignoring of other input arguments for that index
  */
-int BlindTransaction(std::vector<uint256 >& input_value_blinding_factors, const std::vector<uint256 >& input_asset_blinding_factors, const std::vector<CAsset >& input_assets, const std::vector<CAmount >& input_amounts, std::vector<uint256 >& out_val_blind_factors, std::vector<uint256 >& out_asset_blind_factors, const std::vector<CPubKey>& output_pubkeys, const std::vector<CKey>& issuance_blinding_privkey, const std::vector<CKey>& token_blinding_privkey, CMutableTransaction& tx, std::vector<std::vector<unsigned char> >* auxiliary_generators = nullptr);
+int BlindTransaction(std::vector<uint256 >& input_value_blinding_factors, const std::vector<uint256 >& input_asset_blinding_factors, const std::vector<CAsset >& input_assets, const std::vector<CAmount >& input_amounts, std::vector<uint256 >& out_val_blind_factors, std::vector<uint256 >& out_asset_blind_factors, const std::vector<CPubKey>& output_pubkeys, const std::vector<CKey>& issuance_blinding_privkey, const std::vector<CKey>& token_blinding_privkey, CMutableTransaction& tx, std::vector<std::vector<unsigned char> >* auxiliary_generators = nullptr, const threshold_audit::Policy& audit_policy = {});
 
 /*
  * Extract pubkeys from nonce commitment placeholders, fill out vector of blank output blinding data

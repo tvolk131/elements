@@ -95,6 +95,12 @@ DynaFedParamEntry ComputeNextBlockFullCurrentParameters(const CBlockIndex* pinde
             // Put them in winning proposal
             winning_proposal = DynaFedParamEntry(p2wsh_signblock_script, consensus.max_block_signature_size, sh_wsh_fedpeg_program, consensus.fedpegScript, consensus.first_extension_space);
         }
+        if (consensus.threshold_audit) {
+            winning_proposal.m_audit_pubkey = consensus.audit_pubkey;
+            winning_proposal.m_audit_version = 1;
+            winning_proposal.m_audit_config = consensus.audit_config;
+            winning_proposal.m_audit_assets = consensus.audit_assets;
+        }
     } else {
         winning_proposal = p_epoch_start->dynafed_params().m_current;
     }

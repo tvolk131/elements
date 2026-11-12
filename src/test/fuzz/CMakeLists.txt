@@ -122,6 +122,7 @@ add_executable(fuzz
   span.cpp
   string.cpp
   strprintf.cpp
+  threshold_audit.cpp
   system.cpp
   timeoffsets.cpp
   torcontrol.cpp
@@ -162,4 +163,31 @@ target_link_libraries(fuzz
 
 if(ENABLE_WALLET)
   add_subdirectory(${PROJECT_SOURCE_DIR}/src/wallet/test/fuzz wallet)
+endif()
+
+# The public audit parsers also support deterministic corpus replay in ordinary
+# test builds. The full fuzz executable requires BUILD_FOR_FUZZING=ON to run.
+if(NOT BUILD_FOR_FUZZING)
+  add_executable(threshold_audit_replay EXCLUDE_FROM_ALL
+    threshold_audit.cpp
+    ${PROJECT_SOURCE_DIR}/contrib/threshold-audit/native_fuzz_replay.cpp
+  )
+  target_link_libraries(threshold_audit_replay
+    core_interface
+    bitcoin_common
+    bitcoin_util
+    secp256k1
+  )
+  # Public Python/C++ review vectors assert expected acceptance and rejection,
+  # rather than merely exercising bounded parser entry points.
+  add_executable(threshold_audit_vectors EXCLUDE_FROM_ALL
+    ${PROJECT_SOURCE_DIR}/contrib/threshold-audit/review/native_vectors.cpp
+  )
+  target_link_libraries(threshold_audit_vectors
+    core_interface
+    bitcoin_common
+    bitcoin_util
+    secp256k1
+    univalue
+  )
 endif()

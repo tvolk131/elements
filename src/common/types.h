@@ -28,6 +28,7 @@ enum class PSBTError {
     MISSING_BLINDING_KEY,
     MISSING_SIDECHANNEL_DATA,
     MISSING_EXPLICIT_OUTPUT_DATA,
+    INVALID_AUDIT_PROOF,
 };
 } // namespace common
 

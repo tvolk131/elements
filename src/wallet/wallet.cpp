@@ -8,6 +8,7 @@
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 #include <addresstype.h>
 #include <blindpsbt.h>
+#include <threshold_audit_validation.h>
 #include <blockfilter.h>
 #include <chain.h>
 #include <coins.h>
@@ -2450,7 +2451,7 @@ BlindingStatus CWallet::WalletBlindPSBT(PartiallySignedTransaction& psbtx) const
     }
 
     // Blind the PSBT
-    return BlindPSBT(psbtx, our_input_data, our_issuances_to_blind);
+    return BlindPSBT(psbtx, our_input_data, our_issuances_to_blind, chain().getAuditPolicy());
 }
 std::optional<PSBTError> CWallet::SignPSBT(PartiallySignedTransaction& psbtx, bool& complete, int sighash_type, bool sign, bool imbalance_ok, bool bip32derivs, size_t* n_signed, bool finalize) const
 {
@@ -2459,6 +2460,12 @@ std::optional<PSBTError> CWallet::SignPSBT(PartiallySignedTransaction& psbtx, bo
     // If we're signing, check that the transaction is not still in need of blinding
     // Also check that the amount and asset proofs are valid
     if (sign) {
+        if (g_threshold_audit_enabled) {
+            TxValidationState audit_state;
+            if (!threshold_audit::CheckTransaction(CTransaction{psbtx.GetUnsignedTx()}, Params().GetConsensus(), chain().getAuditPolicy(), audit_state)) {
+                return PSBTError::INVALID_AUDIT_PROOF;
+            }
+        }
         for (const PSBTOutput& o : psbtx.outputs) {
             if (o.IsBlinded()) {
                 switch (VerifyBlindProofs(o)) {

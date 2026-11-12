@@ -39,6 +39,10 @@ MINIMUM_BLOCK_RESERVED_WEIGHT = 2000
 MAX_BLOOM_FILTER_SIZE = 36000
 MAX_BLOOM_HASH_FUNCS = 50
 
+# Explicit per-test switch for the incompatible experimental custom-chain wire
+# format. Default networks and all other functional-test processes stay unchanged.
+THRESHOLD_AUDIT = False
+
 COIN = 100000000  # 1 btc in satoshis
 MAX_MONEY = 21000000 * COIN
 
@@ -794,20 +798,25 @@ class CTxInWitness:
 
 
 class CTxOutWitness:
-    __slots__ = ("vchSurjectionproof", "vchRangeproof")
+    __slots__ = ("vchSurjectionproof", "vchRangeproof", "vchAuditProof")
 
     def __init__(self):
         self.vchSurjectionproof = b''
         self.vchRangeproof = b''
+        self.vchAuditProof = b''
 
     def deserialize(self, f):
         self.vchSurjectionproof = deser_string(f)
         self.vchRangeproof = deser_string(f)
+        if THRESHOLD_AUDIT:
+            self.vchAuditProof = deser_string(f)
 
     def serialize(self):
         r = b''
         r += ser_string(self.vchSurjectionproof)
         r += ser_string(self.vchRangeproof)
+        if THRESHOLD_AUDIT:
+            r += ser_string(self.vchAuditProof)
         return r
 
     def calc_witness_hash(self):
@@ -815,6 +824,8 @@ class CTxOutWitness:
             hash256(ser_string(self.vchSurjectionproof))[::-1].hex(),
             hash256(ser_string(self.vchRangeproof))[::-1].hex()
         ]
+        if THRESHOLD_AUDIT:
+            leaves.append(hash256(ser_string(self.vchAuditProof))[::-1].hex())
         return calcfastmerkleroot(leaves)
 
     def __repr__(self):
@@ -822,7 +833,8 @@ class CTxOutWitness:
 
     def is_null(self):
         return len(self.vchSurjectionproof) == 0 \
-            and len(self.vchRangeproof) == 0
+            and len(self.vchRangeproof) == 0 \
+            and (not THRESHOLD_AUDIT or len(self.vchAuditProof) == 0)
 
 
 class CTxWitness:
@@ -1045,13 +1057,13 @@ class CProof:
             % (self.challenge, self.solution)
 
 class DynaFedParamEntry:
-    __slots__ = ("m_serialize_type", "m_signblockscript", "m_signblock_witness_limit", "m_fedpeg_program", "m_fedpegscript", "m_extension_space", "m_elided_root")
+    __slots__ = ("m_serialize_type", "m_signblockscript", "m_signblock_witness_limit", "m_fedpeg_program", "m_fedpegscript", "m_extension_space", "m_elided_root", "m_audit_pubkey", "m_audit_version", "m_audit_config", "m_audit_prepared", "m_audit_assets", "m_audit_assets_version")
 
     # Constructor args will define serialization type:
     # null = 0
     # signblock-related fields = 1, required for m_current on non-epoch-starts
     # all fields = 2, required for epoch starts
-    def __init__(self, m_signblockscript=b"", m_signblock_witness_limit=0, m_fedpeg_program=b"", m_fedpegscript=b"", m_extension_space=None, m_elided_root=0):
+    def __init__(self, m_signblockscript=b"", m_signblock_witness_limit=0, m_fedpeg_program=b"", m_fedpegscript=b"", m_extension_space=None, m_elided_root=0, m_audit_pubkey=b"", m_audit_version=0, m_audit_config=b"", m_audit_prepared=b"", m_audit_assets=None, m_audit_assets_version=0):
         if m_extension_space is None:
             m_extension_space = []
         self.m_signblockscript = m_signblockscript
@@ -1059,9 +1071,15 @@ class DynaFedParamEntry:
         self.m_fedpeg_program = m_fedpeg_program
         self.m_fedpegscript = m_fedpegscript
         self.m_extension_space = m_extension_space
+        self.m_audit_pubkey = m_audit_pubkey
+        self.m_audit_version = m_audit_version
+        self.m_audit_config = m_audit_config
+        self.m_audit_prepared = m_audit_prepared
+        self.m_audit_assets = [] if m_audit_assets is None else m_audit_assets
+        self.m_audit_assets_version = m_audit_assets_version
         if self.is_null():
             self.m_serialize_type = 0
-        elif m_fedpegscript==b"" and m_fedpeg_program==b"" and m_extension_space == []:
+        elif m_fedpegscript==b"" and m_fedpeg_program==b"" and m_extension_space == [] and m_audit_pubkey == b"" and m_audit_version == 0 and m_audit_config == b"" and m_audit_prepared == b"" and not self.m_audit_assets and m_audit_assets_version == 0:
             self.m_serialize_type = 1
             # We also set the "extra root" in this case
             self.m_elided_root = m_elided_root
@@ -1076,11 +1094,17 @@ class DynaFedParamEntry:
         self.m_extension_space = []
         self.m_serialize_type = 0
         self.m_elided_root = 0
+        self.m_audit_pubkey = b""
+        self.m_audit_version = 0
+        self.m_audit_config = b""
+        self.m_audit_prepared = b""
+        self.m_audit_assets = []
+        self.m_audit_assets_version = 0
 
     def is_null(self):
         return self.m_signblockscript == b"" and self.m_signblock_witness_limit == 0 and \
                 self.m_fedpeg_program == b"" and self.m_fedpegscript == b"" and \
-                self.m_extension_space == []
+                self.m_extension_space == [] and self.m_audit_pubkey == b"" and self.m_audit_version == 0 and self.m_audit_config == b"" and self.m_audit_prepared == b"" and not self.m_audit_assets and self.m_audit_assets_version == 0
 
     def serialize(self):
         r = b""
@@ -1095,11 +1119,24 @@ class DynaFedParamEntry:
             r += ser_string(self.m_fedpeg_program)
             r += ser_string(self.m_fedpegscript)
             r += ser_string_vector(self.m_extension_space)
+            if THRESHOLD_AUDIT:
+                r += ser_string(self.m_audit_pubkey)
+                r += struct.pack("<I", self.m_audit_version)
+                r += ser_string(self.m_audit_config)
+                r += ser_string(self.m_audit_prepared)
+                r += struct.pack("<I", self.m_audit_assets_version)
+                r += ser_uint256_vector(self.m_audit_assets)
         elif self.m_serialize_type > 2:
             raise Exception("Invalid serialization type for DynaFedParamEntry")
         return r
 
     def deserialize(self, f):
+        self.m_audit_pubkey = b""
+        self.m_audit_version = 0
+        self.m_audit_config = b""
+        self.m_audit_prepared = b""
+        self.m_audit_assets = []
+        self.m_audit_assets_version = 0
         self.m_serialize_type = struct.unpack("B", f.read(1))[0]
         if self.m_serialize_type == 1:
             self.m_signblockscript = deser_string(f)
@@ -1111,6 +1148,13 @@ class DynaFedParamEntry:
             self.m_fedpeg_program = deser_string(f)
             self.m_fedpegscript = deser_string(f)
             self.m_extension_space = deser_string_vector(f)
+            if THRESHOLD_AUDIT:
+                self.m_audit_pubkey = deser_string(f)
+                self.m_audit_version = struct.unpack("<I", f.read(4))[0]
+                self.m_audit_config = deser_string(f)
+                self.m_audit_prepared = deser_string(f)
+                self.m_audit_assets_version = struct.unpack("<I", f.read(4))[0]
+                self.m_audit_assets = deser_uint256_vector(f)
 
     def __repr__(self):
         return "DynaFedParamEntry(m_signblockscript=%s m_fedpegscript=%s m_extension_space=%s)" \

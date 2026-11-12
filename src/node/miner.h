@@ -162,6 +162,7 @@ private:
     uint64_t nBlockWeight;
     uint64_t nBlockTx;
     uint64_t nBlockSigOpsCost;
+    size_t m_audit_outputs{0};
     CAmount nFees;
     std::unordered_set<Txid, SaltedTxidHasher> inBlock;
 

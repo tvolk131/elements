@@ -55,6 +55,7 @@
 #include <versionbits.h>
 #include <pegins.h>
 #include <dynafed.h>
+#include <threshold_audit_governance.h>
 
 #include <stdint.h>
 
@@ -153,6 +154,16 @@ UniValue paramEntryToJSON(const DynaFedParamEntry& entry)
             result_extension.push_back(HexStr(item));
         }
         result.pushKV("extension_space", result_extension);
+        if (g_threshold_audit_enabled) {
+            result.pushKV("audit_pubkey", HexStr(entry.m_audit_pubkey));
+            result.pushKV("audit_version", static_cast<uint64_t>(entry.m_audit_version));
+            result.pushKV("audit_config", HexStr(entry.m_audit_config));
+            result.pushKV("audit_prepared", HexStr(entry.m_audit_prepared));
+            result.pushKV("audit_assets_version", static_cast<uint64_t>(entry.m_audit_assets_version));
+            UniValue assets(UniValue::VARR);
+            for (const auto& asset : entry.m_audit_assets) assets.push_back(asset.GetHex());
+            result.pushKV("audit_assets", assets);
+        }
     }
 
     return result;
@@ -1473,6 +1484,13 @@ RPCHelpMan getblockchaininfo()
                 {RPCResult::Type::NUM, "epoch_length", /*optional=*/true, "length of dynamic federations epoch, or signaling period"},
                 {RPCResult::Type::NUM, "total_valid_epochs", /*optional=*/true, "number of epochs a given fedpegscript is valid for, defined per chain"},
                 {RPCResult::Type::NUM, "epoch_age", /*optional=*/true, "number of blocks into a dynamic federation epoch chain tip is. This number is between 0 to epoch_length-1"},
+                {RPCResult::Type::BOOL, "threshold_audit", /*optional=*/true, "Whether experimental mandatory confidential-output recovery is active"},
+                {RPCResult::Type::STR_HEX, "audit_pubkey", /*optional=*/true, "Experimental audit public key enforced on the next block"},
+                {RPCResult::Type::NUM, "audit_version", /*optional=*/true, "Experimental audit-key version enforced on the next block"},
+                {RPCResult::Type::STR_HEX, "audit_config", /*optional=*/true, "Complete TAG1 audit governance configuration for the next block"},
+                {RPCResult::Type::STR_HEX, "audit_config_hash", /*optional=*/true, "Raw digest bytes of the complete audit configuration; no uint256 display reversal"},
+                {RPCResult::Type::NUM, "audit_assets_version", /*optional=*/true, "Recovery asset registry version effective for the next block"},
+                {RPCResult::Type::ARR, "audit_assets", /*optional=*/true, "Recovery asset registry effective for the next block, in RPC display order", {{RPCResult::Type::STR_HEX, "", "Asset ID"}}},
                 {RPCResult::Type::ARR, "extension_space", /*optional=*/true, "array of extension fields in dynamic blockheader",
                 {
                     {RPCResult::Type::ELISION, "", ""}
@@ -1543,6 +1561,17 @@ RPCHelpMan getblockchaininfo()
             obj.pushKV("max_block_witness", (uint64_t)entry.m_signblock_witness_limit);
             obj.pushKV("current_fedpeg_program", HexStr(entry.m_fedpeg_program));
             obj.pushKV("current_fedpeg_script", HexStr(entry.m_fedpegscript));
+            if (chainparams.GetConsensus().threshold_audit) {
+                obj.pushKV("threshold_audit", true);
+                obj.pushKV("audit_pubkey", HexStr(entry.m_audit_pubkey));
+                obj.pushKV("audit_version", static_cast<uint64_t>(entry.m_audit_version));
+                obj.pushKV("audit_config", HexStr(entry.m_audit_config));
+                obj.pushKV("audit_config_hash", HexStr(threshold_audit::governance::ConfigBinding(entry.m_audit_config)));
+                UniValue assets(UniValue::VARR);
+                for (const auto& asset : entry.m_audit_assets) assets.push_back(asset.GetHex());
+                obj.pushKV("audit_assets", assets);
+                obj.pushKV("audit_assets_version", static_cast<uint64_t>(entry.m_audit_assets_version));
+            }
             UniValue arr(UniValue::VARR);
             for (const auto& extension : entry.m_extension_space) {
                 arr.push_back(HexStr(extension));

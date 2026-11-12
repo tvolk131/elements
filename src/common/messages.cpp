@@ -126,6 +126,8 @@ bilingual_str PSBTErrorString(PSBTError err)
             return Untranslated("Proof of blinded value is invalid");
         case PSBTError::INVALID_ASSET_PROOF:
             return Untranslated("Proof of blinded asset is invalid");
+        case PSBTError::INVALID_AUDIT_PROOF:
+            return Untranslated("Mandatory audit recovery proof is missing, invalid, or uses a stale audit key; reblind the transaction");
         case PSBTError::MISSING_BLINDING_KEY:
             return Untranslated("Wallet does not have necessary blinding key");
         case PSBTError::MISSING_SIDECHANNEL_DATA:

@@ -183,6 +183,7 @@ CMutableTransaction PartiallySignedTransaction::GetUnsignedTx(bool force_unblind
         if (output.m_ecdh_pubkey.IsValid() && !force_unblinded) {
             txout.nNonce.vchCommitment.insert(txout.nNonce.vchCommitment.end(), output.m_ecdh_pubkey.begin(), output.m_ecdh_pubkey.end());
         }
+        if (!force_unblinded && txout.nAsset.IsCommitment() && txout.nValue.IsCommitment()) txoutwit.vchAuditProof = output.m_audit_proof;
         mtx.vout.push_back(txout);
         mtx.witness.vtxoutwit.push_back(txoutwit);
     }
@@ -592,6 +593,7 @@ bool PSBTOutput::Merge(const PSBTOutput& output)
     assert(amount == output.amount);
     assert(script == output.script);
     assert(m_asset == output.m_asset);
+    if (!m_audit_proof.empty() && !output.m_audit_proof.empty() && m_audit_proof != output.m_audit_proof) return false;
 
     hd_keypaths.insert(output.hd_keypaths.begin(), output.hd_keypaths.end());
     unknown.insert(output.unknown.begin(), output.unknown.end());
@@ -627,6 +629,7 @@ bool PSBTOutput::Merge(const PSBTOutput& output)
     }
 
     if (m_tap_internal_key.IsNull() && !output.m_tap_internal_key.IsNull()) m_tap_internal_key = output.m_tap_internal_key;
+    if (m_audit_proof.empty() && !output.m_audit_proof.empty()) m_audit_proof = output.m_audit_proof;
     if (m_tap_tree.empty() && !output.m_tap_tree.empty()) m_tap_tree = output.m_tap_tree;
 
     return true;
@@ -915,6 +918,8 @@ bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransacti
         const PSBTOutput& psbt_out = psbtx.outputs[i];
         result.witness.vtxoutwit[i].vchSurjectionproof = psbt_out.m_asset_surjection_proof;
         result.witness.vtxoutwit[i].vchRangeproof = psbt_out.m_value_rangeproof;
+        result.witness.vtxoutwit[i].vchAuditProof = psbt_out.m_audit_proof;
+        if (g_threshold_audit_enabled && result.vout[i].nValue.IsCommitment() && psbt_out.m_audit_proof.empty()) return false;
     }
     return true;
 }
@@ -1060,8 +1065,15 @@ void PartiallySignedTransaction::SetupFromTx(const CMutableTransaction& tx)
             output.m_value_commitment = txout.nValue;
         }
 
+        if (g_threshold_audit_enabled && txout.nAsset.IsCommitment() && txout.nValue.IsCommitment()) {
+            output.m_ecdh_pubkey.Set(txout.nNonce.vchCommitment.begin(), txout.nNonce.vchCommitment.end());
+            if (i < tx.witness.vtxoutwit.size()) {
+                output.m_value_rangeproof = tx.witness.vtxoutwit[i].vchRangeproof;
+                output.m_asset_surjection_proof = tx.witness.vtxoutwit[i].vchSurjectionproof;
+                output.m_audit_proof = tx.witness.vtxoutwit[i].vchAuditProof;
+            }
         // Usually the blinding pubkey is put into the nonce, so pull it out of there
-        if (txout.nNonce.IsCommitment()) {
+        } else if (txout.nNonce.IsCommitment()) {
             output.m_blinding_pubkey.Set(txout.nNonce.vchCommitment.begin(), txout.nNonce.vchCommitment.end());
         }
     }

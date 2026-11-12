@@ -3,6 +3,8 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <blind.h> // ELEMENTS: for MAX_RANGEPROOF_SIZE
+#include <chainparams.h>
+#include <threshold_audit.h>
 #include <algorithm>
 #include <common/args.h>
 #include <common/messages.h>
@@ -1246,6 +1248,8 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
 
     FastRandomContext rng_fast;
     CMutableTransaction txNew; // The resulting transaction that we make
+    const auto audit_policy = wallet.chain().getAuditPolicy();
+    const size_t audit_packet_size = g_threshold_audit_enabled ? threshold_audit::MaximumPacketSize(audit_policy.assets.size()) + 5 : 0;
 
     if (coin_control.m_version) {
         txNew.version = coin_control.m_version.value();
@@ -1389,6 +1393,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
             change_prototype_txout.nNonce.vchCommitment.resize(33);
             coin_selection_params.change_output_size = GetSerializeSize(change_prototype_txout);
             coin_selection_params.change_output_size += (MAX_RANGEPROOF_SIZE + DEFAULT_SURJECTIONPROOF_SIZE + WITNESS_SCALE_FACTOR - 1)/WITNESS_SCALE_FACTOR;
+            coin_selection_params.change_output_size += (audit_packet_size + WITNESS_SCALE_FACTOR - 1) / WITNESS_SCALE_FACTOR;
         } else {
             change_prototype_txout.nAsset.vchCommitment.resize(33);
             change_prototype_txout.nValue.vchCommitment.resize(9);
@@ -1475,6 +1480,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
                 blind_details->only_recipient_blind_index = txNew.vout.size()-1;
                 if (!coin_selection_params.m_subtract_fee_outputs) {
                     coin_selection_params.tx_noinputs_size += (MAX_RANGEPROOF_SIZE + DEFAULT_SURJECTIONPROOF_SIZE + WITNESS_SCALE_FACTOR - 1)/WITNESS_SCALE_FACTOR;
+                    coin_selection_params.tx_noinputs_size += (audit_packet_size + WITNESS_SCALE_FACTOR - 1) / WITNESS_SCALE_FACTOR;
                 }
             }
         }
@@ -1485,6 +1491,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         //  a full rangeproof and surjectionproof. We should fix this when we overhaul
         //  the blinding logic.
         coin_selection_params.tx_noinputs_size += 70 + 66 +(MAX_RANGEPROOF_SIZE + DEFAULT_SURJECTIONPROOF_SIZE + WITNESS_SCALE_FACTOR - 1)/WITNESS_SCALE_FACTOR;
+        coin_selection_params.tx_noinputs_size += (audit_packet_size + WITNESS_SCALE_FACTOR - 1) / WITNESS_SCALE_FACTOR;
     }
     // If we are going to issue an asset, add the issuance data to the noinputs_size so that
     // we allocate enough coins for them.
@@ -1850,8 +1857,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         txNew = tx_blinded; // sigh, `fillBlindDetails` may have modified txNew
         // Update the change position to the new tx
         change_position = txNew.vout.begin() + *change_pos;
-        int ret = BlindTransaction(blind_details->i_amount_blinds, blind_details->i_asset_blinds, blind_details->i_assets, blind_details->i_amounts, blind_details->o_amount_blinds, blind_details->o_asset_blinds, blind_details->o_pubkeys, issuance_asset_keys, issuance_token_keys, tx_blinded);
-        assert(ret != -1);
+        int ret = BlindTransaction(blind_details->i_amount_blinds, blind_details->i_asset_blinds, blind_details->i_assets, blind_details->i_amounts, blind_details->o_amount_blinds, blind_details->o_asset_blinds, blind_details->o_pubkeys, issuance_asset_keys, issuance_token_keys, tx_blinded, nullptr, audit_policy);
         if (ret != blind_details->num_to_blind) {
             return util::Error{_("Unable to blind the transaction properly. This should not happen.")};
         }
@@ -2064,8 +2070,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         }
 
         if (sign) {
-            int ret = BlindTransaction(blind_details->i_amount_blinds, blind_details->i_asset_blinds, blind_details->i_assets, blind_details->i_amounts, blind_details->o_amount_blinds, blind_details->o_asset_blinds,  blind_details->o_pubkeys, issuance_asset_keys, issuance_token_keys, txNew);
-            assert(ret != -1);
+            int ret = BlindTransaction(blind_details->i_amount_blinds, blind_details->i_asset_blinds, blind_details->i_assets, blind_details->i_amounts, blind_details->o_amount_blinds, blind_details->o_asset_blinds,  blind_details->o_pubkeys, issuance_asset_keys, issuance_token_keys, txNew, nullptr, audit_policy);
             if (ret != blind_details->num_to_blind) {
                 wallet.WalletLogPrintf("ERROR: tried to blind %d outputs but only blinded %d\n", (int) blind_details->num_to_blind, (int) ret);
                 return util::Error{_("Unable to blind the transaction properly. This should not happen.")};

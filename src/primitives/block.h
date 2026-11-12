@@ -9,6 +9,8 @@
 #include <primitives/transaction.h>
 #include <script/script.h>
 #include <serialize.h>
+#include <threshold_audit_governance.h>
+#include <threshold_audit.h>
 #include <uint256.h>
 #include <util/time.h>
 
@@ -71,6 +73,15 @@ public:
     CScript m_fedpegscript{}; // The witnessScript for witness v0 or undefined otherwise.
     // No consensus meaning to the particular bytes, currently we interpret as PAK keys, details in pak.h
     std::vector<std::vector<unsigned char>> m_extension_space{};
+    // Dedicated experimental fields; never interpreted as PAK extension data.
+    std::vector<unsigned char> m_audit_pubkey{};
+    uint32_t m_audit_version{0};
+    std::vector<unsigned char> m_audit_config{};
+    std::vector<unsigned char> m_audit_prepared{};
+    std::vector<CAsset> m_audit_assets{};
+    uint32_t m_audit_assets_version{0};
+
+    threshold_audit::Policy GetAuditPolicy() const { return {m_audit_pubkey, m_audit_assets, m_audit_assets_version}; }
     uint256 m_elided_root{}; // non-zero only when m_serialize_type == 1
 
     // Each constructor sets its own serialization type implicitly based on which
@@ -97,6 +108,15 @@ public:
                 s << m_fedpeg_program;
                 s << m_fedpegscript;
                 s << m_extension_space;
+                if (g_threshold_audit_enabled) {
+                    ThresholdAuditBytesFormatter<33>{}.Ser(s, m_audit_pubkey);
+                    s << m_audit_version;
+                    ThresholdAuditBytesFormatter<threshold_audit::governance::MAX_CONFIG_BYTES>{}.Ser(s, m_audit_config);
+                    ThresholdAuditBytesFormatter<threshold_audit::governance::MAX_PREPARED_BYTES>{}.Ser(s, m_audit_prepared);
+                    s << m_audit_assets_version;
+                    if (m_audit_assets.size() > threshold_audit::governance::MAX_ASSETS) throw std::ios_base::failure("oversized audit asset registry");
+                    s << m_audit_assets;
+                }
                 break;
             default:
                 assert(false && "Invalid consensus parameter entry type");
@@ -105,6 +125,12 @@ public:
 
     template <typename Stream>
     inline void Unserialize(Stream& s) {
+        m_audit_pubkey.clear();
+        m_audit_version = 0;
+        m_audit_config.clear();
+        m_audit_prepared.clear();
+        m_audit_assets.clear();
+        m_audit_assets_version = 0;
         s >> m_serialize_type;
         switch(m_serialize_type) {
             case 0:
@@ -121,6 +147,17 @@ public:
                 s >> m_fedpeg_program;
                 s >> m_fedpegscript;
                 s >> m_extension_space;
+                if (g_threshold_audit_enabled) {
+                    ThresholdAuditBytesFormatter<33>{}.Unser(s, m_audit_pubkey);
+                    s >> m_audit_version;
+                    ThresholdAuditBytesFormatter<threshold_audit::governance::MAX_CONFIG_BYTES>{}.Unser(s, m_audit_config);
+                    ThresholdAuditBytesFormatter<threshold_audit::governance::MAX_PREPARED_BYTES>{}.Unser(s, m_audit_prepared);
+                    s >> m_audit_assets_version;
+                    const auto assets_size = ReadCompactSize(s);
+                    if (assets_size > threshold_audit::governance::MAX_ASSETS) throw std::ios_base::failure("oversized audit asset registry");
+                    m_audit_assets.resize(assets_size);
+                    for (auto& asset : m_audit_assets) s >> asset;
+                }
                 break;
             default:
                 throw std::ios_base::failure("Invalid consensus parameter entry type");
@@ -138,7 +175,10 @@ public:
             m_signblock_witness_limit == 0 &&
             m_fedpeg_program.empty() &&
             m_fedpegscript.empty() &&
-            m_extension_space.empty();
+            m_extension_space.empty() &&
+            m_audit_pubkey.empty() && m_audit_version == 0 &&
+            m_audit_config.empty() && m_audit_prepared.empty() &&
+            m_audit_assets.empty() && m_audit_assets_version == 0;
 
     }
 
@@ -150,6 +190,12 @@ public:
         m_fedpeg_program.clear();
         m_fedpegscript.clear();
         m_extension_space.clear();
+        m_audit_pubkey.clear();
+        m_audit_version = 0;
+        m_audit_config.clear();
+        m_audit_prepared.clear();
+        m_audit_assets.clear();
+        m_audit_assets_version = 0;
     }
 
     bool operator==(const DynaFedParamEntry &other) const
@@ -159,7 +205,11 @@ public:
             m_signblock_witness_limit == other.m_signblock_witness_limit &&
             m_fedpeg_program == other.m_fedpeg_program &&
             m_fedpegscript == other.m_fedpegscript &&
-            m_extension_space == other.m_extension_space;
+            m_extension_space == other.m_extension_space &&
+            m_audit_pubkey == other.m_audit_pubkey &&
+            m_audit_version == other.m_audit_version &&
+            m_audit_config == other.m_audit_config && m_audit_prepared == other.m_audit_prepared &&
+            m_audit_assets == other.m_audit_assets && m_audit_assets_version == other.m_audit_assets_version;
     }
     bool operator!=(const DynaFedParamEntry &other) const
     {

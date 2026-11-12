@@ -1,0 +1,49 @@
+{
+  "authorized_disclosure_log_entries": 2,
+  "capability": "amount, asset ID, asset blinding scalar, value blinding scalar",
+  "ciphertexts_per_output": {
+    "TAC2": 36,
+    "TAR1": 576
+  },
+  "full_opening_matches_for_both_schemes": true,
+  "genuine_rollover": {
+    "new_public_key": true,
+    "old_key_retained": true,
+    "old_output_recovered_after_rollover": true,
+    "stale_pending_key_rejected": true
+  },
+  "handoff": {
+    "current_committee_recovers_history": true,
+    "new_members": 15,
+    "new_threshold": 11,
+    "old_members": 10,
+    "old_threshold": 7,
+    "public_key_preserved": true
+  },
+  "payload_bytes": {
+    "TAC2": 54628,
+    "TAR1": 111940
+  },
+  "payload_reduction_percent": 51.2,
+  "python": "3.12.3",
+  "recipient_unblinding_preserved": true,
+  "registered_assets": 2,
+  "reorg": {
+    "approving_votes_undo_restores_prior_policy": true,
+    "orphan_policy_reference_rejected": true
+  },
+  "samples": 1,
+  "status": "single-process research model; no native Elements consensus integration",
+  "timings_single_process_one_sample": {
+    "TAC2_encrypt_and_prove_seconds": 0.12549,
+    "TAC2_public_verify_seconds": 0.1129,
+    "TAC2_seven_partial_decryptions_seconds": 0.045007,
+    "TAC2_verify_combine_recover_seconds": 0.238004,
+    "TAR1_encrypt_and_prove_seconds": 0.218367,
+    "TAR1_public_verify_seconds": 0.237915,
+    "TAR1_seven_partial_decryptions_seconds": 0.410567,
+    "TAR1_verify_combine_recover_seconds": 1.01712,
+    "new_committee_authorized_historical_disclosure_seconds": 0.525461,
+    "simulated_handoff_seconds": 0.076929
+  }
+}

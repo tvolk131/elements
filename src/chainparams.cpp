@@ -118,6 +118,12 @@ const CChainParams &Params() {
 
 std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, const ChainTypeMeta chain)
 {
+    if (chain.chain_type != ChainType::CUSTOM) {
+        g_threshold_audit_enabled = false;
+        if (args.IsArgSet("-con_threshold_audit") || args.IsArgSet("-con_audit_pubkey") || args.IsArgSet("-con_audit_asset") || args.IsArgSet("-con_audit_config")) {
+            throw std::runtime_error("Experimental threshold audit arguments are only supported on custom chains");
+        }
+    }
     switch (chain.chain_type) {
     case ChainType::MAIN:
         return CChainParams::Main();

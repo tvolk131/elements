@@ -11,6 +11,7 @@
 #include <consensus/amount.h>
 #include <consensus/validation.h>
 #include <core_io.h>
+#include <dynafed.h>
 #include <deploymentstatus.h>
 #include <index/txindex.h>
 #include <key_io.h>
@@ -41,6 +42,7 @@
 #include <script/sign.h>
 #include <script/signingprovider.h>
 #include <script/solver.h>
+#include <threshold_audit_validation.h>
 #include <uint256.h>
 #include <undo.h>
 #include <util/bip32.h>
@@ -1105,6 +1107,7 @@ const RPCResult decodepsbt_outputs{
             {RPCResult::Type::NUM, "blinder_index", /*optional=*/true, "Output index of the blinder for this output"},
             {RPCResult::Type::STR_HEX, "blind_value_proof", /*optional=*/true, "The blind value proof"},
             {RPCResult::Type::STR_HEX, "blind_asset_proof", /*optional=*/true, "The blind asset proof"},
+            {RPCResult::Type::STR_HEX, "audit_recovery_proof", /*optional=*/true, "Experimental mandatory TAC2 output recovery packet"},
             {RPCResult::Type::STR, "status", /*optional=*/true, "Status"},
             {RPCResult::Type::STR_HEX, "taproot_internal_key", /*optional=*/ true, "The hex-encoded Taproot x-only internal key"},
             {RPCResult::Type::ARR, "taproot_tree", /*optional=*/ true, "The tuples that make up the Taproot tree, in depth first search order",
@@ -1751,6 +1754,7 @@ static RPCHelpMan decodepsbt()
         if (!output.m_asset_surjection_proof.empty()) {
             out.pushKV("surjection_proof", HexStr(output.m_asset_surjection_proof));
         }
+        if (!output.m_audit_proof.empty()) out.pushKV("audit_recovery_proof", HexStr(output.m_audit_proof));
 
         // ECDH pubkey
         if (output.m_ecdh_pubkey.IsValid()) {
@@ -1994,6 +1998,18 @@ static RPCHelpMan finalizepsbt()
 
     CMutableTransaction mtx;
     bool complete = FinalizeAndExtractPSBT(psbtx, mtx);
+    if (complete && g_threshold_audit_enabled) {
+        ChainstateManager& chainman = EnsureAnyChainman(request.context);
+        threshold_audit::Policy audit_policy;
+        {
+            LOCK(cs_main);
+            audit_policy = ComputeNextBlockFullCurrentParameters(chainman.ActiveChain().Tip(), chainman.GetConsensus()).GetAuditPolicy();
+        }
+        TxValidationState audit_state;
+        if (!threshold_audit::CheckTransaction(CTransaction{mtx}, chainman.GetConsensus(), audit_policy, audit_state)) {
+            throw JSONRPCError(RPC_VERIFY_REJECTED, "Mandatory audit recovery proof validation failed: " + audit_state.GetRejectReason() + "; reblind for the current audit key and transaction template");
+        }
+    }
 
     UniValue result(UniValue::VOBJ);
     DataStream ssTx{};
@@ -2737,7 +2753,12 @@ static RPCHelpMan rawblindrawtransaction()
         }
     }
 
-    int ret = BlindTransaction(input_blinds, input_asset_blinds, input_assets, input_amounts, output_value_blinds, output_asset_blinds, output_pubkeys, std::vector<CKey>(), std::vector<CKey>(), tx);
+    threshold_audit::Policy audit_policy;
+    if (chainman.GetConsensus().threshold_audit) {
+        LOCK(cs_main);
+        audit_policy = ComputeNextBlockFullCurrentParameters(chainman.ActiveChain().Tip(), chainman.GetConsensus()).GetAuditPolicy();
+    }
+    int ret = BlindTransaction(input_blinds, input_asset_blinds, input_assets, input_amounts, output_value_blinds, output_asset_blinds, output_pubkeys, std::vector<CKey>(), std::vector<CKey>(), tx, nullptr, audit_policy);
     if (ret != num_pubkeys) {
         // TODO Have more rich return values, communicating to user what has been blinded
         // User may be ok not blinding something that for instance has no corresponding type on input

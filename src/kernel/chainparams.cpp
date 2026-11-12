@@ -18,6 +18,8 @@
 #include <logging.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
+#include <pubkey.h>
+#include <threshold_audit_governance.h>
 #include <script/interpreter.h>
 #include <script/script.h>
 #include <uint256.h>
@@ -69,6 +71,28 @@ static std::vector<unsigned char> CommitToArguments(const Consensus::Params& par
     sha2.Write((const unsigned char*)networkID.c_str(), networkID.length());
     sha2.Write((const unsigned char*)HexStr(params.fedpegScript).c_str(), HexStr(params.fedpegScript).length());
     sha2.Write((const unsigned char*)HexStr(params.signblockscript).c_str(), HexStr(params.signblockscript).length());
+    if (params.threshold_audit) {
+        static constexpr unsigned char audit_domain[] = "Elements/threshold-audit/native-v1";
+        sha2.Write(audit_domain, sizeof(audit_domain) - 1);
+        sha2.Write(params.audit_pubkey.data(), params.audit_pubkey.size());
+        // Complete genesis roster/manifest is part of chain identity. Include
+        // an explicit byte length so following registry fields stay unambiguous.
+        unsigned char config_length[4];
+        WriteBE32(config_length, static_cast<uint32_t>(params.audit_config.size()));
+        sha2.Write(config_length, sizeof(config_length));
+        sha2.Write(params.audit_config.data(), params.audit_config.size());
+        unsigned char epoch[4];
+        WriteBE32(epoch, params.dynamic_epoch_length);
+        sha2.Write(epoch, sizeof(epoch));
+        const unsigned char default_policy = params.audit_assets_default_policy ? 1 : 0;
+        sha2.Write(&default_policy, 1);
+        if (!params.audit_assets_default_policy) {
+            unsigned char count[4];
+            WriteBE32(count, static_cast<uint32_t>(params.audit_assets.size()));
+            sha2.Write(count, sizeof(count));
+            for (const auto& asset : params.audit_assets) sha2.Write(asset.begin(), 32);
+        }
+    }
     sha2.Finalize(commitment);
     return std::vector<unsigned char>(commitment, commitment + 32);
 }
@@ -1032,6 +1056,7 @@ protected:
     bool use_invalid_seeds = true;
     void UpdateFromArgs(const ArgsManager& args)
     {
+        g_threshold_audit_enabled = false;
         UpdateActivationParametersFromArgs(args, consensus);
 
         consensus.nSubsidyHalvingInterval = args.GetIntArg("-con_nsubsidyhalvinginterval", consensus.nSubsidyHalvingInterval);
@@ -1167,6 +1192,49 @@ protected:
         }
 
         // Calculate pegged Bitcoin asset
+        consensus.threshold_audit = args.GetBoolArg("-con_threshold_audit", false);
+        if (!consensus.threshold_audit && (args.IsArgSet("-con_audit_pubkey") || args.IsArgSet("-con_audit_asset") || args.IsArgSet("-con_audit_config"))) {
+            throw std::runtime_error("Audit key/asset arguments require -con_threshold_audit=1");
+        }
+        if (consensus.threshold_audit) {
+            if (m_chain_type.chain_type != ChainType::CUSTOM) {
+                throw std::runtime_error("Threshold audit is restricted to custom test chains");
+            }
+            const auto configs = args.GetArgs("-con_audit_config");
+            if (configs.size() != 1 || configs[0].size() > 2 * threshold_audit::governance::MAX_CONFIG_BYTES || !IsHex(configs[0])) {
+                throw std::runtime_error("-con_audit_config requires exactly one bounded TAG1 genesis configuration");
+            }
+            consensus.audit_config = ParseHex(configs[0]);
+            threshold_audit::governance::Config config;
+            std::string config_error;
+            if (!threshold_audit::governance::DecodeConfig(consensus.audit_config, config, &config_error)) {
+                throw std::runtime_error("Invalid -con_audit_config: " + config_error);
+            }
+            const auto& active = config.ActiveKey().commitments.front();
+            consensus.audit_pubkey.assign(active.begin(), active.end());
+            if (args.IsArgSet("-con_audit_pubkey")) {
+                const auto keys = args.GetArgs("-con_audit_pubkey");
+                if (keys.size() != 1 || keys[0].size() != 66 || !IsHex(keys[0]) || ParseHex(keys[0]) != consensus.audit_pubkey) {
+                    throw std::runtime_error("-con_audit_pubkey must match the active key in -con_audit_config");
+                }
+            }
+            const auto assets = args.GetArgs("-con_audit_asset");
+            if (assets.size() > 256) throw std::runtime_error("Experimental audit registry exceeds 256 assets");
+            consensus.audit_assets_default_policy = assets.empty();
+            for (const auto& asset : assets) {
+                if (asset.size() != 64 || !IsHex(asset)) {
+                    throw std::runtime_error("-con_audit_asset must be a 32-byte asset ID in RPC hex order");
+                }
+                const CAsset parsed(uint256S(asset));
+                if (parsed.IsNull()) throw std::runtime_error("-con_audit_asset must not be null");
+                consensus.audit_assets.push_back(parsed);
+            }
+            std::sort(consensus.audit_assets.begin(), consensus.audit_assets.end());
+            if (std::adjacent_find(consensus.audit_assets.begin(), consensus.audit_assets.end()) != consensus.audit_assets.end()) {
+                throw std::runtime_error("Duplicate -con_audit_asset entries");
+            }
+            g_threshold_audit_enabled = true;
+        }
         std::vector<unsigned char> commit = CommitToArguments(consensus, m_chain_type.chain_name);
         uint256 entropy;
         GenerateAssetEntropy(entropy,  COutPoint(Txid::FromUint256(uint256(commit)), 0), parentGenesisBlockHash);
@@ -1179,6 +1247,9 @@ protected:
         } else {
             assert(consensus.pegged_asset == CAsset());
         }
+        if (consensus.threshold_audit && consensus.audit_assets_default_policy) {
+            consensus.audit_assets = {consensus.pegged_asset};
+        }
 
         consensus.parent_pegged_asset.SetHex(args.GetArg("-con_parent_pegged_asset", "0x00"));
         initial_reissuance_tokens = args.GetIntArg("-initialreissuancetokens", 0);
@@ -1190,6 +1261,19 @@ protected:
         }
 
         UpdateElementsActivationParametersFromArgs(consensus, args);
+        if (consensus.threshold_audit &&
+            (!g_signed_blocks || !g_con_elementsmode || !g_con_blockheightinheader ||
+             consensus.genesis_style != "elements" ||
+             consensus.vDeployments[Consensus::DEPLOYMENT_DYNA_FED].nStartTime != Consensus::BIP9Deployment::ALWAYS_ACTIVE ||
+             consensus.dynamic_epoch_length < 2 || consensus.dynamic_epoch_length > 100000)) {
+            throw std::runtime_error("Threshold audit requires a signed custom Elements genesis, height headers, always-active DynaFed, and epoch length 2..100000");
+        }
+        if (consensus.threshold_audit) {
+            std::string config_error;
+            if (!threshold_audit::governance::ValidateGenesis(consensus, &config_error)) {
+                throw std::runtime_error("Invalid genesis audit governance: " + config_error);
+            }
+        }
         // END ELEMENTS fields
     }
 
@@ -1901,35 +1985,24 @@ std::vector<int> CChainParams::GetAvailableSnapshotHeights() const
 
 std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& message)
 {
-    const auto mainnet_msg = CChainParams::Main()->MessageStart();
-    const auto testnet_msg = CChainParams::TestNet()->MessageStart();
-    const auto testnet4_msg = CChainParams::TestNet4()->MessageStart();
-    const auto regtest_msg = CChainParams::RegTest({})->MessageStart();
-    const auto signet_msg = CChainParams::SigNet({})->MessageStart();
-    // Elements
-    const auto liquid1_msg = CChainParams::LiquidV1({})->MessageStart();
-    const auto liquid1test_msg = CChainParams::LiquidV1Test({})->MessageStart();
-    const auto liquidtestnet_msg = CChainParams::LiquidTestNet({}, {}, {})->MessageStart();
-    const auto custom_msg = CChainParams::Custom(ChainTypeMetaFrom(ChainType::CUSTOM), {}, {})->MessageStart();
-
-    if (std::ranges::equal(message, mainnet_msg)) {
-        return ChainType::MAIN;
-    } else if (std::ranges::equal(message, testnet_msg)) {
-        return ChainType::TESTNET;
-    } else if (std::ranges::equal(message, testnet4_msg)) {
-        return ChainType::TESTNET4;
-    } else if (std::ranges::equal(message, regtest_msg)) {
-        return ChainType::REGTEST;
-    } else if (std::ranges::equal(message, signet_msg)) {
-        return ChainType::SIGNET;
-    } else if (std::equal(message.begin(), message.end(), liquid1_msg.data())) {
-        return ChainType::LIQUID1;
-    } else if (std::equal(message.begin(), message.end(), liquid1test_msg.data())) {
-        return ChainType::LIQUID1TEST;
-    } else if (std::equal(message.begin(), message.end(), liquidtestnet_msg.data())) {
-        return ChainType::LIQUIDTESTNET;
-    } else if (std::equal(message.begin(), message.end(), custom_msg.data())) {
-        return ChainType::CUSTOM;
+    // Snapshot metadata can call this on an RPC thread while other threads
+    // serialize transactions. Constructing temporary chain parameters mutates
+    // process-wide serialization globals, so even a save/restore guard races.
+    // Match the default network magics without constructing any parameters.
+    // Preserve the existing precedence for networks sharing regtest's magic.
+    static constexpr std::pair<MessageStartChars, ChainType> networks[]{
+        {{0xf9, 0xbe, 0xb4, 0xd9}, ChainType::MAIN},
+        {{0x0b, 0x11, 0x09, 0x07}, ChainType::TESTNET},
+        {{0x1c, 0x16, 0x3f, 0x28}, ChainType::TESTNET4},
+        {{0xfa, 0xbf, 0xb5, 0xda}, ChainType::REGTEST},
+        {{0x0a, 0x03, 0xcf, 0x40}, ChainType::SIGNET},
+        {{0xfa, 0xbf, 0xb5, 0xda}, ChainType::LIQUID1},
+        {{0xfa, 0xbf, 0xb5, 0xda}, ChainType::LIQUID1TEST},
+        {{0x41, 0x0e, 0xdd, 0x62}, ChainType::LIQUIDTESTNET},
+        {{0x53, 0x19, 0xf2, 0x0e}, ChainType::CUSTOM},
+    };
+    for (const auto& [magic, chain] : networks) {
+        if (message == magic) return chain;
     }
     return std::nullopt;
 }

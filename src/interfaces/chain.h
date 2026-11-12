@@ -397,6 +397,9 @@ public:
     virtual node::NodeContext* context() { return nullptr; }
 
 // ELEMENTS
+    //! Atomic audit key/registry snapshot for the candidate next block.
+    //! Empty on ordinary chains or test/mock interfaces without audit support.
+    virtual threshold_audit::Policy getAuditPolicy() { return {}; }
     virtual CBlockIndex* getTip() = 0;
     virtual MempoolAcceptResult testPeginClaimAcceptance(const CTransactionRef tx) = 0;
     virtual bool testBlockValidity(BlockValidationState& state, const CChainParams& chainparams, const CBlock& block, CBlockIndex* pindexPrev, bool fCheckPOW, bool fCheckMerkleRoot) = 0;

@@ -188,6 +188,13 @@ struct Params {
     uint32_t dynamic_epoch_length = std::numeric_limits<uint32_t>::max();
     // Used to seed the extension space for first dynamic blocks
     std::vector<std::vector<unsigned char>> first_extension_space;
+    // Experimental custom-chain recovery consensus. Disabled on existing networks.
+    bool threshold_audit{false};
+    std::vector<unsigned char> audit_pubkey;
+    std::vector<unsigned char> audit_config;
+    std::vector<CAsset> audit_assets;
+    // Commit to the default-registry rule before deriving the policy asset.
+    bool audit_assets_default_policy{true};
     // Used to allow M-epoch-old peg-in addresses as deposits
     // default 1 to not break legacy chains implicitly.
     size_t total_valid_epochs = 1;

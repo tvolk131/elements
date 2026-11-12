@@ -42,12 +42,15 @@
 #include <pow.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
+#include <pubkey.h>
 #include <script/pegins.h>
 #include <random.h>
 #include <script/script.h>
 #include <script/sigcache.h>
 #include <signet.h>
 #include <tinyformat.h>
+#include <threshold_audit_validation.h>
+#include <threshold_audit_governance.h>
 #include <txdb.h>
 #include <txmempool.h>
 #include <uint256.h>
@@ -358,6 +361,12 @@ void Chainstate::MaybeUpdateMempoolForReorg(
         AssertLockHeld(m_mempool->cs);
         AssertLockHeld(::cs_main);
         const CTransaction& tx = it->GetTx();
+
+        if (m_chainman.GetConsensus().threshold_audit) {
+            const auto audit = ComputeNextBlockFullCurrentParameters(m_chain.Tip(), m_chainman.GetConsensus());
+            TxValidationState audit_state;
+            if (!threshold_audit::CheckTransaction(tx, m_chainman.GetConsensus(), audit.GetAuditPolicy(), audit_state)) return true;
+        }
 
         // The transaction must be final.
         if (!CheckFinalTxAtTip(*Assert(m_chain.Tip()), tx)) return true;
@@ -1097,6 +1106,10 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
 
     // The mempool holds txs for the next block, so pass height+1 to CheckTxInputs
     CAmountMap fee_map;
+    if (m_active_chainstate.m_chainman.GetConsensus().threshold_audit) {
+        const auto audit = ComputeNextBlockFullCurrentParameters(m_active_chainstate.m_chain.Tip(), m_active_chainstate.m_chainman.GetConsensus());
+        if (!threshold_audit::CheckTransaction(tx, m_active_chainstate.m_chainman.GetConsensus(), audit.GetAuditPolicy(), state)) return false;
+    }
     if (!Consensus::CheckTxInputs(tx, state, m_view, m_active_chainstate.m_chain.Height() + 1, fee_map, setPeginsSpent, nullptr, true, true, fedpegscripts)) {
         return false; // state filled in by CheckTxInputs
     }
@@ -3028,6 +3041,24 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // Used when checking peg-ins
     const auto& fedpegscripts = GetValidFedpegScripts(pindex, m_chainman.GetConsensus(), false /* nextblock_validation */);
 
+    // Audit recovery is consensus-critical independently of fScriptChecks and
+    // assumevalid. Select policy from this block's actual predecessor, including
+    // side branches and epoch boundaries; do not consult the active tip here.
+    if (m_chainman.GetConsensus().threshold_audit && pindex->pprev) {
+        const auto audit = ComputeNextBlockFullCurrentParameters(pindex->pprev, m_chainman.GetConsensus());
+        size_t audit_outputs{0};
+        for (const auto& transaction : block.vtx) {
+            audit_outputs += threshold_audit::ConfidentialOutputCount(*transaction);
+            if (audit_outputs > threshold_audit::MAX_OUTPUTS_PER_BLOCK) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-block-audit-output-limit");
+            }
+            TxValidationState audit_state;
+            if (!threshold_audit::CheckTransaction(*transaction, m_chainman.GetConsensus(), audit.GetAuditPolicy(), audit_state)) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, audit_state.GetRejectReason(), audit_state.GetDebugMessage());
+            }
+        }
+    }
+
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         if (!state.IsValid()) break;
@@ -3734,6 +3765,25 @@ bool Chainstate::ConnectTip(BlockValidationState& state, CBlockIndex* pindexNew,
     // Update m_chain & related variables.
     m_chain.SetTip(*pindexNew);
     UpdateTip(pindexNew);
+
+    // Mempool entries target the NEXT block. Evict stale audit-policy packages as
+    // soon as a successful voting epoch reaches its last block, not one block
+    // later after the rollover already made block assembly invalid.
+    if (m_mempool && m_chainman.GetConsensus().threshold_audit && pindexNew->pprev) {
+        const auto audit = ComputeNextBlockFullCurrentParameters(pindexNew, m_chainman.GetConsensus());
+        const auto connected_audit = ComputeNextBlockFullCurrentParameters(pindexNew->pprev, m_chainman.GetConsensus());
+        if (audit.m_audit_pubkey != connected_audit.m_audit_pubkey ||
+            audit.m_audit_assets != connected_audit.m_audit_assets ||
+            audit.m_audit_assets_version != connected_audit.m_audit_assets_version) {
+            // All accepted confidential transactions were checked under the old
+            // key/registry. Evict them without repeating costly proof verification.
+            std::vector<CTransactionRef> stale;
+            for (const auto& entry : m_mempool->mapTx) {
+                if (threshold_audit::ConfidentialOutputCount(entry.GetTx()) != 0) stale.push_back(entry.GetSharedTx());
+            }
+            for (const auto& transaction : stale) m_mempool->removeRecursive(*transaction, MemPoolRemovalReason::REORG);
+        }
+    }
 
     const auto time_6{SteadyClock::now()};
     m_chainman.time_post_connect += time_6 - time_5;
@@ -4703,6 +4753,15 @@ static bool ContextualCheckDynaFedHeader(const CBlockHeader& block, BlockValidat
     const CChainParams& params = chainman.GetParams();
     const DynaFedParamEntry expected_current_params = ComputeNextBlockCurrentParameters(pindexPrev, params.GetConsensus());
 
+    // Legacy parameter equality omits the compact elided root. On this new
+    // custom-chain protocol it must authenticate the omitted audit manifest and
+    // certificate exactly, independently of the header's valid block signature.
+    if (params.GetConsensus().threshold_audit && dynafed_params.m_current.m_serialize_type == 1 &&
+        dynafed_params.m_current.m_elided_root != expected_current_params.m_elided_root) {
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "invalid-audit-governance",
+                             "compact audit policy commitment does not match expected parameters");
+    }
+
     if (expected_current_params != dynafed_params.m_current) {
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "invalid-dyna-fed", "dynamic block header's current parameters do not match expected");
     }
@@ -4712,6 +4771,31 @@ static bool ContextualCheckDynaFedHeader(const CBlockHeader& block, BlockValidat
         // Compare the new proposed parameters with the current full parameters.
         const DynaFedParamEntry current = ComputeNextBlockFullCurrentParameters(pindexPrev, params.GetConsensus());
         const DynaFedParamEntry& proposed = dynafed_params.m_proposed;
+
+        if (params.GetConsensus().threshold_audit) {
+            const CPubKey key{proposed.m_audit_pubkey};
+            if (proposed.m_audit_pubkey.size() != 33 || !key.IsFullyValid()) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "invalid-audit-key");
+            }
+            const bool changed = proposed.m_audit_pubkey != current.m_audit_pubkey;
+            if ((!changed && proposed.m_audit_version != current.m_audit_version) ||
+                (changed && (current.m_audit_version == std::numeric_limits<uint32_t>::max() ||
+                             proposed.m_audit_version != current.m_audit_version + 1))) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "invalid-audit-key-version");
+            }
+            const uint64_t height = static_cast<uint64_t>(pindexPrev->nHeight) + 1;
+            const uint64_t epoch = params.GetConsensus().dynamic_epoch_length;
+            const uint64_t activation = (height / epoch + 1) * epoch;
+            if (activation > std::numeric_limits<uint32_t>::max()) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "invalid-audit-governance", "Audit activation height overflow");
+            }
+            threshold_audit::governance::Hash chain_id;
+            std::copy(params.GetConsensus().hashGenesisBlock.begin(), params.GetConsensus().hashGenesisBlock.end(), chain_id.begin());
+            std::string governance_error;
+            if (!threshold_audit::governance::ValidateProposal(chain_id, current, proposed, activation, &governance_error)) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "invalid-audit-governance", governance_error);
+            }
+        }
 
         if (proposed.m_signblockscript != current.m_signblockscript) {
             // signblockscript proposals *must* be segwit versions

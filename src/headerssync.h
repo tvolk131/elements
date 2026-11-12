@@ -119,6 +119,17 @@ class HeadersSyncState {
 public:
     ~HeadersSyncState() = default;
 
+    /** Additional sandbox resource bound for retained audit-chain headers.
+     * Includes owned payload allocations, rather than only sizeof(header).
+     * Exceeding this bound aborts this peer's sync; it never shortens the
+     * commitment lookahead or permits early acceptance. Dense otherwise-valid
+     * governance histories can exceed it and need a different sync strategy.
+     * Networks without threshold audit retain their existing behavior. */
+    static constexpr size_t MAX_AUDIT_HEADER_MEMORY_USAGE{64 * 1024 * 1024};
+
+    /** Estimated owned memory charged to the audit-only header budget. */
+    size_t GetAuditHeaderMemoryUsage() const { return m_audit_header_memory_usage; }
+
     enum class State {
         /** PRESYNC means the peer has not yet demonstrated their chain has
          * sufficient work and we're only building commitments to the chain they
@@ -263,6 +274,10 @@ private:
      *  until enough commitments have been verified; those are stored in
      *  m_redownloaded_headers */
     std::deque<CompressedHeader> m_redownloaded_headers;
+
+    /** Audit-only charge for m_last_header_received and the redownload buffer,
+     * including recursively owned scripts, witnesses and DynaFed payloads. */
+    size_t m_audit_header_memory_usage{0};
 
     /** Height of last header in m_redownloaded_headers */
     int64_t m_redownload_buffer_last_height{0};

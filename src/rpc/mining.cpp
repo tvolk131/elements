@@ -17,6 +17,8 @@
 #include <core_io.h>
 #include <deploymentinfo.h>
 #include <deploymentstatus.h>
+#include <dynafed.h>
+#include <threshold_audit_governance.h>
 #include <interfaces/mining.h>
 #include <key_io.h>
 #include <net.h>
@@ -53,6 +55,7 @@
 #include <policy/settings.h> // IsStandardTx
 
 #include <memory>
+#include <limits>
 #include <stdint.h>
 
 using interfaces::BlockTemplate;
@@ -1164,6 +1167,12 @@ static RPCHelpMan getnewblockhex()
                                     {"", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "Hex encoded string for extension entries."},
                                 },
                             },
+                            {"audit_pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "Experimental threshold-audit public key; defaults to the candidate block's current key. Audit custom chains only."},
+                            {"audit_version", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "Experimental audit-key version; defaults to the candidate block's current version. Audit custom chains only."},
+                            {"audit_config", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "Complete TAG1 audit governance configuration. Required for every proposal on audit custom chains."},
+                            {"audit_prepared", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "TAP1 prepared transition with a signed ready quorum for every retained key. Required on audit custom chains."},
+                            {"audit_assets_version", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "Asset registry version, starting at zero; defaults to current. Increment exactly once when appending assets."},
+                            {"audit_assets", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "Complete append-only recovery asset registry, sorted by raw asset-ID bytes; defaults to current.", {{"", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "Asset ID in RPC display hex"}}},
                         },
                     },
                     {"commit_data", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "Array of data in hex to be committed to in additional coinbase outputs.",
@@ -1223,6 +1232,68 @@ static RPCHelpMan getnewblockhex()
         for (unsigned int i = 0; i < extension_array.size(); i++) {
             std::string extension_str = extension_array[i].get_str();
             proposed.m_extension_space.push_back(ParseHex(extension_str));
+        }
+        if (chainman.GetConsensus().threshold_audit) {
+            const auto current_audit = WITH_LOCK(::cs_main, return ComputeNextBlockFullCurrentParameters(chainman.ActiveChain().Tip(), chainman.GetConsensus()));
+            proposed.m_audit_assets = current_audit.m_audit_assets;
+            proposed.m_audit_assets_version = current_audit.m_audit_assets_version;
+            if (prop.exists("audit_assets_version")) {
+                const int64_t version = prop["audit_assets_version"].getInt<int64_t>();
+                if (version < 0 || version > std::numeric_limits<uint32_t>::max()) throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_assets_version must be a uint32");
+                proposed.m_audit_assets_version = version;
+            }
+            if (prop.exists("audit_assets")) {
+                const auto& assets = prop["audit_assets"].get_array();
+                if (assets.empty() || assets.size() > threshold_audit::governance::MAX_ASSETS) throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_assets must contain 1 to 256 asset IDs");
+                proposed.m_audit_assets.clear();
+                for (size_t i = 0; i < assets.size(); ++i) {
+                    const auto id = assets[i].get_str();
+                    if (id.size() != 64 || !IsHex(id)) throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_assets entries must be 32-byte asset IDs");
+                    CAsset asset;
+                    asset.SetHex(id);
+                    proposed.m_audit_assets.push_back(asset);
+                }
+            }
+            if (!prop.exists("audit_config") || !prop.exists("audit_prepared")) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Audit proposals require complete audit_config and audit_prepared readiness");
+            }
+            const std::string config_hex = prop["audit_config"].get_str();
+            const std::string prepared_hex = prop["audit_prepared"].get_str();
+            if (config_hex.size() > 2 * threshold_audit::governance::MAX_CONFIG_BYTES || !IsHex(config_hex) ||
+                prepared_hex.size() > 2 * threshold_audit::governance::MAX_PREPARED_BYTES || !IsHex(prepared_hex)) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid bounded audit_config/audit_prepared hex");
+            }
+            proposed.m_audit_config = ParseHex(config_hex);
+            proposed.m_audit_prepared = ParseHex(prepared_hex);
+            threshold_audit::governance::Config config;
+            std::string config_error;
+            if (!threshold_audit::governance::DecodeConfig(proposed.m_audit_config, config, &config_error)) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid audit_config: " + config_error);
+            }
+            const auto& active = config.ActiveKey().commitments.front();
+            proposed.m_audit_pubkey.assign(active.begin(), active.end());
+            proposed.m_audit_version = config.active_version;
+            if (prop.exists("audit_pubkey")) {
+                const std::string key = prop["audit_pubkey"].get_str();
+                if (key.size() != 66 || !IsHex(key)) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_pubkey must be a compressed 33-byte public key");
+                }
+                const auto explicit_key = ParseHex(key);
+                const CPubKey public_key(explicit_key);
+                if (!public_key.IsCompressed() || !public_key.IsFullyValid()) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_pubkey is not a valid compressed public key");
+                }
+                if (explicit_key != proposed.m_audit_pubkey) throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_pubkey does not match audit_config");
+            }
+            if (prop.exists("audit_version")) {
+                const int64_t version = prop["audit_version"].getInt<int64_t>();
+                if (version <= 0 || version > std::numeric_limits<uint32_t>::max()) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_version must be a positive uint32");
+                }
+                if (static_cast<uint32_t>(version) != proposed.m_audit_version) throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_version does not match audit_config");
+            }
+        } else if (prop.exists("audit_pubkey") || prop.exists("audit_version") || prop.exists("audit_config") || prop.exists("audit_prepared") || prop.exists("audit_assets") || prop.exists("audit_assets_version")) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Audit proposal fields require an experimental threshold-audit chain");
         }
         // All proposals are full serializations
         proposed.m_serialize_type = 2;

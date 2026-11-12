@@ -194,6 +194,9 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   blech32.cpp
   blind.cpp
   blindpsbt.cpp
+  threshold_audit.cpp
+  threshold_audit_governance.cpp
+  threshold_audit_validation.cpp
   block_proof.cpp
   chain.cpp
   chainparams.cpp

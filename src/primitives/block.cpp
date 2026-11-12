@@ -102,6 +102,14 @@ uint256 DynaFedParamEntry::CalculateExtraRoot() const
     extra_leaves.push_back((HashWriter{} << m_fedpeg_program).GetHash());
     extra_leaves.push_back((HashWriter{} << m_fedpegscript).GetHash());
     extra_leaves.push_back((HashWriter{} << m_extension_space).GetHash());
+    if (g_threshold_audit_enabled) {
+        extra_leaves.push_back((HashWriter{} << m_audit_pubkey).GetHash());
+        extra_leaves.push_back((HashWriter{} << m_audit_version).GetHash());
+        extra_leaves.push_back((HashWriter{} << m_audit_config).GetHash());
+        extra_leaves.push_back((HashWriter{} << m_audit_prepared).GetHash());
+        extra_leaves.push_back((HashWriter{} << m_audit_assets_version).GetHash());
+        extra_leaves.push_back((HashWriter{} << m_audit_assets).GetHash());
+    }
     return ComputeFastMerkleRoot(extra_leaves);
 }
 

@@ -8,6 +8,31 @@
 #include <script/script.h>
 #include <uint256.h>
 
+/** Chain-wide experimental serialization gate, fixed during parameter selection. */
+extern bool g_threshold_audit_enabled;
+static constexpr size_t MAX_THRESHOLD_AUDIT_PROOF_SIZE = 80000;
+
+/** Bound allocations before reading experimental proof/key byte vectors. */
+template <size_t MaxSize>
+struct ThresholdAuditBytesFormatter
+{
+    template <typename Stream>
+    void Ser(Stream& s, const std::vector<unsigned char>& value)
+    {
+        if (value.size() > MaxSize) throw std::ios_base::failure("threshold audit byte vector too large");
+        ::Serialize(s, value);
+    }
+
+    template <typename Stream>
+    void Unser(Stream& s, std::vector<unsigned char>& value)
+    {
+        const uint64_t size = ReadCompactSize(s);
+        if (size > MaxSize) throw std::ios_base::failure("threshold audit byte vector too large");
+        value.resize(size);
+        if (size != 0) s.read(MakeWritableByteSpan(value));
+    }
+};
+
 class CTxInWitness
 {
 public:
@@ -47,19 +72,29 @@ class CTxOutWitness
 public:
     std::vector<unsigned char> vchSurjectionproof;
     std::vector<unsigned char> vchRangeproof;
+    std::vector<unsigned char> vchAuditProof;
 
-    SERIALIZE_METHODS(CTxOutWitness, obj) { READWRITE(obj.vchSurjectionproof, obj.vchRangeproof); }
+    SERIALIZE_METHODS(CTxOutWitness, obj)
+    {
+        READWRITE(obj.vchSurjectionproof, obj.vchRangeproof);
+        if (g_threshold_audit_enabled) {
+            READWRITE(Using<ThresholdAuditBytesFormatter<MAX_THRESHOLD_AUDIT_PROOF_SIZE>>(obj.vchAuditProof));
+        } else {
+            SER_READ(obj, obj.vchAuditProof.clear());
+        }
+    }
 
     CTxOutWitness() = default;
 
     bool IsNull() const
     {
-        return vchSurjectionproof.empty() && vchRangeproof.empty();
+        return vchSurjectionproof.empty() && vchRangeproof.empty() && vchAuditProof.empty();
     }
     void SetNull()
     {
         vchSurjectionproof.clear();
         vchRangeproof.clear();
+        vchAuditProof.clear();
     }
 
     uint256 GetHash() const;

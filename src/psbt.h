@@ -119,6 +119,8 @@ static constexpr uint8_t PSBT_ELEMENTS_OUT_BLIND_ASSET_PROOF = 0x0a;
 
 // Proprietary type identifier string
 static const std::vector<unsigned char> PSBT_ELEMENTS_ID = {'p', 's', 'e', 't'};
+// Fork-specific namespace: do not allocate an upstream PSET subtype.
+static const std::vector<unsigned char> PSBT_THRESHOLD_AUDIT_ID = {'t', 'h', 'r', 'e', 's', 'h', 'o', 'l', 'd', '-', 'a', 'u', 'd', 'i', 't'};
 
 // The separator is 0x00. Reading this in means that the unserializer can interpret it
 // as a 0 length key which indicates that this is the separator. The separator has no value.
@@ -1366,6 +1368,7 @@ struct PSBTOutput
     CConfidentialAsset m_asset_commitment;
     std::vector<unsigned char> m_value_rangeproof;
     std::vector<unsigned char> m_asset_surjection_proof;
+    std::vector<unsigned char> m_audit_proof;
     CPubKey m_ecdh_pubkey;
     CPubKey m_blinding_pubkey;
     std::optional<uint32_t> m_blinder_index{std::nullopt};
@@ -1437,6 +1440,11 @@ struct PSBTOutput
             if (!m_asset_surjection_proof.empty()) {
                 SerializeToVector(s, CompactSizeWriter(PSBT_OUT_PROPRIETARY), PSBT_ELEMENTS_ID, CompactSizeWriter(PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF));
                 s << m_asset_surjection_proof;
+            }
+
+            if (!m_audit_proof.empty()) {
+                SerializeToVector(s, CompactSizeWriter(PSBT_OUT_PROPRIETARY), PSBT_THRESHOLD_AUDIT_ID, CompactSizeWriter(1));
+                ThresholdAuditBytesFormatter<MAX_THRESHOLD_AUDIT_PROOF_SIZE>{}.Ser(s, m_audit_proof);
             }
 
             // Blinding pubkey
@@ -1778,6 +1786,14 @@ struct PSBTOutput
                         }
                     }
 
+                    if (this_prop.identifier == PSBT_THRESHOLD_AUDIT_ID && g_threshold_audit_enabled) {
+                        if (this_prop.subtype != 1 || subkey_len != 1 || !m_audit_proof.empty()) {
+                            throw std::ios_base::failure("Invalid or duplicate threshold audit output proof key");
+                        }
+                        ThresholdAuditBytesFormatter<MAX_THRESHOLD_AUDIT_PROOF_SIZE>{}.Unser(s, m_audit_proof);
+                        if (m_audit_proof.empty()) throw std::ios_base::failure("Empty threshold audit output proof");
+                        known = true;
+                    }
                     if (!known) {
                         this_prop.key = key;
 

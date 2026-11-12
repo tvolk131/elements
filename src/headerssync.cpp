@@ -4,10 +4,13 @@
 
 #include <headerssync.h>
 #include <logging.h>
+#include <memusage.h>
 #include <pow.h>
 #include <util/check.h>
 #include <util/time.h>
 #include <util/vector.h>
+
+#include <limits>
 
 // The two constants below are computed using the simulation script in
 // contrib/devtools/headerssync-params.py.
@@ -24,10 +27,77 @@ constexpr size_t REDOWNLOAD_BUFFER_SIZE{14827}; // 14827/624 = ~23.8 commitments
 // the identity/proof fields (block_height, proof, dynafed params, signblock
 // witness) so that signed/dynafed headers can be reconstructed faithfully, so
 // CompressedHeader is now larger than 48 bytes. The redownload buffer is
-// bounded by REDOWNLOAD_BUFFER_SIZE headers per peer, so the per-peer memory
-// cost is REDOWNLOAD_BUFFER_SIZE * sizeof(CompressedHeader); this remains
-// small but should be reconsidered if REDOWNLOAD_BUFFER_SIZE is ever raised.
-static_assert(sizeof(CompressedHeader) <= 512);
+// bounded by REDOWNLOAD_BUFFER_SIZE headers per peer. sizeof alone does not
+// bound the owned variable-sized payloads; audit chains additionally enforce
+// MAX_AUDIT_HEADER_MEMORY_USAGE below, including the presync cached header.
+// Two DynaFed entries retain bounded audit-key/configuration/certificate and
+// registry vectors. This raises the 64-bit in-object size to 704 bytes (about 10 MiB
+// per full redownload buffer, before dynamic payload allocations).
+// Keep an explicit ceiling rather than silently dropping the new header fields.
+static_assert(sizeof(CompressedHeader) <= 704);
+
+namespace {
+
+void AddMemoryUsage(size_t& total, size_t addition)
+{
+    // Saturate so a future field or an unusually large caller cannot wrap the
+    // pre-copy budget check. Such a header will fail the finite byte budget.
+    total = addition > std::numeric_limits<size_t>::max() - total ?
+        std::numeric_limits<size_t>::max() : total + addition;
+}
+
+size_t EntryMemoryUsage(const DynaFedParamEntry& entry)
+{
+    size_t usage{0};
+    AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_signblockscript));
+    AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_fedpeg_program));
+    AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_fedpegscript));
+    AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_extension_space));
+    for (const auto& extension : entry.m_extension_space) AddMemoryUsage(usage, memusage::DynamicUsage(extension));
+    AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_audit_pubkey));
+    AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_audit_config));
+    AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_audit_prepared));
+    AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_audit_assets));
+    return usage;
+}
+
+template <typename Header>
+size_t HeaderMemoryUsage(const Header& header)
+{
+    // Include allocator rounding and a small per-entry deque/map allowance.
+    // Received-message buffers and the returned validation batch are outside
+    // this retained-state budget and remain subject to their existing limits.
+    size_t usage{memusage::MallocUsage(sizeof(Header)) + 2 * sizeof(void*)};
+    AddMemoryUsage(usage, memusage::DynamicUsage(header.proof.challenge));
+    AddMemoryUsage(usage, memusage::DynamicUsage(header.proof.solution));
+    AddMemoryUsage(usage, EntryMemoryUsage(header.m_dynafed_params.m_current));
+    AddMemoryUsage(usage, EntryMemoryUsage(header.m_dynafed_params.m_proposed));
+    AddMemoryUsage(usage, memusage::DynamicUsage(header.m_signblock_witness.stack));
+    for (const auto& element : header.m_signblock_witness.stack) AddMemoryUsage(usage, memusage::DynamicUsage(element));
+    return usage;
+}
+
+void ClearHeaderPayload(CBlockHeader& header)
+{
+    // SetNull/clear retain container capacities. Release those allocations when
+    // replacing the presync cache, and when finalizing an aborted audit sync.
+    ClearShrink(header.proof.challenge);
+    ClearShrink(header.proof.solution);
+    for (auto* entry : {&header.m_dynafed_params.m_current, &header.m_dynafed_params.m_proposed}) {
+        ClearShrink(entry->m_signblockscript);
+        ClearShrink(entry->m_fedpeg_program);
+        ClearShrink(entry->m_fedpegscript);
+        ClearShrink(entry->m_extension_space);
+        ClearShrink(entry->m_audit_pubkey);
+        ClearShrink(entry->m_audit_config);
+        ClearShrink(entry->m_audit_prepared);
+        ClearShrink(entry->m_audit_assets);
+    }
+    ClearShrink(header.m_signblock_witness.stack);
+    header.m_dynafed_params.SetNull();
+}
+
+} // namespace
 
 HeadersSyncState::HeadersSyncState(NodeId id, const Consensus::Params& consensus_params,
         const CBlockIndex* chain_start, const arith_uint256& minimum_required_work) :
@@ -39,6 +109,7 @@ HeadersSyncState::HeadersSyncState(NodeId id, const Consensus::Params& consensus
     m_last_header_received(m_chain_start->GetBlockHeader()),
     m_current_height(chain_start->nHeight)
 {
+    if (m_consensus_params.threshold_audit) m_audit_header_memory_usage = HeaderMemoryUsage(m_last_header_received);
     // Estimate the number of blocks that could possibly exist on the peer's
     // chain *right now* using 6 blocks/second (fastest blockrate given the MTP
     // rule) times the number of seconds from the last allowed block until
@@ -59,8 +130,10 @@ void HeadersSyncState::Finalize()
 {
     Assume(m_download_state != State::FINAL);
     ClearShrink(m_header_commitments);
+    if (m_consensus_params.threshold_audit) ClearHeaderPayload(m_last_header_received);
     m_last_header_received.SetNull();
     ClearShrink(m_redownloaded_headers);
+    m_audit_header_memory_usage = 0;
     m_redownload_buffer_last_hash.SetNull();
     m_redownload_buffer_first_prev_hash.SetNull();
     m_process_all_remaining_headers = false;
@@ -188,6 +261,11 @@ bool HeadersSyncState::ValidateAndProcessSingleHeader(const CBlockHeader& curren
 
     int next_height = m_current_height + 1;
 
+    if (m_consensus_params.threshold_audit && HeaderMemoryUsage(current) > MAX_AUDIT_HEADER_MEMORY_USAGE) {
+        LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: audit cached header memory limit at height=%i (presync phase)\n", m_id, next_height);
+        return false;
+    }
+
     // Verify that the difficulty isn't growing too fast; an adversary with
     // limited hashing capability has a greater chance of producing a high
     // work chain if they compress the work into as few blocks as possible,
@@ -213,7 +291,12 @@ bool HeadersSyncState::ValidateAndProcessSingleHeader(const CBlockHeader& curren
     }
 
     m_current_chain_work += GetBlockProof(CBlockIndex(current));
+    if (m_consensus_params.threshold_audit) ClearHeaderPayload(m_last_header_received);
     m_last_header_received = current;
+    if (m_consensus_params.threshold_audit) {
+        m_audit_header_memory_usage = HeaderMemoryUsage(m_last_header_received);
+        if (m_audit_header_memory_usage > MAX_AUDIT_HEADER_MEMORY_USAGE) return false;
+    }
     m_current_height = next_height;
 
     return true;
@@ -276,8 +359,25 @@ bool HeadersSyncState::ValidateAndStoreRedownloadedHeader(const CBlockHeader& he
         }
     }
 
+    // A byte limit must abort rather than release headers early: the full
+    // commitment lookahead remains necessary for the anti-DoS guarantee.
+    if (m_consensus_params.threshold_audit) {
+        const size_t usage = HeaderMemoryUsage(header);
+        if (m_audit_header_memory_usage > MAX_AUDIT_HEADER_MEMORY_USAGE ||
+            usage > MAX_AUDIT_HEADER_MEMORY_USAGE - m_audit_header_memory_usage) {
+            LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: audit redownload header memory limit at height=%i\n", m_id, next_height);
+            return false;
+        }
+    }
+
     // Store this header for later processing.
     m_redownloaded_headers.emplace_back(header);
+    if (m_consensus_params.threshold_audit) {
+        const size_t usage = HeaderMemoryUsage(m_redownloaded_headers.back());
+        if (m_audit_header_memory_usage > MAX_AUDIT_HEADER_MEMORY_USAGE ||
+            usage > MAX_AUDIT_HEADER_MEMORY_USAGE - m_audit_header_memory_usage) return false;
+        m_audit_header_memory_usage += usage;
+    }
     m_redownload_buffer_last_height = next_height;
     m_redownload_buffer_last_hash = header.GetHash();
 
@@ -294,6 +394,11 @@ std::vector<CBlockHeader> HeadersSyncState::PopHeadersReadyForAcceptance()
     while (m_redownloaded_headers.size() > REDOWNLOAD_BUFFER_SIZE ||
             (m_redownloaded_headers.size() > 0 && m_process_all_remaining_headers)) {
         ret.emplace_back(m_redownloaded_headers.front().GetFullHeader(m_redownload_buffer_first_prev_hash));
+        if (m_consensus_params.threshold_audit) {
+            const size_t usage = HeaderMemoryUsage(m_redownloaded_headers.front());
+            Assume(usage <= m_audit_header_memory_usage);
+            m_audit_header_memory_usage -= usage;
+        }
         m_redownloaded_headers.pop_front();
         m_redownload_buffer_first_prev_hash = ret.back().GetHash();
     }
