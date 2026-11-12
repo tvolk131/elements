@@ -6,6 +6,8 @@
   const dialogs = document.getElementById('dialogs');
   const state = { session: null, data: null, app: location.pathname.startsWith('/guardian') ? 'guardian' : 'wallet', page: location.hash.slice(1) || 'overview', filter: 'all', search: '', refreshing: false, error: null };
   const pendingApprovals = new Map();
+  const approvalHostAllowed = url => ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
+    || (location.hostname.endsWith('.ray') && url.hostname === location.hostname && url.protocol === location.protocol);
   const paths = {
     grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
     check: '<path d="m5 12 4 4L19 6"/>', shield: '<path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z"/><path d="m8 12 3 3 5-6"/>',
@@ -532,7 +534,7 @@
     let approvalURL;
     try {
       approvalURL = new URL(institution?.approval_url || '');
-      if (approvalURL.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(approvalURL.hostname) || approvalURL.username || approvalURL.password) throw new Error('Invalid institution service address.');
+      if (approvalURL.protocol !== 'http:' || !approvalHostAllowed(approvalURL) || approvalURL.username || approvalURL.password) throw new Error('Invalid institution service address.');
     } catch (_) { error.textContent = 'Your institution’s independent approval service is not configured. No handover certificate was requested.'; error.classList.remove('hidden'); return; }
     const popup = window.open('about:blank', `concord-institution-${user().institution_id}`, 'popup,width=750,height=900');
     if (!popup) { error.textContent = 'Allow the independent institution approval window, then try again.'; error.classList.remove('hidden'); return; }
@@ -560,7 +562,7 @@
     let approvalURL;
     try {
       approvalURL = new URL(institution?.approval_url || '');
-      if (approvalURL.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(approvalURL.hostname) || approvalURL.username || approvalURL.password) throw new Error('Invalid institution service address.');
+      if (approvalURL.protocol !== 'http:' || !approvalHostAllowed(approvalURL) || approvalURL.username || approvalURL.password) throw new Error('Invalid institution service address.');
     } catch (_) { error.textContent = 'Your institution’s independent approval service is not configured. No certificate was requested.'; error.classList.remove('hidden'); return; }
     const popup = window.open('about:blank', `concord-institution-${user().institution_id}`, 'popup,width=650,height=820');
     if (!popup) { error.textContent = 'Allow this local site to open the independent institution approval window, then try again.'; error.classList.remove('hidden'); return; }

@@ -133,6 +133,7 @@ class Sandbox:
         self.institution_processes = {}
         self.institution_endpoints = {}
         self.closed = False
+        self.mesh = None
 
     def start(self, port=0):
         messages.THRESHOLD_AUDIT = True
@@ -315,6 +316,11 @@ class Sandbox:
         self.server.start_worker()
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
+        mesh_path = self.directory / 'mesh.json'
+        if mesh_path.exists():
+            from .mesh import MeshGateway
+            self.mesh = MeshGateway(load_config(mesh_path), f'http://127.0.0.1:{self.server.server_port}/',
+                                    lambda: self.store.config.get('institution_approval_urls', {})).start()
         def miner():
             while not self.stop.wait(3):
                 try:
@@ -329,7 +335,8 @@ class Sandbox:
         self.miner.start()
         url = f'http://127.0.0.1:{self.server.server_port}/'
         save_config(self.directory / 'ready.json', {'url': url, 'pid': os.getpid(), 'genesis_hash': node.getblockhash(0),
-                                                   'credentials_file': str(self.directory / 'credentials.json')})
+                                                   'credentials_file': str(self.directory / 'credentials.json'),
+                                                   **({'mesh': self.mesh.urls()} if self.mesh else {})})
         print(json.dumps({'url': url, 'credentials_file': str(self.directory / 'credentials.json'),
                           'runtime': str(self.directory), 'bank': 'SIMULATED', 'currencies': ['TestEUR', 'TestUSD']}), flush=True)
         return self
@@ -536,6 +543,8 @@ class Sandbox:
             return
         self.closed = True
         self.stop.set()
+        if self.mesh:
+            self.mesh.close()
         if self.server:
             self.server.shutdown()
             self.server.server_close()

@@ -44,6 +44,28 @@ on Linux, provided no node is using them and byte hashes and lengths are checked
 before and after. Never remove wallet databases, shares, credentials or chain
 state as though they were a build cache.
 
+### Optional Rayfish access
+
+A private `mesh.json` in the selected runtime enables IPv6 HTTP front ends on
+one explicit Rayfish interface address. Its versioned configuration contains
+`bind_address`, an exact `.ray` `hostname`, `port`, and an ordered list of
+`institution_ports`. The app and approval-window ports must be distinct. Each
+institution keeps a separate browser origin. The sandbox starts and stops the
+front ends with its existing lifecycle; `manage.py status` reports their URLs.
+
+The front ends validate the external Host, Origin and browser fetch metadata
+before translating requests to the existing localhost services. Dashboard
+approval URLs and approval-window return origins are translated for the browser;
+coordinator-to-institution URLs remain local. Only the institution's public
+review pages and passphrase-authenticated `/approve` are routed. The gateway
+does not forward central session cookies to institutions or expose their bearer
+signing RPC. Node RPC and audit-share services remain bound to localhost.
+
+Grant the app/approval ports only to the intended laptop peers in the Rayfish
+firewall. The encrypted mesh carries HTTP here; these are test interfaces, not a
+public Internet or production banking deployment. A disabled Rayfish interface
+causes an enabled mesh profile to fail startup rather than bind a wildcard.
+
 Build the native daemon and shared secp256k1 library using
 [NATIVE-INTEGRATION.md](NATIVE-INTEGRATION.md). From the repository root:
 

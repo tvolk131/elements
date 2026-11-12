@@ -129,7 +129,8 @@ def status(directory):
             'wallet': ready['url'] + 'wallet', 'guardian': ready['url'] + 'guardian',
             'policy_version': config.get('policy_version', 'sandbox-v1'),
             'process_count': len(found), 'roles': roles,
-            'credentials_file': str(directory / 'credentials.json')}
+            'credentials_file': str(directory / 'credentials.json'),
+            **({'mesh': ready['mesh']} if ready.get('mesh') else {})}
 
 
 @contextmanager
