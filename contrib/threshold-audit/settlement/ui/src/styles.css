@@ -2967,3 +2967,304 @@ dialog::backdrop {
   align-items: center;
   justify-content: space-between;
 }
+
+/* Operator review pass: spendable funds and actionable work lead the page. */
+.balance-available-label {
+  display: block;
+  margin-top: 17px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.wallet-balances .balance-value {
+  margin: 5px 0 17px;
+  font-size: 36px;
+  font-weight: 600;
+}
+.balance-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 13px;
+}
+.balance-breakdown > div {
+  display: grid;
+  gap: 5px;
+}
+.balance-breakdown span {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.balance-breakdown strong {
+  font-size: 13px;
+  font-weight: 550;
+}
+.form-balance-summary {
+  margin: 14px 0 20px;
+  padding: 13px 15px;
+  background: var(--teal-wash);
+  border-radius: 9px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+}
+.form-balance-summary > span,
+.form-balance-summary > small {
+  font-size: 11px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+.form-balance-summary > strong {
+  font-size: 14px;
+  align-self: center;
+}
+.form-balance-summary > small {
+  grid-column: 1/-1;
+}
+.guardian-queue-guide {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  border: 1px solid #d2e2d4;
+  border-radius: 12px;
+  background: var(--teal-wash);
+  margin-bottom: 23px;
+}
+.guardian-queue-guide > svg {
+  flex-shrink: 0;
+  color: var(--teal);
+}
+.guardian-queue-guide strong {
+  font-size: 16px;
+}
+.guardian-queue-guide p {
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.65;
+  margin-top: 6px;
+}
+.guardian-queue-guide > .link-button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.guardian-queue-link {
+  margin: -6px 0 24px;
+}
+.guardian-queue-layout {
+  display: block;
+}
+.metric-label {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.metric-detail {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.side-card .panel-header h2 {
+  font-size: 16px;
+  line-height: 1.5;
+}
+th {
+  font-size: 10px;
+}
+td,
+.cell-primary {
+  font-size: 13px;
+}
+.cell-secondary {
+  font-size: 11px;
+  line-height: 1.5;
+}
+.search input,
+.tab {
+  font-size: 12px;
+}
+.wallet-next-summary {
+  min-width: 130px;
+  max-width: 220px;
+  line-height: 1.5;
+}
+.approval-requirements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  border-top: 1px solid #d2e2d4;
+  padding-top: 11px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.approval-requirements small {
+  width: 100%;
+  font-size: 11px;
+  line-height: 1.6;
+}
+@media (max-width: 1120px) {
+  .wallet-task {
+    min-height: 140px;
+  }
+}
+@media (max-width: 740px) {
+  .topbar {
+    height: auto;
+    min-height: 58px;
+    gap: 10px;
+    padding: 10px 18px;
+  }
+  .topbar .environment {
+    display: none;
+  }
+  .topbar .user-info {
+    display: flex;
+    gap: 6px;
+  }
+  .topbar .user-info .avatar {
+    display: none;
+  }
+  .topbar .user-copy {
+    display: block;
+    max-width: 155px;
+  }
+  .topbar .user-name {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar .user-role {
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .breadcrumb {
+    max-width: 100px;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .content {
+    padding-top: 16px;
+  }
+  .sandbox-note {
+    margin-bottom: 16px;
+  }
+  .page-heading {
+    margin-bottom: 18px;
+  }
+  .page-heading p {
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .wallet-account-context {
+    padding: 12px 14px;
+    gap: 9px;
+    margin-bottom: 20px;
+  }
+  .wallet-account-context label {
+    gap: 5px;
+  }
+  .wallet-account-context select {
+    padding: 8px 10px;
+  }
+  .wallet-account-context > div {
+    align-items: center;
+  }
+  .wallet-account-context > div > span,
+  .wallet-account-context strong {
+    font-size: 11px;
+  }
+  .wallet-balances {
+    margin-bottom: 22px;
+  }
+  .wallet-section-heading {
+    margin-bottom: 10px;
+  }
+  .wallet-section-heading p {
+    font-size: 12px;
+  }
+  .wallet-balances .balance-card {
+    padding: 14px 12px;
+  }
+  .balance-available-label {
+    font-size: 10px;
+    line-height: 1.5;
+    margin-top: 12px;
+    min-height: 30px;
+  }
+  .wallet-balances .balance-value {
+    font-size: 27px;
+    margin: 4px 0 12px;
+  }
+  .balance-breakdown {
+    gap: 10px;
+    padding-top: 10px;
+  }
+  .balance-breakdown span {
+    font-size: 10px;
+    min-height: 30px;
+  }
+  .balance-breakdown strong {
+    font-size: 12px;
+  }
+  .wallet-balance-status[data-reconciled="true"] {
+    display: none;
+  }
+  .wallet-tasks {
+    gap: 10px;
+  }
+  .wallet-task {
+    min-height: 122px;
+    padding: 13px 12px;
+    gap: 6px;
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+  .wallet-task-icon {
+    grid-column: 1;
+    grid-row: 1/3;
+    width: 26px;
+    height: 26px;
+  }
+  .wallet-task > strong,
+  .wallet-task-direction {
+    grid-column: 2;
+  }
+  .wallet-task > strong {
+    font-size: 13px;
+  }
+  .wallet-task-direction {
+    font-size: 10px;
+  }
+  .wallet-task-description {
+    display: none;
+  }
+  .wallet-task-link,
+  .wallet-task-permission {
+    font-size: 11px;
+    grid-column: 1/-1;
+    padding-top: 5px;
+  }
+  .guardian-queue-guide {
+    padding: 16px;
+    gap: 11px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .guardian-queue-guide > div {
+    flex: 1;
+    min-width: 180px;
+  }
+  .guardian-queue-guide > .link-button {
+    margin-left: 30px;
+    white-space: normal;
+  }
+  .metric-label,
+  .metric-detail {
+    font-size: 11px;
+  }
+  .form-balance-summary {
+    grid-template-columns: 1fr;
+  }
+  .form-balance-summary > strong {
+    font-size: 16px;
+  }
+}

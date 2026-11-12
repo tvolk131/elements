@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { csv, eligibleDestinations, forAccount, nextStep } from "./domain";
+import {
+  csv,
+  eligibleDestinations,
+  forAccount,
+  nextStep,
+  needsInstitutionApproval,
+  isActiveException,
+  viewerNextAction,
+} from "./domain";
 import type { Account, Beneficiary, Operation } from "./types";
 const op = (values: Partial<Operation>) =>
   ({
@@ -81,4 +89,36 @@ describe("wallet movement boundaries", () => {
     ));
   it("escapes spreadsheet formulas and quoted CSV values", () =>
     expect(csv([["=cmd", 'a"b']])).toBe('"\'=cmd","a""b"'));
+});
+
+describe("operator work", () => {
+  it("counts only requests with this institution's remaining approval action", () => {
+    expect(
+      needsInstitutionApproval(op({ allowed_actions: ["guardian-approve"] })),
+    ).toBe(true);
+    expect(needsInstitutionApproval(op({ allowed_actions: [] }))).toBe(false);
+    expect(
+      needsInstitutionApproval(
+        op({ state: "settled", allowed_actions: ["guardian-approve"] }),
+      ),
+    ).toBe(false);
+  });
+  it("keeps historical rejection and cancellation reasons out of active exceptions", () => {
+    expect(
+      isActiveException(op({ state: "rejected", error: "request closed" })),
+    ).toBe(false);
+    expect(
+      isActiveException(op({ state: "cancelled", error: "escrow returned" })),
+    ).toBe(false);
+    expect(
+      isActiveException(op({ state: "bank_unknown", error: "timeout" })),
+    ).toBe(true);
+  });
+  it("shows the institution's available action while a separate user review is pending", () => {
+    expect(
+      viewerNextAction(
+        op({ allowed_actions: ["guardian-approve"], user_approved: false }),
+      ),
+    ).toContain("independent approval window");
+  });
 });

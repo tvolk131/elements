@@ -2,7 +2,12 @@ import { Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useApp } from "./context";
 import { Brand, Button, Icon } from "./components";
-import { isPending, forAccount, human } from "./domain";
+import {
+  isPending,
+  forAccount,
+  human,
+  needsInstitutionApproval,
+} from "./domain";
 import { Dialogs } from "./dialogs";
 import { WorkspaceLink } from "./navigation";
 import type { Page } from "./types";
@@ -30,11 +35,9 @@ export function Shell() {
     app.guardian ? "Activity log" : "Audit log",
     "activity",
   ]);
-  const pending = (
-    app.guardian
-      ? app.data.operations
-      : forAccount(app.data.operations, app.account)
-  ).filter(isPending).length;
+  const pending = app.guardian
+    ? app.data.operations.filter(needsInstitutionApproval).length
+    : forAccount(app.data.operations, app.account).filter(isPending).length;
   const title = items.find((item) => item[0] === page)?.[1] || "Overview";
   useEffect(() => {
     document.title = `${title} · Concord ${app.guardian ? "guardian" : "wallet"}`;

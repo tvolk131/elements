@@ -19,6 +19,7 @@ import {
   human,
   money,
   nextStep,
+  viewerNextAction,
   safeFilename,
 } from "./domain";
 import { Quorum, Receive } from "./wallet";
@@ -149,6 +150,14 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund"> }) {
   const [amount, setAmount] = useState("");
   const [destination, setDestination] = useState("");
   const accountInfo = app.data.accounts.find((a) => a.id === account);
+  const balance = app.data.balances.find(
+    (b) => b.account_id === account && b.currency === currency,
+  );
+  const exceedsAvailable =
+    kind !== "deposit" &&
+    balance &&
+    /^[0-9]+([.][0-9]{1,2})?$/.test(amount) &&
+    Math.round(Number(amount) * 100) > balance.available_minor;
   const destinations = eligibleDestinations(
     kind,
     app.data.accounts,
@@ -259,6 +268,29 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund"> }) {
             </Field>
             <Amount value={amount} onChange={setAmount} />
           </div>
+          {kind !== "deposit" && (
+            <div className="form-balance-summary" aria-live="polite">
+              <span>Available from {accountInfo?.name || account}</span>
+              <strong>
+                {balance
+                  ? money(balance.available_minor) + " Test" + currency
+                  : "Balance check unavailable"}
+              </strong>
+              {balance && (
+                <small>
+                  Total {money(balance.balance_minor)} · Reserved{" "}
+                  {money(balance.balance_minor - balance.available_minor)}
+                </small>
+              )}
+            </div>
+          )}
+          {exceedsAvailable && (
+            <p className="field-error" role="alert">
+              This amount exceeds the currently available balance. The server
+              checks the latest balance before accepting a request.
+            </p>
+          )}
+
           {kind !== "deposit" && (
             <Field
               label={
@@ -400,8 +432,27 @@ function OperationDetail({ id }: { id: string }) {
         {op && (
           <>
             <div className="wallet-request-next">
-              <strong>What happens next</strong>
-              <p>{nextStep(op)}</p>
+              <strong>
+                {viewerNextAction(op)
+                  ? "Your next action"
+                  : "What happens next"}
+              </strong>
+              <p>{viewerNextAction(op) || nextStep(op)}</p>
+              {viewerNextAction(op) && op.state === "awaiting_approval" && (
+                <div className="approval-requirements">
+                  <span>
+                    User review: {op.user_approved ? "recorded" : "pending"}
+                  </span>
+                  <span>
+                    Institution certificates: {op.guardian_approvals} /{" "}
+                    {op.guardian_threshold}
+                  </span>
+                  <small>
+                    Both requirements must be complete before the request can be
+                    submitted.
+                  </small>
+                </div>
+              )}
             </div>
             <div className="detail-type">{human(op.kind)} request</div>
             <div className="detail-amount number">
@@ -429,20 +480,22 @@ function OperationDetail({ id }: { id: string }) {
               <KV label="Source account">{app.accountName(op.account_id)}</KV>
               <KV label="Tenant / customer">{op.tenant}</KV>
               <KV label="Destination">
-                {app.guardian
-                  ? op.approval_request?.destination ||
-                    op.destination ||
-                    op.to_account_id
-                  : op.kind === "transfer"
-                    ? app.accountName(op.to_account_id)
-                    : ["deposit", "refund"].includes(op.kind)
-                      ? app.accountName(op.account_id)
-                      : op.beneficiary_name ||
-                        app.data.beneficiaries.find(
-                          (b) => b.id === op.beneficiary_id,
-                        )?.name ||
-                        "Configured bank account"}
+                {op.kind === "transfer"
+                  ? app.accountName(op.to_account_id)
+                  : ["deposit", "refund"].includes(op.kind)
+                    ? app.accountName(op.account_id)
+                    : op.beneficiary_name ||
+                      app.data.beneficiaries.find(
+                        (b) => b.id === op.beneficiary_id,
+                      )?.name ||
+                      "Configured bank account"}
               </KV>
+              {app.guardian && (
+                <CopyField
+                  label="Exact destination bound for approval"
+                  value={op.approval_request?.destination}
+                />
+              )}
               <KV label="Issuer">
                 {op.issuer || "Sandbox issuer (legal entity undecided)"}
               </KV>
@@ -554,7 +607,7 @@ function OperationDetail({ id }: { id: string }) {
                 {action === "approve"
                   ? "Approve request"
                   : action === "guardian-approve"
-                    ? "Approve as institution"
+                    ? "Review institution approval"
                     : action === "execute"
                       ? app.guardian
                         ? "Execute next stage"

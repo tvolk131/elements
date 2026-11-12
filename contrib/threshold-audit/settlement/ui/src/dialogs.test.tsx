@@ -35,6 +35,26 @@ const app = vi.hoisted(() => ({
         currency: "USD",
       },
     ],
+    balances: [
+      {
+        account_id: "a",
+        currency: "EUR",
+        balance_minor: 37977,
+        available_minor: 15977,
+      },
+      {
+        account_id: "a",
+        currency: "USD",
+        balance_minor: 25200,
+        available_minor: 25200,
+      },
+      {
+        account_id: "b",
+        currency: "EUR",
+        balance_minor: 123,
+        available_minor: 123,
+      },
+    ],
     operations: [],
     network: {},
     federation: undefined,
@@ -126,4 +146,18 @@ it("changes bank destinations when the asset changes", async () => {
     screen.queryByRole("option", { name: "EUR bank" }),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("option", { name: "USD bank" })).toBeInTheDocument();
+});
+
+it("keeps the available amount tied to the source and currency", async () => {
+  app.dialog = { type: "create", kind: "transfer" };
+  show();
+  expect(screen.getByText("159.77 TestEUR")).toBeVisible();
+  await userEvent.selectOptions(screen.getByLabelText("Test currency"), "USD");
+  expect(screen.getByText("252.00 TestUSD")).toBeVisible();
+  await userEvent.selectOptions(
+    screen.getByLabelText("From wallet account"),
+    "b",
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Test currency"), "EUR");
+  expect(screen.getByText("1.23 TestEUR")).toBeVisible();
 });

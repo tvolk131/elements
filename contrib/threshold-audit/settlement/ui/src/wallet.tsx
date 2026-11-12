@@ -20,6 +20,7 @@ import {
   isPending,
   money,
   nextStep,
+  requestSummary,
   short,
 } from "./domain";
 import { NetworkCard, RotationNotice } from "./guardian";
@@ -130,6 +131,7 @@ export function WalletPage({
       <RotationNotice />
       {home && (
         <>
+          <Balances />
           <section
             className="wallet-task-section"
             aria-labelledby="wallet-task-heading"
@@ -169,14 +171,21 @@ export function WalletPage({
                     </span>
                   ) : (
                     <span className="wallet-task-link">
-                      View details <Icon name="arrow" />
+                      {
+                        {
+                          deposit: "Create funding request",
+                          redemption: "Request withdrawal",
+                          transfer: "Start transfer",
+                          receive: "Show receiving details",
+                        }[t.kind]
+                      }{" "}
+                      <Icon name="arrow" />
                     </span>
                   )}
                 </button>
               ))}
             </div>
           </section>
-          <Balances />
         </>
       )}
       {attention.length > 0 && (
@@ -313,18 +322,24 @@ function Balances() {
               </div>
               <span className="wallet-asset-label">Test token</span>
             </div>
-            <div className="balance-value number">{money(b.balance_minor)}</div>
-            <div className="balance-meta">
-              <span>Available to send or withdraw</span>
-              <strong>{money(b.available_minor)}</strong>
+            <span className="balance-available-label">
+              Available to send or withdraw
+            </span>
+            <div className="balance-value number">
+              {money(b.available_minor)}
             </div>
-            {b.available_minor < b.balance_minor && (
-              <div className="balance-meta">
-                <span>Reserved for requests</span>
+            <div className="balance-breakdown">
+              <div>
+                <span>Total on-chain</span>
+                <strong>{money(b.balance_minor)}</strong>
+              </div>
+              <div>
+                <span>Reserved</span>
                 <strong>{money(b.balance_minor - b.available_minor)}</strong>
               </div>
-            )}
+            </div>
             <div
+              data-reconciled={b.chain_reconciles === true}
               className={`wallet-balance-status ${b.chain_reconciles === false ? "warning-text" : ""}`}
             >
               <Icon name={b.chain_reconciles ? "check" : "info"} />
@@ -362,9 +377,15 @@ export function Quorum({ operation: op }: { operation: Operation }) {
 export function OperationPanel({
   title,
   operations,
+  emptyTitle,
+  emptyDetail,
+  actionQueue = false,
 }: {
   title: string;
   operations: Operation[];
+  emptyTitle?: string;
+  emptyDetail?: string;
+  actionQueue?: boolean;
 }) {
   const app = useApp();
   const [filter, setFilter] = useState("all");
@@ -394,6 +415,8 @@ export function OperationPanel({
     )
     .sort((a, b) => b.created_at - a.created_at);
   function titleFor(op: Operation) {
+    if (app.guardian && op.kind === "transfer")
+      return `${app.accountName(op.account_id)} → ${app.accountName(op.to_account_id)}`;
     if (!app.guardian && op.kind === "transfer")
       return op.to_account_id === app.account && op.account_id !== app.account
         ? `${op.state === "settled" ? "Received" : "Incoming transfer"} from ${app.accountName(op.account_id)}`
@@ -449,12 +472,15 @@ export function OperationPanel({
     >
       <div className="toolbar">
         <div className="tabs" role="group" aria-label="Filter operations">
-          {[
-            ["all", "All"],
-            ["pending", "In progress"],
-            ["settled", "Settled"],
-            ["exceptions", "Exceptions"],
-          ].map(([key, label]) => (
+          {(actionQueue
+            ? [["all", "Awaiting your institution"]]
+            : [
+                ["all", "All"],
+                ["pending", "In progress"],
+                ["settled", "Settled"],
+                ["exceptions", "Exceptions"],
+              ]
+          ).map(([key, label]) => (
             <button
               key={key}
               type="button"
@@ -539,7 +565,7 @@ export function OperationPanel({
                     <Badge status={op.state} />
                     {!app.guardian && (
                       <span className="cell-secondary wallet-next-summary">
-                        {nextStep(op)}
+                        {requestSummary(op)}
                       </span>
                     )}
                     {op.error && isPending(op) && (
@@ -582,12 +608,12 @@ export function OperationPanel({
           title={
             operations.length
               ? "No matching requests"
-              : "No requests for this account yet"
+              : emptyTitle || "No requests for this account yet"
           }
         >
           {operations.length
             ? "Try another filter or search term."
-            : "Start with Move funds to create a request."}
+            : emptyDetail || "Start with Move funds to create a request."}
         </Empty>
       )}
       <div className="panel-footer">

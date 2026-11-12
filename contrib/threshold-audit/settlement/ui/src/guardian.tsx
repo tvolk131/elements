@@ -15,7 +15,8 @@ import {
   date,
   download,
   human,
-  isException,
+  isActiveException,
+  needsInstitutionApproval,
   isPending,
   money,
   safeFilename,
@@ -120,13 +121,19 @@ function AuditCard() {
             : "Not reported"}
         </KV>
         <KV label="Historical outputs">
-          {a.historical_ready ? "Recovery attested" : "Readiness not attested"}
+          {a.historical_ready === true
+            ? "Recovery attested"
+            : a.historical_ready === false
+              ? "Readiness not attested"
+              : "Not reported in this dashboard"}
         </KV>
       </div>
       <p className="small-note">
-        {a.historical_ready
+        {a.historical_ready === true
           ? "Current guardians report access to historical recovery keys."
-          : "A DynaFed update alone does not demonstrate historical key recovery."}
+          : a.historical_ready === false
+            ? "A DynaFed update alone does not demonstrate historical key recovery."
+            : "This view has no historical-readiness feed. Consult the recorded handover evidence; no failure is inferred."}
       </p>
       <WorkspaceLink page="network" className="link-button">
         View governance details <Icon name="arrow" />
@@ -141,11 +148,7 @@ export function GuardianOverview({
 }) {
   const app = useApp();
   const ops = app.data.operations;
-  const mine = ops.filter((o) =>
-    o.allowed_actions.some((a) =>
-      ["guardian-approve", "guardian_approve"].includes(a),
-    ),
-  );
+  const mine = ops.filter(needsInstitutionApproval);
   return (
     <>
       <Heading
@@ -164,61 +167,104 @@ export function GuardianOverview({
         {app.user.institution_id && ` Acting for ${app.user.institution_id}.`}
       </Heading>
       <RotationNotice />
-      <div className="metrics">
-        <Metric
-          title="Awaiting your institution"
-          value={mine.length}
-          detail="Review before providing an institution certificate"
-          symbol="shield"
-        />
-        <Metric
-          title="Active settlement requests"
-          value={ops.filter(isPending).length}
-          detail={`${ops.filter((o) => o.state === "settled").length} completed in this workspace`}
-          symbol="activity"
-        />
-        <Metric
-          title="Settlement exceptions"
-          value={ops.filter(isException).length}
-          detail="Bank uncertainty and chain errors"
-          symbol="info"
-        />
-        <Metric
-          title="Elements block height"
-          value={app.data.network.height ?? "—"}
-          detail={
-            app.data.network.connected
-              ? "Node connected · live adapter"
-              : "See network readiness"
-          }
-          symbol="network"
-        />
-      </div>
-      <div className="panels">
+      {approvals ? (
+        <div className="guardian-queue-guide">
+          <Icon name="shield" />
+          <div>
+            <strong>
+              {mine.length}{" "}
+              {mine.length === 1 ? "request awaits" : "requests await"} your
+              institution
+            </strong>
+            <p>
+              Review the exact amount and destination. Institution certificates
+              and user approvals are separate requirements.
+            </p>
+          </div>
+          <WorkspaceLink page="overview" className="link-button">
+            View all settlement activity <Icon name="arrow" />
+          </WorkspaceLink>
+        </div>
+      ) : (
+        <div className="metrics">
+          <Metric
+            title="Awaiting your institution"
+            value={mine.length}
+            detail="Review before providing an institution certificate"
+            symbol="shield"
+          />
+          <Metric
+            title="Active settlement requests"
+            value={ops.filter(isPending).length}
+            detail={`${ops.filter((o) => o.state === "settled").length} completed in this workspace`}
+            symbol="activity"
+          />
+          <Metric
+            title="Unresolved exceptions"
+            value={ops.filter(isActiveException).length}
+            detail="Bank uncertainty and chain errors"
+            symbol="info"
+          />
+          <Metric
+            title="Elements block height"
+            value={app.data.network.height ?? "—"}
+            detail={
+              app.data.network.connected
+                ? "Node connected · live adapter"
+                : "See network readiness"
+            }
+            symbol="network"
+          />
+        </div>
+      )}
+      {!approvals && (
+        <div className="guardian-queue-link">
+          <WorkspaceLink page="approvals" className="button primary">
+            Open your approval queue{" "}
+            <span className="nav-badge">{mine.length}</span>
+            <Icon name="arrow" />
+          </WorkspaceLink>
+        </div>
+      )}
+      <div className={approvals ? "guardian-queue-layout" : "panels"}>
         <section>
           <OperationPanel
+            key={approvals ? "institution-queue" : "settlement-history"}
+            actionQueue={approvals}
             title={approvals ? "Requests for review" : "Settlement requests"}
-            operations={ops}
+            operations={approvals ? mine : ops}
+            emptyTitle={
+              approvals ? "Your institution is up to date" : undefined
+            }
+            emptyDetail={
+              approvals
+                ? "No requests currently need a certificate from your institution. Completed and other requests remain in the overview."
+                : undefined
+            }
           />
         </section>
-        <aside className="aside-panels">
-          <NetworkCard />
-          <AuditCard />
-        </aside>
+        {!approvals && (
+          <aside className="aside-panels">
+            <NetworkCard />
+            <AuditCard />
+          </aside>
+        )}
       </div>
-      <Panel
-        title="Confidential disclosure cases"
-        subtitle="Recovery authority is distinct from settlement approval."
-        actions={
-          <Badge status="not_started">Native service not connected</Badge>
-        }
-      >
-        <p className="small-note">
-          The native guardian disclosure workflow is separate. This console does
-          not request decryption shares or hold audit keys. Connect its case API
-          before exposing disclosure actions here.
-        </p>
-      </Panel>
+      {!approvals && (
+        <Panel
+          title="Confidential disclosure cases"
+          subtitle="Recovery authority is distinct from settlement approval."
+          actions={
+            <Badge status="not_started">Native service not connected</Badge>
+          }
+        >
+          <p className="small-note">
+            The native guardian disclosure workflow is separate. This console
+            does not request decryption shares or hold audit keys. Connect its
+            case API before exposing disclosure actions here.
+          </p>
+        </Panel>
+      )}
     </>
   );
 }
@@ -363,12 +409,14 @@ export function NetworkPage() {
                         <td>
                           <Badge
                             status={
-                              g.historical_ready ? "ready" : "not_started"
+                              g.historical_ready === true ? "ready" : "neutral"
                             }
                           >
-                            {g.historical_ready
+                            {g.historical_ready === true
                               ? "History attested"
-                              : "Not attested"}
+                              : g.historical_ready === false
+                                ? "Not attested"
+                                : "Not reported"}
                           </Badge>
                         </td>
                       </tr>
@@ -436,7 +484,10 @@ function PolicyDomain({
         </details>
       ) : null}
       {policy?.script && (
-        <CopyField label="Signing script" value={policy.script} />
+        <details className="wallet-technical">
+          <summary>Technical signing policy</summary>
+          <CopyField label="Signing script" value={policy.script} />
+        </details>
       )}
     </div>
   );

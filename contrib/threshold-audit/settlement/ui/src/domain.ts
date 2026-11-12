@@ -53,6 +53,53 @@ export const isPending = (op: Operation) =>
   !["settled", "rejected", "failed", "cancelled"].includes(op.state);
 export const isException = (op: Operation) =>
   ["bank_unknown", "failed", "payment_failed"].includes(op.state) || !!op.error;
+export const isActiveException = (op: Operation) =>
+  !["settled", "rejected", "cancelled"].includes(op.state) && isException(op);
+export const needsInstitutionApproval = (op: Operation) =>
+  isPending(op) &&
+  op.allowed_actions.some((action) =>
+    ["guardian-approve", "guardian_approve"].includes(action),
+  );
+export function requestSummary(op: Operation): string {
+  if (op.state === "awaiting_approval")
+    return !op.user_approved
+      ? "Waiting for separate user approval"
+      : "Waiting for institution approvals";
+  return (
+    {
+      awaiting_bank: "Waiting for bank credit",
+      ready: "Ready to submit",
+      preparing: "Preparing transaction",
+      chain_pending: "Waiting for chain confirmation",
+      bank_pending: "Waiting for bank payout",
+      escrow_confirmed: "Tokens locked for payout",
+      bank_unknown: "Bank result needs reconciliation",
+      burn_pending: "Finishing token burn",
+      payment_failed: "Bank payout failed",
+      refund_requested: "Return request in progress",
+      settled: "Confirmed",
+      rejected: "Closed · rejected",
+      cancelled: "Closed · cancelled",
+      failed: "Review recorded failure",
+    }[op.state] || human(op.state)
+  );
+}
+export function viewerNextAction(op: Operation): string | undefined {
+  const actions = op.allowed_actions;
+  if (actions.includes("bank-credit"))
+    return "Record the matching simulated bank credit before tokens can be issued.";
+  if (actions.includes("approve"))
+    return "Review the amount and destination, then record your separate user approval.";
+  if (needsInstitutionApproval(op))
+    return "Review this payment request in your institution’s independent approval window. Your certificate can be provided while other required reviews are pending.";
+  if (actions.includes("execute"))
+    return op.state === "ready"
+      ? "Submit the approved request to the chain. The server checks all current authorizations before execution."
+      : "Review the recorded state and continue the next permitted settlement stage.";
+  if (actions.includes("cancel"))
+    return "Review the failed payout and request an approved return of the locked tokens.";
+  return undefined;
+}
 export const forAccount = (ops: Operation[], account: string) =>
   ops.filter((op) => op.account_id === account || op.to_account_id === account);
 export function eligibleDestinations(

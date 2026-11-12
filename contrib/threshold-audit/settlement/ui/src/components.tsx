@@ -329,12 +329,12 @@ export function Metric({
 }) {
   return (
     <article className="metric">
-      <div className="metric-top">
+      <div className="metric-label">
         <span>{title}</span>
         <Icon name={symbol} />
       </div>
       <div className="metric-value number">{value}</div>
-      <p>{detail}</p>
+      <p className="metric-detail">{detail}</p>
     </article>
   );
 }
