@@ -110,7 +110,7 @@ def app_ready(url):
 def status(directory):
     directory, ready, config = validate_runtime(directory)
     found, owner = processes(directory, ready)
-    roles = {'app': 0, 'node': 0, 'audit_guardians': 0, 'institution_signers': 0}
+    roles = {'app': 0, 'node': 0, 'audit_guardians': 0, 'institution_signers': 0, 'web': 0}
     for pid in found:
         try:
             args = (Path('/proc') / str(pid) / 'cmdline').read_bytes().split(b'\0')
@@ -118,6 +118,8 @@ def status(directory):
             continue
         if pid == ready['pid'] and owner is not None:
             roles['app'] += 1
+        elif any(value.endswith(b'/settlement/ui/scripts/serve.mjs') for value in args):
+            roles['web'] += 1
         elif b'settlement.treasury' in args:
             roles['institution_signers'] += 1
         elif any(value.endswith(b'/guardian_service.py') for value in args):
@@ -128,6 +130,7 @@ def status(directory):
             'app_ready': owner is not None and app_ready(ready['url']),
             'wallet': ready['url'] + 'wallet', 'guardian': ready['url'] + 'guardian',
             'policy_version': config.get('policy_version', 'sandbox-v1'),
+            'web_backend': ready.get('web_backend', 'python-static'),
             'process_count': len(found), 'roles': roles,
             'credentials_file': str(directory / 'credentials.json'),
             **({'mesh': ready['mesh']} if ready.get('mesh') else {})}

@@ -5,8 +5,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hmac
 import ipaddress
 import json
-import mimetypes
-from pathlib import Path
 import socket
 import threading
 import time
@@ -32,11 +30,11 @@ class SettlementServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, settlement, host="127.0.0.1", port=0, static_dir=None):
+    def __init__(self, settlement, host="127.0.0.1", port=0, gateway_token=None):
         if not ipaddress.ip_address(host).is_loopback:
             raise ValueError("the sandbox HTTP server must bind a loopback address")
         self.settlement = settlement
-        self.static_dir = Path(static_dir or Path(__file__).with_name("static")).resolve()
+        self.gateway_token = gateway_token
         self.stop_worker = threading.Event()
         self.worker = None
         self.handler_condition = threading.Condition()
@@ -149,6 +147,10 @@ class Handler(BaseHTTPRequestHandler):
                 or len(self.headers.get_all("Origin", [])) > 1
                 or len(self.headers.get_all("Content-Length", [])) > 1):
             raise Problem("ambiguous request headers", 400)
+        if self.server.gateway_token is not None:
+            tokens = self.headers.get_all("X-Concord-Engine-Token", [])
+            if len(tokens) != 1 or not hmac.compare_digest(tokens[0], self.server.gateway_token):
+                raise Problem("private settlement engine token required", 403)
         if self.headers.get("Host", "") not in self.server.authorities:
             raise Problem("unrecognized Host header", 403)
         origin = self.headers.get("Origin")
@@ -216,18 +218,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     raise Problem("endpoint not found", 404)
                 return
-            relative = "index.html" if path in {"/", "/app", "/app/", "/guardian", "/guardian/", "/wallet", "/wallet/"} else path.lstrip("/")
-            if relative.startswith("static/"):
-                relative = relative[len("static/"):]
-            file = (self.server.static_dir / relative).resolve()
-            if (not file.is_relative_to(self.server.static_dir) or not file.is_file()
-                    or file.suffix not in {".html", ".css", ".js", ".svg", ".png", ".ico", ".woff2"}):
-                raise Problem("page not found", 404)
-            data = file.read_bytes()
-            self.send_response(200)
-            self.headers_common(mimetypes.guess_type(str(file))[0] or "application/octet-stream", len(data))
-            self.end_headers()
-            self.wfile.write(data)
+            raise Problem("the settlement engine serves API endpoints only", 404)
         except Problem as error:
             self.respond(error.status, {"error": error.code, "message": str(error)})
         except Exception:
@@ -303,5 +294,5 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(503, {"error": "service_unavailable", "message": "The local service is unavailable; no settlement was inferred."})
 
 
-def create_server(settlement, host="127.0.0.1", port=0, static_dir=None):
-    return SettlementServer(settlement, host, port, static_dir)
+def create_server(settlement, host="127.0.0.1", port=0, gateway_token=None):
+    return SettlementServer(settlement, host, port, gateway_token)
