@@ -68,6 +68,9 @@ to act and reopen the same request. Use them instead of the header's
    exactly one payment's details with a quorum's approval, and it is all logged.
 5. **Backing (1 min).** Switch to *Bank · reserves and oversight* and open
    **Reserves**: cash held equals tokens in circulation, per currency.
+6. **Optional: who runs it (1 min).** In the same console, **Operators** shows
+   the independent institutions, what each group approves, and how the network
+   hands over to new operators without moving to a new ledger.
 
 ## Likely questions
 

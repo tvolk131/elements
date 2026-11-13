@@ -978,10 +978,12 @@ class Settlement:
                                           "account_id": account["id"], "currency": beneficiary.get("currency")})
             activity = []
             operation_ids = {operation["id"] for operation in operations}
+            names = {row["id"]: json.loads(row["data"]).get("name", row["id"]) for row in self.db.execute("SELECT id,data FROM users")}
             for row in self.db.execute("SELECT * FROM evidence ORDER BY seq DESC LIMIT 300"):
                 if row["operation_id"] in operation_ids or (row["operation_id"] is None and "view_bank" in ROLES[user["role"]]):
                     activity.append({"id": row["seq"], "created_at": row["created"], "operation_id": row["operation_id"],
-                                     "actor": row["actor"], "event": row["event"], "entry_hash": row["entry_hash"]})
+                                     "actor": row["actor"], "actor_name": names.get(row["actor"], row["actor"]),
+                                     "event": row["event"], "entry_hash": row["entry_hash"]})
             safe_accounts = [{"id": account["id"], "name": account.get("name", account["id"]),
                               "tenant": account["tenant"], "bank_id": account.get('bank_tenant'),
                               "payment_reference": self.directory.reference(account) if self.directory else None,

@@ -30,7 +30,7 @@ import {
   short,
 } from "./domain";
 import { NetworkCard, RotationNotice } from "./guardian";
-import type { Currency, Operation } from "./types";
+import type { Activity, Currency, Operation } from "./types";
 
 export function AccountContext() {
   const { data, account, setAccount, can } = useApp();
@@ -690,9 +690,32 @@ export function RecipientsPage() {
     </>
   );
 }
+const SYSTEM_ACTORS: Record<string, string> = {
+  chain: "Elements network",
+  worker: "Settlement service",
+  "bank-simulator": "Bank (simulated)",
+  federation: "Federation",
+};
+const ACTIVITY_FILTERS = [
+  ["requests", "Requests"],
+  ["sign-ins", "Sign-ins"],
+  ["all", "All"],
+] as const;
 export function ActivityPage() {
   const app = useApp();
-  const rows = app.data.activity;
+  const [filter, setFilter] =
+    useState<(typeof ACTIVITY_FILTERS)[number][0]>("requests");
+  const rows = app.data.activity.filter((e) =>
+    filter === "all"
+      ? true
+      : filter === "sign-ins"
+        ? e.event === "login"
+        : e.event !== "login",
+  );
+  const actor = (e: Activity) =>
+    SYSTEM_ACTORS[e.actor] || e.actor_name || e.actor;
+  const request = (id: string | null) =>
+    id ? app.data.operations.find((op) => op.id === id) : undefined;
   return (
     <>
       <Heading
@@ -703,20 +726,23 @@ export function ActivityPage() {
           </Button>
         }
       >
-        An attributable record of requests, reviews and settlement events.
+        Who did what, and when. Every entry is chained to the one before it, so
+        the record can't be edited after the fact.
       </Heading>
       <Panel
         title="Recorded events"
-        subtitle="Activity is scoped to the records your account can access."
+        count={rows.length}
+        subtitle="Showing the latest events you're allowed to see."
         actions={
           <Button
+            symbol="export"
             onClick={() =>
               download(
                 csv([
-                  ["Event", "Actor", "Request ID", "Recorded UTC"],
+                  ["Event", "By", "Request ID", "Recorded UTC"],
                   ...rows.map((e) => [
                     human(e.event),
-                    e.actor,
+                    actor(e),
                     e.operation_id,
                     new Date(e.created_at * 1000).toISOString(),
                   ]),
@@ -730,47 +756,66 @@ export function ActivityPage() {
           </Button>
         }
       >
+        <div className="toolbar">
+          <div className="tabs" role="group" aria-label="Filter activity">
+            {ACTIVITY_FILTERS.map(([id, label]) => (
+              <button
+                key={id}
+                className={`tab ${filter === id ? "active" : ""}`}
+                aria-pressed={filter === id}
+                onClick={() => setFilter(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         {rows.length ? (
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
                   <th>Event</th>
-                  <th>Actor</th>
+                  <th>By</th>
                   <th>Request</th>
-                  <th>Recorded at</th>
+                  <th>When</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((e) => (
-                  <tr key={e.id}>
-                    <td>{human(e.event)}</td>
-                    <td>{e.actor}</td>
-                    <td>
-                      {e.operation_id ? (
-                        <button
-                          className="link-button"
-                          onClick={() =>
-                            app.setDialog({
-                              type: "operation",
-                              id: e.operation_id!,
-                            })
-                          }
-                        >
-                          {short(e.operation_id, 16)}
-                        </button>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>{date(e.created_at, true)}</td>
-                  </tr>
-                ))}
+                {rows.map((e) => {
+                  const op = request(e.operation_id);
+                  return (
+                    <tr key={e.id}>
+                      <td>{human(e.event)}</td>
+                      <td>{actor(e)}</td>
+                      <td>
+                        {e.operation_id ? (
+                          <button
+                            className="link-button"
+                            onClick={() =>
+                              app.setDialog({
+                                type: "operation",
+                                id: e.operation_id!,
+                              })
+                            }
+                          >
+                            {op
+                              ? `${human(op.kind)} · ${money(op.amount_minor)} Test${op.currency}`
+                              : short(e.operation_id, 16)}
+                          </button>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>{date(e.created_at, true)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         ) : (
-          <Empty title="No recorded events yet" />
+          <Empty title="No events to show" />
         )}
       </Panel>
     </>

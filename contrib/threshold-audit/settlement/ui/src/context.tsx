@@ -39,6 +39,7 @@ interface AppContext {
     id: string,
     rotation?: boolean,
     expected?: ExpectedRequest,
+    labels?: { from: string; to: string },
   ) => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => void;
@@ -110,28 +111,32 @@ function Login({ guardian }: { guardian: boolean }) {
       <section className="login-story">
         <Brand />
         <h1>
-          A shared standard.
+          Bank money,
           <br />
-          <em>A stronger foundation.</em>
+          <em>on a shared ledger.</em>
         </h1>
         <p className="intro">
-          Confidential settlement for institutions. Clear oversight for the
-          federation that safeguards it.
+          Banks issue tokenized deposits that their customers can pay with in
+          seconds, across banks. Payment details stay private, and a named
+          authority can be shown a specific payment when independent guardians
+          agree.
         </p>
         <div className="login-points">
           <span>
             <Icon name="shield" />
-            Federated oversight
+            Approved by independent institutions
           </span>
           <span>
             <Icon name="lock" />
-            Confidential by design
+            Private by default
+          </span>
+          <span>
+            <Icon name="document" />
+            Disclosed only with a quorum
           </span>
         </div>
         <footer>
-          Built for banks and the businesses they serve.
-          <br />
-          Concord institutional settlement · Local development sandbox
+          Concord settlement sandbox. Banks, reserves and payouts are simulated.
         </footer>
       </section>
       <section className="login-form-side">
@@ -375,6 +380,7 @@ function Workspace({
     id: string,
     rotation = false,
     expected?: ExpectedRequest,
+    labels?: { from: string; to: string },
   ) {
     const institution = dashboard.data?.guardians.find(
       (g) => (g.institution_id || g.id) === user.institution_id,
@@ -443,7 +449,12 @@ function Workspace({
         dismiss(previous.toast);
       }
       url.hash = encodeURIComponent(
-        JSON.stringify({ ...request, return_origin: location.origin }),
+        // `display` is for people only; signatures cover the request fields.
+        JSON.stringify({
+          ...request,
+          return_origin: location.origin,
+          ...(labels ? { display: labels } : {}),
+        }),
       );
       popup.location.href = url.href;
       setDialog(null);

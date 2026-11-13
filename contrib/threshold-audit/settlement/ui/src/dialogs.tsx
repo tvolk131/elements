@@ -89,28 +89,27 @@ const ROTATION: Record<
   { title: string; context: string; confirm: string }
 > = {
   prepare: {
-    title: "Prepare the next federation membership",
+    title: "Prepare a handover to new operators",
     context:
-      "The coordinator prepares the incoming membership, readiness evidence and authority inventory. New requests may be held. Institutions authorize the exact manifest separately.",
+      "The bank sets up the incoming operators and checks they hold the keys for past payments. New requests pause until the handover finishes. The current institutions then approve it.",
     confirm: "Prepare handover",
   },
   "guardian-approve": {
-    title: "Review federation authorization",
+    title: "Approve the handover",
     context:
-      "Review the complete source and target policies, audit readiness binding and migration templates in your institution’s separate window.",
-    confirm: "Open institution approval",
+      "Review the incoming operators and the funds that move to them in your institution’s own approval window.",
+    confirm: "Open approval window",
   },
   advance: {
-    title: "Advance the federation handover",
+    title: "Continue the handover",
     context:
-      "The coordinator performs only the next permitted durable stage. Retries use the recorded handover and transaction bytes.",
-    confirm: "Advance handover",
+      "Runs only the next recorded step. Each step is saved before the next one starts.",
+    confirm: "Run next step",
   },
   retry: {
-    title: "Retry the recorded handover stage",
-    context:
-      "The coordinator performs only the next permitted durable stage. Retries use the recorded handover and transaction bytes.",
-    confirm: "Retry recorded stage",
+    title: "Retry this handover step",
+    context: "Runs the recorded step again with exactly the same transactions.",
+    confirm: "Retry step",
   },
 };
 function sourceName(op: Operation, app: ReturnType<typeof useApp>): string {
@@ -731,7 +730,11 @@ function ReviewForm({
   const copy = REVIEW[action];
   const mutation = useMutation({
     mutationFn: async () => {
-      if (guardian) return app.openApproval(op.id, false, op);
+      if (guardian)
+        return app.openApproval(op.id, false, op, {
+          from: sourceName(op, app),
+          to: destinationName(op, app),
+        });
       return api(
         `/api/operations/${encodeURIComponent(op.id)}/${action}`,
         reject ? { reason } : {},
@@ -1106,15 +1109,15 @@ function RotationForm({ action }: { action: string }) {
       >
         <div className="dialog-body">
           <div className="form-context">{copy.context}</div>
-          <KV label="Source membership">
+          <KV label="Current operators">
             {f?.current.label || "Current membership"}
           </KV>
-          <KV label="Incoming membership">
-            {f?.incoming?.label || "Prepared incoming membership"}
+          <KV label="Incoming operators">
+            {f?.incoming?.label || "Set up when the handover is prepared"}
           </KV>
           <CopyField label="Handover request" value={r?.id} />
           <CopyField
-            label="Existing chain genesis"
+            label="Ledger (genesis block)"
             value={app.data.network.genesis_hash}
           />
           {r?.error && <div className="inline-warning">{r.error}</div>}
@@ -1125,9 +1128,8 @@ function RotationForm({ action }: { action: string }) {
               data-testid="confirm-rotation-review"
             />
             <span>
-              I have reviewed the source, incoming membership, migration scope
-              and current stage. Preparing records a staged change to signing,
-              recovery and treasury membership.
+              I have reviewed the current and incoming operators and understand
+              that new requests pause during the handover.
             </span>
           </label>
           <ErrorNote error={mutation.error} />

@@ -102,6 +102,7 @@ export interface Activity {
   created_at: number;
   operation_id: string | null;
   actor: string;
+  actor_name: string;
   event: string;
   entry_hash: string;
 }

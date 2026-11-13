@@ -416,182 +416,177 @@ export function NetworkPage() {
     </>
   );
 }
-function PolicyDomain({
-  policy,
-  title,
-  symbol,
-}: {
-  policy?: Membership;
-  title: string;
-  symbol: string;
-}) {
-  return (
-    <div className="federation-domain">
-      <div className="federation-domain-title">
-        <Icon name={symbol} />
-        <h4>{title}</h4>
-        <strong>{thresholdLabel(policy)}</strong>
-      </div>
-      {policy?.members.length ? (
-        <details className="federation-members">
-          <summary>{policy.members.length} recorded members</summary>
-          <ul>
-            {policy.members.map((m) => (
-              <li key={m}>{m}</li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-      {policy?.script && (
-        <details className="wallet-technical">
-          <summary>Technical signing policy</summary>
-          <CopyField label="Signing script" value={policy.script} />
-        </details>
-      )}
-    </div>
-  );
-}
-function MembershipCard({
+/** "institution-c-1" → "Institution C-1"; audit member "7" → "Guardian 7". */
+export const memberName = (member: string) =>
+  /^\d+$/.test(member)
+    ? `Guardian ${member}`
+    : `Institution ${member.replace(/^institution-/i, "").toUpperCase()}`;
+const ROLE_COPY = [
+  [
+    "treasury",
+    "Approve settlements",
+    "Release payments, withdrawals and newly issued tokens.",
+    "bank",
+  ],
+  [
+    "block_signing",
+    "Confirm new blocks",
+    "Add confirmed transactions to the shared ledger.",
+    "network",
+  ],
+  [
+    "audit",
+    "Approve disclosures",
+    "Let a named authority see a specific past payment.",
+    "shield",
+  ],
+] as const;
+const STEP_COPY: Record<string, string> = {
+  preparing: "Prepare the new operators",
+  awaiting_approval: "Current institutions approve the handover",
+  voting: "The network switches to the new operators",
+  audit_activated: "New guardians take over disclosure keys",
+  migrating: "Move held funds to the new operators",
+  activating: "New operators start approving settlements",
+  retiring: "Retire the previous operators",
+  complete: "Settlement resumes",
+};
+const READINESS_COPY: Record<string, [string, string]> = {
+  audit: [
+    "Past payments stay disclosable",
+    "The new guardians proved they hold the keys for earlier payments.",
+  ],
+};
+function OperatorGroup({
   value,
   incoming = false,
 }: {
-  value?: FederationPolicy | null;
+  value: FederationPolicy;
   incoming?: boolean;
 }) {
   return (
     <Panel
-      title={
-        value?.label ||
-        (incoming ? "Awaiting a prepared handover" : "Membership unavailable")
-      }
-      subtitle={`${incoming ? "Incoming" : "Current"} membership${value ? ` · Epoch ${value.epoch}` : ""}`}
+      title={incoming ? "Incoming operators" : "Current operators"}
+      subtitle={value.label}
       className={`federation-membership ${incoming ? "incoming" : ""}`}
     >
-      {value ? (
-        <>
-          {value.detail && <p className="small-note">{value.detail}</p>}
-          <PolicyDomain
-            policy={value.block_signing}
-            title="Block signing"
-            symbol="network"
-          />
-          <PolicyDomain
-            policy={value.audit}
-            title="Historical audit recovery"
-            symbol="shield"
-          />
-          <PolicyDomain
-            policy={value.treasury}
-            title="Treasury spending"
-            symbol="bank"
-          />
-        </>
-      ) : (
-        <Empty
-          title={
-            incoming
-              ? "No incoming membership recorded"
-              : "Current policy is not available"
-          }
-        >
-          The coordinator supplies membership and readiness evidence.
-        </Empty>
-      )}
+      {value.detail && <p className="small-note">{value.detail}</p>}
+      <div className="operator-roles">
+        {ROLE_COPY.map(([key, title, detail, symbol]) => {
+          const policy = value[key];
+          return (
+            <div className="federation-domain" key={key}>
+              <div className="federation-domain-title">
+                <Icon name={symbol} />
+                <h4>{title}</h4>
+                <strong>
+                  {policy.threshold} of {policy.count}
+                </strong>
+              </div>
+              <p className="small-note">{detail}</p>
+              <details className="federation-members">
+                <summary>Who ({policy.count})</summary>
+                <ul>
+                  {policy.members.map((m) => (
+                    <li key={m}>{memberName(m)}</li>
+                  ))}
+                </ul>
+              </details>
+              {policy.script && (
+                <details className="wallet-technical">
+                  <summary>Technical details</summary>
+                  <CopyField label="Signing script" value={policy.script} />
+                </details>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </Panel>
   );
 }
 export function FederationPage() {
   const app = useApp();
   const f = app.data.federation;
-  if (!f) return <h1>Federation status is not available to this account</h1>;
-  const r = f.rotation;
+  if (!f) return <h1>Operator details are not available to this account</h1>;
+  const r = f.rotation && f.rotation.stage !== "complete" ? f.rotation : null;
+  const last = f.rotation?.stage === "complete" ? f.rotation : null;
   const actions = [
     ...new Set([...f.allowed_actions, ...(r?.allowed_actions || [])]),
   ];
   const steps = r?.steps || [];
-  const stage = r?.stage || "not_started";
+  const done = steps.filter((s) => s.state === "complete").length;
   return (
     <>
       <Heading
-        title="Federation lifecycle"
+        title="Network operators"
         actions={
-          <>
-            <Button onClick={app.refresh} symbol="refresh">
-              Refresh
-            </Button>
-            {actions.includes("prepare") && (
-              <Button
-                className="primary"
-                data-testid="rotation-prepare"
-                onClick={() =>
-                  app.setDialog({ type: "rotation", action: "prepare" })
-                }
-              >
-                Prepare handover
-              </Button>
-            )}
-          </>
+          <Button onClick={app.refresh} symbol="refresh">
+            Refresh
+          </Button>
         }
       >
-        Coordinate signing, historical recovery and treasury authority on the
-        existing chain.
+        The independent institutions that run this network, and how they hand
+        over to a new group.
       </Heading>
       <div className="federation-chain">
         <span className="federation-chain-icon">
           <Icon name="network" />
         </span>
         <div>
-          <strong>{app.data.network.chain}</strong>
+          <strong>One shared ledger</strong>
           <p>
-            Membership changes retain this chain, its history and its asset IDs.
+            Operators can be replaced without moving to a new ledger. Balances,
+            history and assets stay where they are.
           </p>
         </div>
-        <Badge status="neutral">Same-chain handover</Badge>
-        <CopyField label="Genesis block" value={f.genesis_hash} />
+        <details className="wallet-technical">
+          <summary>Technical details</summary>
+          <KV label="Ledger">{app.data.network.chain}</KV>
+          <CopyField label="Genesis block" value={f.genesis_hash} />
+        </details>
       </div>
       <RotationNotice />
-      <div className="metrics federation-metrics">
-        <Metric
-          title="Handover stage"
-          value={human(stage)}
-          detail={`${steps.filter((s) => s.state === "complete").length} of ${steps.length} stages complete`}
-          symbol="refresh"
-        />
-        <Metric
-          title="Current audit recovery"
-          value={thresholdLabel(f.current.audit)}
-          detail="Threshold from the recorded current membership"
-          symbol="shield"
-        />
-        <Metric
-          title="Institution authorizations"
-          value={r ? `${r.approval_count} / ${r.approval_threshold}` : "—"}
-          detail="Exact source-policy authorization"
-          symbol="lock"
-        />
-        <Metric
-          title="Migration transactions"
-          value={r?.migrations.length || "—"}
-          detail="Prepared and confirmed records"
-          symbol="bank"
-        />
+      {r ? (
+        <div className="metrics federation-metrics">
+          <Metric
+            title="Handover progress"
+            value={`${done} of ${steps.length}`}
+            detail={STEP_COPY[r.stage] || human(r.stage)}
+            symbol="refresh"
+          />
+          <Metric
+            title="Handover approvals"
+            value={`${r.approval_count} of ${r.approval_threshold}`}
+            detail="From the current institutions"
+            symbol="lock"
+          />
+          <Metric
+            title="Funds to move"
+            value={r.migrations.length || "—"}
+            detail="Held by the network, moved to the new operators"
+            symbol="bank"
+          />
+          <Metric
+            title="Requests carried over"
+            value={r.outstanding_cases.length}
+            detail="Pending requests continue after the handover"
+            symbol="activity"
+          />
+        </div>
+      ) : null}
+      <div className={`federation-memberships ${f.incoming ? "" : "single"}`}>
+        <OperatorGroup value={f.current} />
+        {f.incoming && <OperatorGroup value={f.incoming} incoming />}
       </div>
-      <div className="federation-memberships">
-        <MembershipCard value={f.current} />
-        <MembershipCard value={f.incoming} incoming />
-      </div>
-      <div className="panels federation-progress">
-        <section>
-          <Panel
-            title="Recorded handover stages"
-            subtitle={
-              r
-                ? `Request ${short(r.id, 22)} · ${date(r.created_at, true)}`
-                : "The coordinator records every stage before it advances."
-            }
-            actions={<Badge status={stage} />}
-          >
-            {steps.length ? (
+      {r ? (
+        <div className="panels federation-progress">
+          <section>
+            <Panel
+              title="Handover steps"
+              subtitle={`Started ${date(r.created_at, true)}`}
+              actions={<Badge status={r.stage} />}
+            >
               <ol className="rotation-steps">
                 {steps.map((s, i) => (
                   <li
@@ -600,79 +595,72 @@ export function FederationPage() {
                   >
                     <span className="rotation-step-number">{i + 1}</span>
                     <div className="rotation-step-title">
-                      <strong>{s.label}</strong>
+                      <strong>{STEP_COPY[s.id] || s.label}</strong>
                       <Badge status={s.state} />
                     </div>
                   </li>
                 ))}
               </ol>
-            ) : (
-              <Empty title="No handover stages recorded" />
-            )}
-          </Panel>
-          <Panel
-            title="Treasury migrations"
-            subtitle="Reissuance authority and recorded redemption escrows on the existing chain."
-          >
-            <MigrationTable rows={r?.migrations || []} />
-          </Panel>
-          <Panel
-            title="Outstanding settlement cases"
-            subtitle="Continuity must be preserved through the handover."
-          >
-            <CaseTable rows={r?.outstanding_cases || []} />
-          </Panel>
-        </section>
-        <aside className="aside-panels">
-          <Panel title="Handover authorization" className="side-card">
-            <div className="kv-list">
-              <KV label="Source institution approvals">
-                {r ? `${r.approval_count} / ${r.approval_threshold}` : "—"}
-              </KV>
-              <KV label="Current stage">{human(stage)}</KV>
-            </div>
-            {r?.error && (
-              <div className="inline-warning" role="alert">
-                {r.error}
+            </Panel>
+            <Panel
+              title="Funds moved to the new operators"
+              subtitle="Money the network holds, such as tokens locked for withdrawals, moves with the operators."
+            >
+              <MigrationTable rows={r.migrations} />
+            </Panel>
+            <Panel
+              title="Requests carried over"
+              subtitle="Requests in progress continue under the new operators."
+            >
+              <CaseTable rows={r.outstanding_cases} />
+            </Panel>
+          </section>
+          <aside className="aside-panels">
+            <Panel title="Handover approvals" className="side-card">
+              <div className="kv-list">
+                <KV label="Current institutions">
+                  {r.approval_count} of {r.approval_threshold} approved
+                </KV>
               </div>
-            )}
-            <div className="rotation-actions">
-              {actions.includes("guardian-approve") && (
-                <Button
-                  className="primary"
-                  data-testid="rotation-approve"
-                  onClick={() =>
-                    app.setDialog({
-                      type: "rotation",
-                      action: "guardian-approve",
-                    })
-                  }
-                >
-                  Review institution authorization
-                </Button>
+              {r.error && (
+                <div className="inline-warning" role="alert">
+                  {r.error}
+                </div>
               )}
-              {["advance", "retry"]
-                .filter((a) => actions.includes(a))
-                .map((a) => (
+              <div className="rotation-actions">
+                {actions.includes("guardian-approve") && (
                   <Button
-                    key={a}
                     className="primary"
-                    data-testid={`rotation-${a}`}
+                    data-testid="rotation-approve"
                     onClick={() =>
-                      app.setDialog({ type: "rotation", action: a })
+                      app.setDialog({
+                        type: "rotation",
+                        action: "guardian-approve",
+                      })
                     }
                   >
-                    {a === "advance"
-                      ? "Advance handover"
-                      : "Retry recorded stage"}
+                    Review handover
                   </Button>
-                ))}
-            </div>
-            <p className="small-note">
-              Source institutions authorize the exact manifest in separate
-              approval windows. This console does not receive their passphrases.
-            </p>
-            {r && (
+                )}
+                {["advance", "retry"]
+                  .filter((a) => actions.includes(a))
+                  .map((a) => (
+                    <Button
+                      key={a}
+                      className="primary"
+                      data-testid={`rotation-${a}`}
+                      onClick={() =>
+                        app.setDialog({ type: "rotation", action: a })
+                      }
+                    >
+                      {a === "advance" ? "Next step" : "Retry this step"}
+                    </Button>
+                  ))}
+              </div>
+              <p className="small-note">
+                Each current institution approves the exact handover in its own
+                approval window.
+              </p>
               <Button
                 onClick={() =>
                   download(
@@ -694,54 +682,85 @@ export function FederationPage() {
               >
                 Download handover record
               </Button>
-            )}
-          </Panel>
-          <Panel title="Readiness evidence" className="side-card">
-            {r?.readiness.length ? (
+            </Panel>
+            <Panel title="Checks before switching" className="side-card">
               <ul className="rotation-readiness">
                 {r.readiness.map((s) => (
                   <li key={s.id}>
                     <div>
-                      <strong>{s.label}</strong>
-                      <p>{s.detail}</p>
+                      <strong>{READINESS_COPY[s.id]?.[0] || s.label}</strong>
+                      <p>
+                        {s.state === "ready"
+                          ? READINESS_COPY[s.id]?.[1] || s.detail
+                          : s.detail}
+                      </p>
                     </div>
                     <Badge status={s.state} />
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="small-note">
-                No handover is in progress. Readiness evidence is recorded when
-                a handover is prepared.
-              </p>
-            )}
-          </Panel>
-        </aside>
-      </div>
+            </Panel>
+          </aside>
+        </div>
+      ) : (
+        <Panel
+          title="Handing over to new operators"
+          subtitle={
+            last
+              ? `The last handover finished ${date(last.created_at, true)}.`
+              : "No handover is in progress."
+          }
+          actions={
+            actions.includes("prepare") ? (
+              <Button
+                data-testid="rotation-prepare"
+                onClick={() =>
+                  app.setDialog({ type: "rotation", action: "prepare" })
+                }
+              >
+                Prepare a handover
+              </Button>
+            ) : undefined
+          }
+        >
+          <p className="federation-explainer">
+            To replace the operators, the bank prepares the incoming group, the
+            current institutions approve, and the network switches over while
+            pending requests carry on. Past payments remain disclosable by the
+            new guardians.
+          </p>
+        </Panel>
+      )}
     </>
   );
 }
 function MigrationTable({ rows }: { rows: Migration[] }) {
-  if (!rows.length) return <Empty title="No migration transactions recorded" />;
+  if (!rows.length) return <Empty title="Nothing to move" />;
   return (
     <div className="table-scroll">
       <table>
         <thead>
           <tr>
-            <th>Authority / escrow</th>
-            <th>Test currency</th>
+            <th>What moved</th>
+            <th>Currency</th>
             <th>Transaction</th>
-            <th>State</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((item) => (
             <tr key={item.migration_id}>
-              <td>{human(item.kind)}</td>
+              <td>
+                {item.kind === "authority"
+                  ? "Token issuing authority"
+                  : item.kind === "escrow"
+                    ? "Tokens held for a withdrawal"
+                    : human(item.kind)}
+              </td>
               <td>{item.currency ? "Test" + item.currency : "—"}</td>
               <td>
                 {item.txid ? (
-                  <CopyField label="Migration transaction" value={item.txid} />
+                  <CopyField label="Transaction" value={item.txid} />
                 ) : (
                   "Not recorded"
                 )}
@@ -758,16 +777,16 @@ function MigrationTable({ rows }: { rows: Migration[] }) {
 }
 function CaseTable({ rows }: { rows: OutstandingCase[] }) {
   const app = useApp();
-  if (!rows.length) return <Empty title="No outstanding cases recorded" />;
+  if (!rows.length) return <Empty title="No requests in progress" />;
   return (
     <div className="table-scroll">
       <table>
         <thead>
           <tr>
-            <th>Case</th>
-            <th>Test currency</th>
+            <th>Request</th>
+            <th>Currency</th>
             <th>Amount</th>
-            <th>State</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>

@@ -41,6 +41,14 @@ export const human = (value?: string): string =>
     payment_initiated: "Bank payout started",
     external_receipt_confirmed: "Payment received",
     login: "Signed in",
+    disclosure_requested: "Disclosure requested",
+    disclosure_approved: "Disclosure approved",
+    disclosure_declined: "Disclosure declined",
+    disclosure_cancelled: "Disclosure cancelled",
+    disclosure_encrypted_release: "Disclosure released to recipient",
+    disclosure_recipient_registered: "Recipient key registered",
+    refund_requested_after_definite_failure:
+      "Return requested after failed payout",
   })[value || ""] ||
   (value || "Not available")
     .replace(/_/g, " ")
