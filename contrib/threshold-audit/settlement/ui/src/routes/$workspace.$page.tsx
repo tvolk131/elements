@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useApp } from "../context";
+import { DisclosuresPage } from "../disclosures";
 import { ActivityPage, RecipientsPage, WalletPage } from "../wallet";
 import {
   FederationPage,
@@ -11,6 +12,13 @@ export const Route = createFileRoute("/$workspace/$page")({ component: Page });
 function Page() {
   const app = useApp();
   const { page } = Route.useParams();
+  if (
+    page === "disclosures" &&
+    ["request_disclosure", "receive_disclosure", "review_disclosure"].some(
+      app.can,
+    )
+  )
+    return <DisclosuresPage />;
   if (page === "activity") return <ActivityPage />;
   if (app.guardian) {
     if (page === "reserves") return <ReservesPage />;

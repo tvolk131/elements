@@ -215,6 +215,21 @@ class Handler(BaseHTTPRequestHandler):
                     self.respond(200, store.dashboard(session))
                 elif path.startswith("/api/operations/") and len(path.split("/")) == 4:
                     self.respond(200, store.operation(session["user"], path.rsplit("/", 1)[1]))
+                elif path == '/api/disclosures' and store.disclosures is not None:
+                    with store.lock:
+                        self.respond(200, store.disclosures.overview(session['user']))
+                elif path.startswith('/api/disclosures/') and store.disclosures is not None:
+                    parts = path.strip('/').split('/')
+                    with store.lock:
+                        if len(parts) == 3:
+                            self.respond(200, store.disclosures.public(session['user'], store.disclosures.get(session['user'], parts[2])))
+                        elif len(parts) == 4 and parts[3] == 'bundle':
+                            self.respond(200, store.disclosures.bundle(session['user'], parts[2]))
+                        else:
+                            raise Problem('endpoint not found', 404)
+                elif path.startswith('/api/disclosure-targets/') and store.disclosures is not None:
+                    with store.lock:
+                        self.respond(200, store.disclosures.targets(session['user'], path.rsplit('/', 1)[1]))
                 else:
                     raise Problem("endpoint not found", 404)
                 return
@@ -236,7 +251,38 @@ class Handler(BaseHTTPRequestHandler):
                 return
             session = self.session(csrf=True)
             user = session["user"]
-            if path == "/api/logout":
+            if path.startswith('/api/disclosures') and store.disclosures is not None:
+                with store.lock:
+                    parts = path.strip('/').split('/')
+                    if path == '/api/disclosures':
+                        result = store.disclosures.create(user, body)
+                    elif path == '/api/disclosures/recipient-key':
+                        result = store.disclosures.register_key(user, body)
+                    elif len(parts) == 4 and parts[3] in ('approve', 'decline', 'release', 'cancel'):
+                        if parts[3] in ('approve', 'decline'):
+                            result = store.disclosures.approve(user, parts[2], decline=parts[3] == 'decline')
+                        else:
+                            result = getattr(store.disclosures, parts[3])(user, parts[2])
+                    else:
+                        raise Problem('endpoint not found', 404)
+                self.respond(200, result)
+            elif path == '/api/beneficiaries/resolve' and store.directory is not None:
+                with store.lock:
+                    self.respond(200, store.directory.resolve(user, body))
+            elif path == '/api/beneficiaries/validate-address' and store.directory is not None:
+                store.require(user, 'create_transfer')
+                address = body.get('address', '').strip()
+                with store.lock:
+                    store.directory.address(address)
+                self.respond(200, {'address': address, 'identity_verified': False})
+            elif path == '/api/receive-address' and store.directory is not None:
+                account = store.accessible_account(user, body.get('account_id'))
+                currency = body.get('currency')
+                if currency not in account.get('addresses', {}):
+                    raise Problem('unsupported account currency')
+                self.respond(200, {'address': store.chain.wallets[account['id']].getnewaddress('receive', 'blech32'),
+                                   'reference': store.directory.reference(account), 'currency': currency})
+            elif path == "/api/logout":
                 store.logout(self.token())
                 self.respond(200, {"ok": True}, f"{COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
             elif path in {"/api/deposits", "/api/transfers", "/api/redemptions"}:

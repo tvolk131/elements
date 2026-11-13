@@ -255,13 +255,21 @@ export function GuardianOverview({
           title="Confidential disclosure cases"
           subtitle="Recovery authority is distinct from settlement approval."
           actions={
-            <Badge status="not_started">Native service not connected</Badge>
+            <Badge
+              status={
+                app.data.network.disclosure_available ? "ready" : "not_started"
+              }
+            >
+              {app.data.network.disclosure_available
+                ? "Recipient-encrypted recovery"
+                : "Native service not connected"}
+            </Badge>
           }
         >
           <p className="small-note">
-            The native guardian disclosure workflow is separate. This console
-            does not request decryption shares or hold audit keys. Connect its
-            case API before exposing disclosure actions here.
+            {app.data.network.disclosure_available
+              ? "Disclosure cases use separate compliance and audit-guardian accounts. Each required guardian explicitly approves access for a named recipient. Payment approval accounts do not grant disclosure authority."
+              : "The native guardian disclosure workflow is separate. This console does not request decryption shares or hold audit keys. Connect its case API before exposing disclosure actions here."}
           </p>
         </Panel>
       )}

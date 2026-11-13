@@ -1,11 +1,12 @@
 export type Currency = "EUR" | "USD";
-export type Kind = "deposit" | "transfer" | "redemption" | "refund";
+export type Kind = "deposit" | "transfer" | "redemption" | "refund" | "receipt";
 export interface User {
   id: string;
   name: string;
   role: string;
   tenant: string;
   institution_id?: string;
+  audit_member?: number;
 }
 export interface Session {
   user: User | null;
@@ -17,6 +18,8 @@ export interface Account {
   name: string;
   tenant: string;
   currencies: Currency[];
+  bank_id?: string;
+  payment_reference?: string;
 }
 export interface Beneficiary {
   id: string;
@@ -66,6 +69,10 @@ export interface Operation {
   beneficiary_id?: string;
   beneficiary_name?: string;
   destination_name?: string;
+  destination_address?: string;
+  beneficiary_verified?: boolean;
+  incoming?: boolean;
+  source_name?: string;
   destination?: string;
   tenant?: string;
   reference?: string;
@@ -122,6 +129,7 @@ export interface Audit {
   historical_ready?: boolean;
 }
 export interface Network {
+  disclosure_available?: boolean;
   connected?: boolean;
   chain?: string;
   height?: number;
@@ -222,6 +230,7 @@ export interface Federation {
   hold_reason?: string;
 }
 export interface Dashboard {
+  directory_banks?: { id: string; public_key: string }[];
   session?: Session;
   accounts: Account[];
   balances: Balance[];
@@ -236,6 +245,7 @@ export interface Dashboard {
   federation?: Federation;
 }
 export type Page =
+  | "disclosures"
   | "overview"
   | "payments"
   | "banking"
@@ -246,7 +256,7 @@ export type Page =
   | "network"
   | "federation";
 export type DialogState =
-  | { type: "create"; kind: Exclude<Kind, "refund"> }
+  | { type: "create"; kind: Exclude<Kind, "refund" | "receipt"> }
   | { type: "receive" }
   | { type: "operation"; id: string }
   | { type: "review"; operation: Operation; action: string }

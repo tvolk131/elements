@@ -170,3 +170,31 @@ operational monitoring remain required. Retaining rollback snapshots retains
 old secrets. Local root or a colluding threshold can bypass software approval
 and logging; already disclosed plaintexts and retained old quorum shares cannot
 be revoked by these services.
+
+
+## Recipient-encrypted capability delivery
+
+The original recipient-authenticated TLS workflow is retained. A separate
+`sealed-v1` request binding supports an approved recipient public key without
+pre-enrolling a recipient TLS certificate. Approvals bind the delivery mode, case,
+packet, statement, recipient and deadline. `disclose-sealed` accepts an authenticated
+coordinator as a ciphertext relay only after a signed current-committee quorum.
+It returns an individually BIP340-signed, recipient-encrypted partial and signed
+log checkpoint. It does not return the plaintext points to the coordinator.
+
+The new envelope uses secp256k1 ECDH, HKDF-SHA256 and AES-256-GCM through the Python
+`cryptography` package. See `requirements-demo.txt`. The release timestamp is
+authenticated; a guardian checks expiry again after computation and before release.
+Recipient clients check approval/envelope signatures, DLEQ partials and recovered
+openings. The browser performs recovery locally; `settlement.disclosure_recipient`
+can also verify the complete native TAC2 proof and chain context against its own
+node. This is a research transport composition, not a new consensus proof format
+or a production security claim.
+
+The [capability walkthrough](SETTLEMENT-SANDBOX.md#recipient-directed-disclosure-and-cross-bank-demo)
+explains the named recipient accounts, separate audit-guardian logins and exported
+evidence. The shared-host demo coordinator retains fixture approver TLS credentials.
+Its explicit user workflow is not isolation from a malicious coordinator or root.
+Neither encryption to a chosen recipient nor the case registry prevents a colluding
+threshold from performing recovery itself. Already delivered capabilities/openings
+cannot be revoked.

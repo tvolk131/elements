@@ -279,6 +279,9 @@ class FederationRotation:
         self.store.verifier.activate(ApprovalVerifier(self.store.verifier.curve, target['policy']['approval_public_keys'],
                                                     target['policy']['threshold'], target['policy']['policy_version']))
         self.store.config['institution_approval_urls'] = {guardian: service['url'] for guardian, service in target['institutions'].items()}
+        if self.store.disclosures is not None:
+            from .capability_demo import enroll
+            enroll(self.sandbox, self.store.config, self.adapter.config)
         with self.store.transaction():
             for row in list(self.store.db.execute('SELECT data FROM operations')):
                 operation = json.loads(row[0])

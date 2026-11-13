@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { api } from "./api";
 import { WorkspaceLink } from "./navigation";
 import { useApp } from "./context";
 import {
@@ -105,7 +107,7 @@ export function WalletPage({
       kind: "receive",
       title: "Receive on-chain",
       direction: "Wallet → this account",
-      description: "Share account details for a managed transfer.",
+      description: "Share a bank reference or confidential receiving address.",
       icon: "wallet",
     },
   ] as const;
@@ -361,6 +363,8 @@ function Balances() {
   );
 }
 export function Quorum({ operation: op }: { operation: Operation }) {
+  if (op.kind === "receipt")
+    return <span className="small-note">Not required</span>;
   return (
     <div className="quorum">
       <span className="quorum-track">
@@ -415,12 +419,13 @@ export function OperationPanel({
     )
     .sort((a, b) => b.created_at - a.created_at);
   function titleFor(op: Operation) {
+    if (op.kind === "receipt") return "Received from external wallet";
     if (app.guardian && op.kind === "transfer")
       return `${app.accountName(op.account_id)} → ${app.accountName(op.to_account_id)}`;
     if (!app.guardian && op.kind === "transfer")
       return op.to_account_id === app.account && op.account_id !== app.account
-        ? `${op.state === "settled" ? "Received" : "Incoming transfer"} from ${app.accountName(op.account_id)}`
-        : `${op.state === "settled" ? "Sent" : "Transfer request"} to ${app.accountName(op.to_account_id)}`;
+        ? `${op.state === "settled" ? "Received" : "Incoming transfer"} from ${op.source_name || app.accountName(op.account_id)}`
+        : `${op.state === "settled" ? "Sent" : "Transfer request"} to ${op.destination_name || app.accountName(op.to_account_id)}`;
     return op.destination_name || op.beneficiary_name || human(op.kind);
   }
   return (
@@ -554,7 +559,7 @@ export function OperationPanel({
                           ? op.to_account_id === app.account
                             ? "+"
                             : "−"
-                          : ["deposit", "refund"].includes(op.kind)
+                          : ["deposit", "refund", "receipt"].includes(op.kind)
                             ? "+"
                             : "−")}
                       {money(op.amount_minor)}
@@ -632,13 +637,15 @@ export function RecipientsPage() {
   return (
     <>
       <Heading title="Recipients">
-        On-chain accounts and bank withdrawal destinations are separate routes.
+        Pay another managed account, look up a beneficiary at another bank, or
+        enter a confidential wallet address. Bank withdrawals are a separate
+        route.
       </Heading>
       <AccountContext />
       <div className="wallet-recipient-panels">
         <Panel
           title="On-chain accounts"
-          subtitle="Destinations available to you in Send on-chain."
+          subtitle="Your managed accounts. Other banks' customers can be looked up by reference in Send on-chain."
         >
           {internal.length ? (
             <ul className="wallet-recipient-list">
@@ -787,40 +794,81 @@ export function ActivityPage() {
 export function Receive() {
   const app = useApp();
   const account = app.data.accounts.find((a) => a.id === app.account);
+  const [currency, setCurrency] = useState("EUR");
+  const address = useMutation({
+    mutationFn: () =>
+      api<{ address: string; reference: string }>("/api/receive-address", {
+        account_id: app.account,
+        currency,
+      }),
+  });
   if (!account) return <Empty title="No receiving account configured" />;
   return (
     <>
       <div className="receive-account">
         <span>Receiving account</span>
         <h3>{account.name}</h3>
-        <p>{account.tenant}</p>
-        <CopyField label="Account reference" value={account.id} />
+        <p>{account.bank_id || account.tenant}</p>
+        <CopyField
+          label="Beneficiary reference"
+          value={account.payment_reference || account.id}
+        />
       </div>
       <ol className="wallet-flow-list">
+        <li>Share this beneficiary reference with the sender.</li>
         <li>
-          Share this account name and reference with your bank operator or an
-          authorized sender.
+          The sender chooses <b>Beneficiary at a bank</b> in{" "}
+          <b>Send on-chain</b>, looks up the reference and confirms your
+          receiving details.
         </li>
         <li>
-          The sender opens <b>Send on-chain</b> and chooses this account from
-          their permitted destinations.
-        </li>
-        <li>
-          After the required approvals and chain confirmation, your balance
-          updates here.
+          After approvals and chain confirmation, the receipt appears in this
+          wallet.
         </li>
       </ol>
       <div className="wallet-receive-limit">
-        <strong>Supported in this pilot</strong>
+        <h3>Receive at a confidential address</h3>
         <p>
-          This account reference is not a blockchain address. Transfers are
-          limited to accounts available to the sender. Corporate users can
-          currently transfer between their own permitted accounts.
+          You can also share a confidential address for this chain. The address
+          itself does not identify or verify you to the sender.
         </p>
+        <label>
+          Asset{" "}
+          <select
+            aria-label="Receive currency"
+            value={currency}
+            onChange={(e) => {
+              setCurrency(e.target.value);
+              address.reset();
+            }}
+          >
+            {account.currencies.map((c) => (
+              <option key={c} value={c}>
+                Test{c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button
+          disabled={address.isPending}
+          onClick={() => address.mutate()}
+          data-testid="generate-receive-address"
+        >
+          {address.isPending
+            ? "Creating address…"
+            : "Generate receiving address"}
+        </Button>
+        {address.data && (
+          <CopyField
+            label="Confidential receiving address"
+            value={address.data.address}
+          />
+        )}
+        {address.error && <p role="alert">{address.error.message}</p>}
         <p>
-          Receiving from an arbitrary wallet address is not integrated with the
-          account ledger yet. No external deposit address is provided here. To
-          add funds from a bank, use <b>Add funds from bank</b>.
+          Only supported test assets with whole-cent amounts are credited by
+          this demo. Bank funding is a separate action:{" "}
+          <b>Add funds from bank</b>.
         </p>
       </div>
     </>

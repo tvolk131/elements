@@ -117,11 +117,13 @@ makers can request sends and withdrawals; the interface explains role limits
 without changing authorization. Approval and execution remain separate actions
 subject to the existing maker/checker and institution quorum policy.
 
-On-chain sends currently support configured accounts accessible to the sender.
-Receive displays managed account instructions and a copyable account reference,
-**not a blockchain address**. Arbitrary-address send and automatic reconciliation
-of outside receipts are not implemented in this pilot. Do not send directly to
-an underlying wallet address expecting the application ledger to credit it.
+On-chain sends support managed accounts, exact bank-qualified beneficiary
+references, and confidential wallet addresses for this chain. Receiving provides
+a beneficiary reference and fresh confidential addresses. Confirmed external
+receipts of supported whole-cent test assets are observed and credited once per
+outpoint. Unsupported sub-cent receipts, out-of-band spending and reorged receipts
+remain subject to the wallet reconciliation hold. There is no automatic reorg
+compensation or general external payment provenance service.
 
 ## Components and authority
 
@@ -130,8 +132,8 @@ an underlying wallet address expecting the application ledger to credit it.
   before serving the GUI. It normally mines a block about every three seconds.
 * Ten isolated audit guardian processes, with research distributed key generation
   and 7-of-10 recovery. Historical handoff remains available through the existing
-  guardian service protocol; this web interface does not administer ceremonies
-  or request disclosure.
+  guardian service protocol. The disclosure workspace requests sealed recovery;
+  federation lifecycle manages the local handover fixture.
 * Five institution services. Each has its own ECDSA spending key, separate
   BIP340 approval identity, durable signing bindings and independent approval
   passphrase. Three signatures authorize treasury spends in this fixture.
@@ -246,3 +248,147 @@ The audit-chain header-sync fixture has a 64 MiB per-peer retained-header budget
 that preserves the full commitment lookahead. Dense valid governance histories
 can exceed it and abort sync; production needs deduplication or another bounded
 representation. See the native documentation for the remaining protocol limits.
+
+
+## Recipient-directed disclosure and cross-bank demo
+
+This capability milestone leaves Elements consensus and the existing ordinary
+payment approval policy unchanged. It adds case management and sealed delivery
+around the existing mandatory TAC2 output recovery. The demo still runs one
+managed chain and 23 processes after rotation; it adds no recipient server or
+extra development web server.
+
+Python now also requires `cryptography` (`pip install -r contrib/threshold-audit/requirements-demo.txt`) for recipient-envelope ECDH,
+HKDF-SHA256, AES-GCM, and the native recipient key-file reader. Install a currently
+patched release in your Python environment; the native library and OpenSSL fixture
+requirements remain. Frontend dependencies are pinned in the npm lockfile.
+
+On starting or resuming, idempotent enrollment adds an Initech customer wallet at
+`bank-b`, fee coins for that wallet, and capability roles to the private
+`credentials.json`. Existing customer ownership, fiat balances, pending requests,
+and reserve accounts are not reset. The receiving bank uses the same simulated
+issuer/reserve pool; it is not a second live custodian or independently controlled
+bank gateway.
+
+### Named recipient and explicit guardian approvals
+
+1. Sign in as `auditor` at `/wallet/disclosures`. Create a recipient key with a
+   **separate local key password** and download the encrypted backup. Only the
+   compressed public key is registered. Importing a backup restores recipient
+   access on another browser. Losing the key/password requires a new key and a
+   newly approved case; the federation does not receive the private key.
+2. Sign in as `bank-compliance` and create a case for a confirmed payment. Choose
+   one to four exact outputs, the registered recipient/key, requesting authority,
+   reason/authorization basis and release deadline. Choose **Payment destination**
+   to disclose the payment output; change outputs are identified separately.
+   Bank compliance is limited to its bank's payments. A receiving bank can select
+   only its destination output. `federation-compliance` can also request confirmed
+   outputs outside the application payment list by txid and index.
+3. Current audit guardians sign in as `audit-guardian-<member ID>` at
+   `/guardian/disclosures` and explicitly approve the named recipient and output
+   scope. Use the IDs in the current native committee; the rotated example uses
+   201 through 215 and requires eleven approvals. The operational
+   `institution-c-*` payment identities remain separate. One guardian declining
+   is not a veto if a different quorum approves.
+4. After the recovery quorum approves, the requester or named recipient selects
+   **Send encrypted contributions**. Each guardian independently validates the
+   scoped approvals and TAC2 packet, logs authorization before release, and
+   encrypts its output-specific partial and DLEQ proofs to the recipient's key.
+   The relay retains signed encrypted envelopes and never combines them.
+5. Only the named recipient can download the package or select **Open in this
+   browser**. Its key password and private scalar stay local. The client verifies
+   guardian approval/envelope signatures, partial proofs, signed log checkpoints,
+   asset derivation and the recovered asset/value commitments. It can export
+   disclosed openings and blinders deliberately; those exports are plaintext.
+
+The case binding includes its authority, reason, recipient key, deadline, exact
+outputs and proof hashes. Changing the native recovery policy or membership invalidates **unreleased** cases;
+create a new case for approval by the current committee, including for old
+outputs. Delivered packages remain decryptable with their recipient key after
+expiry or membership changes. Expiry stops further releases, not copied data.
+Partial release is durable and retryable before expiry; it is not an atomic
+all-or-nothing disclosure across several outputs.
+
+Envelope encryption is secp256k1 ECDH with a fresh ephemeral key, HKDF-SHA256 and
+AES-256-GCM. Request/member/recipient context is authenticated; a separate BIP340
+signature authenticates the envelope and release timestamp. No audit secret
+scalar is reconstructed or handed to the recipient. The package is an
+output-specific recovery capability, not a general federation viewing key.
+This new composition and browser implementation remain research code.
+
+Normal-path confidentiality is distinct from institutional isolation. The local
+fixture coordinator retains guardian **approver TLS credentials** for test
+orchestration, and the shared customer-wallet backend already knows its own
+wallet openings. Approvals are explicit authenticated user actions in this demo;
+this does not demonstrate security against a malicious coordinator, host root,
+or maliciously served browser code. A cooperating audit threshold can recover
+outputs outside this application. Independent guardian credential custody and
+bank gateways remain production work.
+
+Case metadata, public statements and ciphertexts are visible to authorized case
+accounts. Recovered openings are not written to the settlement case database or
+normal guardian logs. Downloaded guardian-signed receipts/checkpoints can be
+retained by recipients independently. There is no external witness deployment or
+ledger anchoring, and the local hash-linked case journal alone is rewritable by
+a privileged writer. A case records a claimed authority/basis; it does not verify
+legal authority or disclose customer identities/business documents automatically.
+
+### Cross-institution payments and receiving
+
+`initech-main@bank-b` resolves to **Initech · Operating** at the second demo bank.
+In **Send on-chain**, choose **Beneficiary at a bank**, look up the exact reference,
+confirm its signed destination, and create the normal payment request. The
+browser and backend verify the bank routing signature and chain, asset, source
+account and expiry bindings. Each lookup confirmation is single-use for payment
+creation. It does not revoke an already signed payment after its deadline.
+
+Lookup derives a fresh receiving address from the destination's managed wallet;
+no descriptor or private key is given to the sender. The demo bank directory
+signing keys are held by the shared backend, not independent bank gateways. A
+signature authenticates the configured route, not a verified real-world legal
+identity. There is no globally browsable customer directory.
+
+**Confidential wallet address** accepts address-only payments; identity remains
+unverified. Use **Receive on-chain** to obtain an address. Known customer-wallet
+receipts are matched to their account, including cross-bank payments, without
+letting the recipient approve or inspect unrelated sender operations. The normal
+second-user and three-institution application payment requirements remain.
+Use `initech-maker`, `initech-approver`, `bank-b-maker`, `bank-b-approver`,
+`bank-b-admin` and `bank-b-compliance` for the receiving side. Simulator
+administrators operate the shared test reserve pool; these are not separate
+real bank mandates.
+
+### Verifiable exports and acceptance
+
+The recipient can verify an exported package locally with the native library:
+
+```sh
+PYTHONPATH=contrib/threshold-audit:test/functional python3 -m settlement.disclosure_recipient \
+  --key /private/recipient-key.json --bundle /private/case-package.json \
+  --out /private/verified-openings.json --node-config /private/own-node-config.json
+```
+
+The key password is prompted locally. The optional private node configuration
+contains `rpc_url`. Supplying it checks creation and approval block ancestry,
+creation registry, historical recovery key, native approval committee and actual
+transaction packet against that node. Without it, cryptographic package/opening
+verification is performed but chain inclusion and committee authenticity are not
+independently established. Asset IDs use RPC display order in opening exports;
+blinder scalars use canonical big-endian hex, not RPC hash-style reversed hex.
+
+Against an **authorized test runtime**, run the explicit-credential acceptance
+harness:
+
+```sh
+PYTHONPATH=contrib/threshold-audit:test/functional python3 -m settlement.capability_smoke /path/to/runtime
+```
+
+It creates a 1.23 TestEUR cross-bank payment, a 0.01 TestEUR address return,
+and a 0.02 TestEUR outside-wallet funding followed by a 0.01 TestEUR observed receipt,
+uses individual fixture guardian credentials to approve sealed disclosures,
+checks current and historical recovery against the real node, and verifies
+recipient account isolation and reserve reconciliation. It preserves any
+preexisting pending payment rather than approving it. Its state is resumable;
+recipient test keys/passwords and decrypted evidence remain in the private
+`capability-smoke/` directory. `demo-recipient` is the harness recipient, separate
+from the normal `auditor` browser walkthrough. No real funds or bank are involved.

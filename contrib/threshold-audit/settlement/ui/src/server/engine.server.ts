@@ -35,6 +35,8 @@ export async function forwardEngine(request: Request): Promise<Response> {
   const read =
     path === "/api/session" ||
     path === "/api/dashboard" ||
+    /^\/api\/disclosures(?:\/[a-f0-9]{32}(?:\/bundle)?)?$/.test(path) ||
+    /^\/api\/disclosure-targets\/[a-f0-9]{32}$/.test(path) ||
     /^\/api\/operations\/[a-f0-9]{32}$/.test(path);
   const write =
     [
@@ -45,7 +47,15 @@ export async function forwardEngine(request: Request): Promise<Response> {
       "/api/redemptions",
       "/api/bank/events",
       "/api/federation/prepare",
+      "/api/disclosures",
+      "/api/disclosures/recipient-key",
+      "/api/beneficiaries/resolve",
+      "/api/beneficiaries/validate-address",
+      "/api/receive-address",
     ].includes(path) ||
+    /^\/api\/disclosures\/[a-f0-9]{32}\/(approve|decline|release|cancel)$/.test(
+      path,
+    ) ||
     /^\/api\/operations\/[a-f0-9]{32}\/(approve|reject|execute|cancel|guardian-approve|prepare-approval|certificates)$/.test(
       path,
     ) ||

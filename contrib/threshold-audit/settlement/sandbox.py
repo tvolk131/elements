@@ -313,6 +313,8 @@ class Sandbox:
                        config=config, approval_signer=None,
                        bank_signing_secret=bank_secret)
         self.store.federation = FederationRotation(self, self.store)
+        from .capability_demo import enroll
+        enroll(self, config, adapter_config)
         engine_token = secrets.token_hex(32)
         self.server = create_server(self.store, gateway_token=engine_token)
         self.server.start_worker()

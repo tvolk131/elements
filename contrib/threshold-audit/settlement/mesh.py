@@ -151,6 +151,9 @@ class MeshHandler(BaseHTTPRequestHandler):
         gateway, slot = self.server.gateway, self.server.slot
         expected = urlsplit(gateway.origin(slot)).netloc
         public_pages = {'/'} if slot is not None else {'/', '/wallet', '/wallet/', '/guardian', '/guardian/', '/app', '/app/'}
+        if slot is None:
+            public_pages.update('/wallet/'+page for page in ('overview','payments','banking','beneficiaries','activity','disclosures'))
+            public_pages.update('/guardian/'+page for page in ('overview','approvals','reserves','network','federation','activity','disclosures'))
         navigation = (self.command == 'GET' and self.path in public_pages
                       and self.headers.get('Sec-Fetch-Mode') == 'navigate'
                       and self.headers.get('Sec-Fetch-Dest') == 'document'

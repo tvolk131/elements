@@ -492,6 +492,10 @@ class Guardian:
             if peer['role'] != 'recipient':
                 raise ValueError('partial decryptions require approved recipient TLS identity')
             return self.disclose(request, peer)
+        if operation == 'disclose-sealed':
+            if peer['role'] != 'coordinator' or request.get('request', {}).get('delivery') != 'sealed-v1':
+                raise ValueError('sealed relay requires coordinator and recipient-bound sealed request')
+            return self.disclose(request, peer)
         if operation == 'approve':
             if peer != {'role': 'approver', 'member': self.member}:
                 raise ValueError('approval requires this institution\'s separate authority')
@@ -777,7 +781,7 @@ class Guardian:
         policy, disclosure = disclosure_from(request)
         key = active.key(request['key_version'])
         expected = Policy(key.committee.binding(), key.committee.threshold, active.identities)
-        if policy != expected or disclosure.recipient_key.hex() not in self.options['recipients']:
+        if policy != expected or (disclosure.delivery == 'tls' and disclosure.recipient_key.hex() not in self.options['recipients']):
             raise ValueError('approval policy or recipient is not configured')
         disclosure.validate(self.curve)
         if disclosure.policy_binding != policy.binding() or disclosure.expires_at <= int(time.time()):
@@ -823,9 +827,10 @@ class Guardian:
         expected = Policy(key.committee.binding(), key.committee.threshold, active.identities)
         if policy != expected:
             raise ValueError('disclosure does not use current committee policy')
-        if peer.get('recipient_key') != disclosure.recipient_key.hex():
+        sealed = disclosure.delivery == 'sealed-v1'
+        if not sealed and peer.get('recipient_key') != disclosure.recipient_key.hex():
             raise ValueError('TLS recipient does not match signed request')
-        if self.options['recipients'].get(disclosure.recipient_key.hex()) != peer.get('fingerprint'):
+        if not sealed and self.options['recipients'].get(disclosure.recipient_key.hex()) != peer.get('fingerprint'):
             raise ValueError('recipient certificate is not pinned to recipient key')
         approvals = tuple(Approval(item['member'], raw(item['signature'], 64)) for item in request['approvals'])
         authorize(self.curve, policy, disclosure, approvals, int(time.time()))
@@ -848,17 +853,25 @@ class Guardian:
         # Durable authorization evidence precedes producing decryption points.
         self.log.append(dict(event, status='authorized'))
         partial = partial_decrypt_chunked(self.curve, statement, packet, key.committee, share, disclosure.binding())
+        if disclosure.expires_at <= int(time.time()):
+            self.log.append(dict(event, status='release-expired'))
+            raise ValueError('disclosure expired before partial release')
         self.log.append(dict(event, status='partial-released'))
-        return {'member': partial.member, 'committee_binding': partial.committee_binding.hex(),
+        result = {'member': partial.member, 'committee_binding': partial.committee_binding.hex(),
                 'request_binding': partial.request_binding.hex(),
                 'points': [point.hex() for point in partial.points],
                 'proofs': [[scalar_bytes(v).hex() for v in proof] for proof in partial.proofs],
                 'checkpoint': self.checkpoint()}
+        if sealed:
+            from sealed_delivery import seal
+            return seal(self.curve, self.identity_secret, disclosure.recipient_key,
+                        disclosure.binding(), self.member, result)
+        return result
 
 
 def request_scope(request):
     """Retain verifiable authorization context without openings or partials."""
-    return {'policy_binding': request.policy_binding.hex(), 'statement_binding': request.statement_binding.hex(),
+    return {'delivery': request.delivery, 'policy_binding': request.policy_binding.hex(), 'statement_binding': request.statement_binding.hex(),
             'packet_binding': request.packet_binding.hex(), 'case_reference': request.case_reference.hex(),
             'recipient_key': request.recipient_key.hex(), 'expires_at': request.expires_at}
 
@@ -869,7 +882,7 @@ def disclosure_from(value):
     request = value['request']
     disclosure = Request(raw(request['policy_binding'], 32), raw(request['statement_binding'], 32),
                          raw(request['packet_binding'], 32), raw(request['case_reference'], 32),
-                         raw(request['recipient_key'], 33), request['expires_at'])
+                         raw(request['recipient_key'], 33), request['expires_at'], request.get('delivery', 'tls'))
     return policy, disclosure
 
 

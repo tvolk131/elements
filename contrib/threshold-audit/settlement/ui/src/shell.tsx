@@ -30,6 +30,12 @@ export function Shell() {
       ];
   if (app.guardian && app.can("view_bank"))
     items.push(["federation", "Federation lifecycle", "refresh"]);
+  if (
+    app.can("request_disclosure") ||
+    app.can("receive_disclosure") ||
+    app.can("review_disclosure")
+  )
+    items.push(["disclosures", "Disclosures", "lock"]);
   items.push([
     "activity",
     app.guardian ? "Activity log" : "Audit log",
@@ -78,13 +84,24 @@ export function Shell() {
             <div className="security-card-heading">
               <Icon name="lock" />
               <strong>
-                {app.guardian ? "Independent approvals" : "Separate approval"}
+                {app.can("review_disclosure")
+                  ? "Recipient access"
+                  : app.can("request_disclosure") ||
+                      app.can("receive_disclosure")
+                    ? "Confidential disclosures"
+                    : app.guardian
+                      ? "Independent approvals"
+                      : "Separate approval"}
               </strong>
             </div>
             <p>
-              {app.guardian
-                ? "Review and sign in your institution’s separate approval window."
-                : "Requests need approval from a second authorized person."}
+              {app.can("review_disclosure")
+                ? "Your sign-off authorizes an encrypted contribution for the named recipient."
+                : app.can("request_disclosure") || app.can("receive_disclosure")
+                  ? "A guardian quorum authorizes access to selected confidential outputs."
+                  : app.guardian
+                    ? "Review and sign in your institution’s separate approval window."
+                    : "Requests need approval from a second authorized person."}
             </p>
           </div>
           <div className="sidebar-environment">

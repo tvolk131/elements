@@ -234,3 +234,34 @@ class AuditRotation:
                                      config.key(version).public_key, assets)
         packet = ChunkPacket.from_bytes(transaction.wit.vtxoutwit[index].vchAuditProof, statement, self.curve)
         return self.cluster.recover(config, version, statement, packet, self.cluster.recipient_key)
+
+    def disclosure_context(self, txid, index):
+        """Public context only; never auto-approve or recover an opening."""
+        from guardian_service import statement_json
+        decoded = self.node.getrawtransaction(txid, True)
+        if not decoded.get('blockhash') or decoded.get('confirmations', 0) < 1:
+            raise ValueError('disclosure requires a confirmed output')
+        creation = self.node.getblock(decoded['blockhash'])
+        policy = full_policy_at(self.node, creation['height'], self.epoch_length)
+        creation_config = AuditConfig.from_bytes(bytes.fromhex(policy['audit_config']), self.curve)
+        config = self.current_config()
+        key = config.key(creation_config.active_version)
+        approval_head = self.node.getblock(self.node.getbestblockhash())
+        assets = tuple(sorted(bytes.fromhex(asset)[::-1] for asset in policy['audit_assets']))
+        transaction = tx_from_hex(decoded['hex'])
+        if type(index) is not int or not 0 <= index < len(transaction.vout):
+            raise ValueError('invalid output index')
+        statement = output_statement(transaction, index, bytes.fromhex(self.node.getblockhash(0))[::-1], key.public_key, assets)
+        packet = ChunkPacket.from_bytes(transaction.wit.vtxoutwit[index].vchAuditProof, statement, self.curve)
+        from chunked import verify_chunked
+        if not verify_chunked(self.curve, statement, packet):
+            raise ValueError('output has no valid confidential recovery packet')
+        return {'txid': txid, 'output_index': index, 'creation_block': decoded['blockhash'],
+                'approval_height': approval_head['height'], 'approval_block': approval_head['hash'],
+                'configuration_bytes': config.to_bytes().hex(),
+                'creation_height': creation['height'], 'key_version': key.version,
+                'configuration': config.binding().hex(), 'statement': statement_json(statement),
+                'packet': packet.to_bytes().hex(),
+                'committee': {'epoch': key.committee.epoch, 'members': list(key.committee.members),
+                              'commitments': [p.hex() for p in key.committee.commitments]},
+                'identities': [[member, public.hex()] for member, public in config.identities]}

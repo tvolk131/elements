@@ -43,6 +43,7 @@ class Request:
     case_reference: bytes  # Random/opaque reference; not a hash of a person's name.
     recipient_key: bytes
     expires_at: int
+    delivery: str = 'tls'
 
     def validate(self, curve):
         if any(not isinstance(v, bytes) or len(v) != 32 for v in (
@@ -51,9 +52,11 @@ class Request:
         if type(self.expires_at) is not int or not 0 <= self.expires_at < 2**64:
             raise ValueError('invalid expiration')
         curve.parse(self.recipient_key, allow_infinity=False)
+        if self.delivery not in ('tls', 'sealed-v1'):
+            raise ValueError('unsupported disclosure delivery')
 
     def binding(self):
-        return digest(b'disclosure-request', self.policy_binding, self.statement_binding,
+        return digest(b'disclosure-request' if self.delivery == 'tls' else b'disclosure-request/sealed-v1', self.policy_binding, self.statement_binding,
                       self.packet_binding, self.case_reference, self.recipient_key,
                       self.expires_at.to_bytes(8, 'big'))
 

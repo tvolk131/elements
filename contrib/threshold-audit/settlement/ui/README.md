@@ -57,14 +57,25 @@ bookmarks are redirected in the browser. Deep links are served by Start.
   The callback checks the popup, origin, request ID and institution identity
   before sending a certificate to the engine for verification.
 
-This is a web-stack migration. Address-based sending/receiving and changes to
-institution approval policy are separate backend features; the current pilot's
-configured-account restrictions remain explicit in the UI.
+The capability demo adds signed bank-reference routing, confidential-address
+sending/receiving, and a disclosure workspace. It retains the existing payment
+approval policy. See [the walkthrough](../../SETTLEMENT-SANDBOX.md#recipient-directed-disclosure-and-cross-bank-demo).
+
+Recipient keys are generated and password-encrypted locally using pinned Noble
+libraries. The browser registers only the public key. Encrypted key backups are
+kept in local browser storage under the signed-in user ID and can be exported or
+imported. The disclosure relay sees encrypted guardian contributions; the recipient
+browser verifies signatures, DLEQ proofs and recovered commitment openings before
+displaying results. This browser client trusts the demo node for chain inclusion
+and committee authenticity. The native recipient CLI can independently verify
+those against a separately supplied node. A compromised application can serve
+malicious JavaScript; this demo is not an isolated trusted client or hardware key
+custody system.
 
 ## Tests
 
 `npm test` covers user/session transitions, account and currency filtering,
-request payloads, receiving limitations, CSRF, cache isolation, CSV escaping,
+request payloads, recipient key/password isolation, native-to-browser recovery, CSRF, cache isolation, CSV escaping,
 and the Node Host/Origin/CSP boundary. The Python suite starts a real built Start
 server against a disposable engine to check cookies, CSRF, logout, deep links,
 CSP nonces, and private-engine isolation:

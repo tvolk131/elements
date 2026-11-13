@@ -43,6 +43,45 @@ class GuardianServicesTests(unittest.TestCase):
                               config.key(version).public_key, (opening.asset,))
         return statement, encrypt_chunked(self.curve, statement, opening), opening
 
+    def test_explicit_sealed_release_to_an_unregistered_recipient_key(self):
+        from disclosure import Policy, Request
+        from guardian_service import statement_json
+        from recovery import digest
+        from sealed_delivery import unseal
+        from threshold import PartialDecryption
+        from chunked import combine_chunked
+        members = (1, 2, 3)
+        recipient_secret = random_scalar()
+        recipient = self.curve.mul(recipient_secret)
+        chain = named('service chain')
+        with tempfile.TemporaryDirectory(prefix='elements-sealed-guardian-') as directory:
+            with GuardianCluster(directory, members, self.library, self.curve, self.curve.mul(random_scalar())) as cluster:
+                config, plans = cluster.bootstrap_genesis(members, 2, named('signer policy'))
+                prepared = cluster.prepare(chain, config, plans)
+                cluster.activate(chain, prepared)
+                statement, packet, expected = self.packet(config, 1, 'sealed recipient output')
+                key = config.key(1)
+                policy = Policy(key.committee.binding(), key.committee.threshold, config.identities)
+                import time
+                request = Request(policy.binding(), statement.binding(), digest(b'packet', packet.to_bytes()), named('case'), recipient, int(time.time())+120, 'sealed-v1')
+                payload = {'key_version':1, 'policy':{'committee_binding':policy.committee_binding.hex(),'threshold':2,'approvers':[(i,p.hex()) for i,p in policy.approvers]},
+                           'request':{'policy_binding':policy.binding().hex(),'statement_binding':statement.binding().hex(),'packet_binding':request.packet_binding.hex(),'case_reference':request.case_reference.hex(),'recipient_key':recipient.hex(),'expires_at':request.expires_at,'delivery':'sealed-v1'},
+                           'statement':statement_json(statement),'packet':packet.to_bytes().hex(),'approvals':[]}
+                with self.assertRaises(ValueError):cluster.guardians[1].request('approve', **payload)
+                with self.assertRaises(ValueError):cluster.guardians[1].request('disclose-sealed', **payload)
+                for member in members[:2]:
+                    approved = cluster.guardians[member].request('approve', credentials=cluster.approvers[member], **payload)
+                    payload['approvals'].append({'member':member,'signature':approved['signature']})
+                partials = []
+                for member in members[:2]:
+                    envelope = cluster.guardians[member].request('disclose-sealed', **payload)
+                    self.assertNotIn('points', envelope)
+                    identity = dict(config.identities)[member]
+                    with self.assertRaises(ValueError):unseal(self.curve, random_scalar(), identity, envelope, request.binding(), member)
+                    value = unseal(self.curve, recipient_secret, identity, envelope, request.binding(), member)
+                    partials.append(PartialDecryption(value['member'],bytes.fromhex(value['committee_binding']),bytes.fromhex(value['request_binding']),tuple(bytes.fromhex(p) for p in value['points']),tuple(tuple(int(s,16) for s in proof) for proof in value['proofs'])))
+                self.assertEqual(combine_chunked(self.curve,statement,packet,key.committee,tuple(partials),request.binding()),expected)
+
     def test_7_of_10_to_11_of_15_retains_every_historical_key(self):
         old, new = tuple(range(1, 11)), tuple(range(101, 116))
         recipient = self.curve.mul(random_scalar())

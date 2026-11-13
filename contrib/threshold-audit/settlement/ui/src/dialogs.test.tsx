@@ -102,11 +102,11 @@ it("explains the corporate funding role without sending a request", () => {
   ).toBeVisible();
   expect(api).not.toHaveBeenCalled();
 });
-it("explains that a receiving reference is not a blockchain address", () => {
+it("offers a beneficiary reference and confidential receiving address", () => {
   app.dialog = { type: "receive" };
   show();
   expect(
-    screen.getByText(/reference is not a blockchain address/),
+    screen.getByRole("button", { name: "Generate receiving address" }),
   ).toBeVisible();
   expect(screen.getByText("a", { selector: "code" })).toBeVisible();
 });
@@ -160,4 +160,33 @@ it("keeps the available amount tied to the source and currency", async () => {
   );
   await userEvent.selectOptions(screen.getByLabelText("Test currency"), "EUR");
   expect(screen.getByText("1.23 TestEUR")).toBeVisible();
+});
+
+it("displays an observed outside receipt as a credit without missing application approvals", async () => {
+  const { OperationPanel } = await import("./wallet");
+  const operation = {
+    id: "receipt",
+    kind: "receipt" as const,
+    state: "settled",
+    account_id: "a",
+    currency: "EUR" as const,
+    amount_minor: 1,
+    created_at: 1,
+    user_approved: false,
+    guardian_approvals: 0,
+    guardian_threshold: 3,
+    allowed_actions: [],
+  };
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <OperationPanel title="Transactions" operations={[operation]} />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByText("+0.01")).toBeVisible();
+  expect(screen.getByText("Confirmed", {selector:".wallet-next-summary"})).toBeVisible();
+  expect(screen.queryByText("0 / 3")).not.toBeInTheDocument();
+  client.clear();
 });

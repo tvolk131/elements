@@ -26,8 +26,11 @@ ROLES = {
     "bankapprover": {"view_bank", "approve", "execute"},
     "corporatemaker": {"create_transfer", "create_redemption", "create_refund"},
     "corporateapprover": {"approve", "execute"},
-    "auditor": {"view_bank", "reconcile"},
+    "auditor": {"view_bank", "reconcile", "receive_disclosure"},
     "institutionguardian": {"guardian_approve", "view_bank"},
+    "bankcompliance": {"view_bank", "request_disclosure", "receive_disclosure"},
+    "federationcompliance": {"view_bank", "request_disclosure", "receive_disclosure", "network_disclosures"},
+    "auditguardian": {"review_disclosure"},
 }
 FINAL = {"settled", "rejected", "failed", "cancelled"}
 PENDING_TOKEN = {"awaiting_approval", "ready", "preparing", "chain_pending"}
@@ -83,6 +86,8 @@ class Settlement:
         self.lock = threading.RLock()
         self.chain, self.verifier, self.approval_signer = chain, verifier, approval_signer
         self.federation = None
+        self.disclosures, self.directory = None, None
+        self.receipts = None
         self.bank_signing_secret = bank_signing_secret
         self.min_confirmations = self.config.get("min_confirmations", 1)
         if type(self.min_confirmations) is not int or self.min_confirmations < 1:
@@ -246,7 +251,7 @@ class Settlement:
 
     @staticmethod
     def can_view(user, account):
-        return (user["tenant"] == account["tenant"] or
+        return (user.get('role') == 'institutionguardian' or user["tenant"] == account["tenant"] or
                 ("view_bank" in ROLES[user["role"]] and user["tenant"] == account.get("bank_tenant")))
 
     def accessible_account(self, user, account_id):
@@ -264,7 +269,9 @@ class Settlement:
     def operation(self, user, operation_id):
         with self.lock:
             operation = self._operation(operation_id)
-            self.accessible_account(user, operation["account_id"])
+            if not self.can_view(user, self.account(operation["account_id"])):
+                if not operation.get('to_account_id') or not self.can_view(user, self.account(operation['to_account_id'])):
+                    raise Problem('operation not found', 404)
             return self.public_operation(user, operation)
 
     def save(self, operation):
@@ -327,14 +334,28 @@ class Settlement:
             self.check_chain_balance(account['id'], currency)
             if currency not in account.get("addresses", {}):
                 raise Problem("account has no registered wallet for that currency")
+            operation_id = secrets.token_hex(16)
             destination = account["addresses"][currency]
             to_account = None
             beneficiary_id = None
+            routing = None
+            destination_name = None
             if kind == "transfer":
-                to_account = self.accessible_account(user, body.get("to_account_id"))
-                if to_account["id"] == account["id"]:
+                selectors = [name for name in ('route_id', 'address', 'to_account_id') if body.get(name)]
+                if len(selectors) != 1 or not isinstance(body[selectors[0]], str):
+                    raise Problem('choose exactly one managed account, beneficiary confirmation or confidential address')
+                if body.get('route_id') and self.directory is not None:
+                    to_account, destination, destination_name, routing = self.directory.consume(user, account, currency, body['route_id'], operation_id)
+                elif body.get('address') and self.directory is not None:
+                    destination = body['address'].strip()
+                    to_account = self.directory.address(destination)
+                    destination_name = 'Confidential wallet address (identity not verified)'
+                else:
+                    to_account = self.accessible_account(user, body.get("to_account_id"))
+                    destination = to_account.get("addresses", {}).get(currency)
+                    destination_name = to_account.get('name', to_account['id'])
+                if to_account and to_account["id"] == account["id"]:
                     raise Problem("choose a different destination account")
-                destination = to_account.get("addresses", {}).get(currency)
                 if not destination:
                     raise Problem("destination wallet not configured")
             if kind == "redemption":
@@ -349,7 +370,7 @@ class Settlement:
             if kind != "deposit" and self.available_balance(account["id"], currency) < amount:
                 raise Problem("insufficient available token balance", 409, "insufficient_balance")
             now = int(time.time())
-            operation = {"id": secrets.token_hex(16), "kind": kind, "currency": currency,
+            operation = {"id": operation_id, "kind": kind, "currency": currency,
                          "asset_id": assets[0]["asset_id"], "registry_version": assets[0].get("registry_version"),
                          "amount_minor": amount, "account_id": account["id"], "tenant": account["tenant"],
                          "destination": destination, "to_account_id": to_account["id"] if to_account else None,
@@ -364,6 +385,10 @@ class Settlement:
                          "state": "awaiting_bank" if kind == "deposit" else "awaiting_approval",
                          "created_at": now, "updated_at": now, "maker": user["id"],
                          "txid": None, "stage": None, "error": None}
+            if kind == 'transfer':
+                operation['destination_name'] = destination_name
+                operation['beneficiary_verified'] = routing is not None
+                operation['beneficiary_route'] = routing
             reference = body.get("reference", "")
             if not isinstance(reference, str) or len(reference) > 120:
                 raise Problem("reference must be at most 120 characters")
@@ -760,7 +785,8 @@ class Settlement:
                 operation["state"] = "settled"
             elif stage == "transfer":
                 self.tokens(operation, "transferred", operation["account_id"], -amount)
-                self.tokens(operation, "transferred", operation["to_account_id"], amount)
+                if operation.get('to_account_id'):
+                    self.tokens(operation, "transferred", operation["to_account_id"], amount)
                 operation["state"] = "settled"
             elif stage == "escrow":
                 self.journal(operation, "escrowed", "token_liability", "redemption_payable")
@@ -789,6 +815,8 @@ class Settlement:
                                        "('preparing','chain_pending','escrow_confirmed','bank_pending','bank_unknown','burn_pending')"))
             for row in rows:
                 self._advance(json.loads(row[0]))
+            if self.receipts is not None:
+                self.receipts.poll()
 
     def reconcile(self):
         result = []
@@ -854,13 +882,21 @@ class Settlement:
         result = {key: value for key, value in operation.items() if key not in {"certificate", "destination"}}
         result["amount"] = money(operation["amount_minor"])
         result["destination"] = ("Approved bank beneficiary" if operation["kind"] == "redemption"
-                                 else operation.get("to_account_id") or operation["account_id"])
+                                 else operation.get("to_account_id") or operation.get('destination_name') or operation["account_id"])
+        if operation['kind'] == 'transfer':
+            result['destination_address'] = operation['destination']
         result["guardian_approvals"] = len(self.signatures(operation["id"]))
         result["guardian_threshold"] = self.verifier.threshold
         result["user_approved"] = self.approved(operation)
         result["approval_workflow"] = self.approval_workflow(operation)
         result["allowed_actions"] = []
-        permissions = ROLES[user["role"]]
+        result['source_name'] = self.account(operation['account_id']).get('name', operation['account_id'])
+        permissions = ROLES[user["role"]] if self.can_view(user, self.account(operation['account_id'])) else set()
+        if not permissions:
+            result['incoming'] = True
+            result.pop('maker', None)
+            result.pop('approval_workflow', None)
+            result.pop('beneficiary_route', None)
         if operation["state"] in {"awaiting_approval", "ready"}:
             if "approve" in permissions and user["id"] != operation["maker"] and not result["user_approved"]:
                 result["allowed_actions"].append("approve")
@@ -888,7 +924,7 @@ class Settlement:
             accounts = [account for account in accounts if self.can_view(user, account)]
             ids = {account["id"] for account in accounts}
             operations = [json.loads(row[0]) for row in self.db.execute("SELECT data FROM operations ORDER BY rowid DESC")]
-            operations = [self.public_operation(user, operation) for operation in operations if operation["account_id"] in ids]
+            operations = [self.public_operation(user, operation) for operation in operations if operation["account_id"] in ids or operation.get('to_account_id') in ids]
             balances, beneficiaries = [], []
             for account in accounts:
                 chain_balances = None
@@ -915,8 +951,11 @@ class Settlement:
                     activity.append({"id": row["seq"], "created_at": row["created"], "operation_id": row["operation_id"],
                                      "actor": row["actor"], "event": row["event"], "entry_hash": row["entry_hash"]})
             safe_accounts = [{"id": account["id"], "name": account.get("name", account["id"]),
-                              "tenant": account["tenant"], "currencies": sorted(account.get("addresses", {}))} for account in accounts]
+                              "tenant": account["tenant"], "bank_id": account.get('bank_tenant'),
+                              "payment_reference": self.directory.reference(account) if self.directory else None,
+                              "currencies": sorted(account.get("addresses", {}))} for account in accounts]
             network = self.chain.network()
+            network['disclosure_available'] = self.disclosures is not None
             network.update({"bank_mode": "simulated", "legal_issuer": "Undecided — sandbox only",
                             "operational_threshold": self.verifier.threshold,
                             "operational_guardians": len(self.verifier.public_keys)})
@@ -925,6 +964,7 @@ class Settlement:
                     "accounts": safe_accounts, "balances": balances,
                     "reserves": self.reconcile() if "view_bank" in ROLES[user["role"]] and user["tenant"] == self.config.get("bank_tenant", "bank") else [],
                     "operations": operations, "activity": activity[:100], "beneficiaries": beneficiaries,
+                    "directory_banks": self.directory.public_banks() if self.directory else [],
                     "guardians": [{"id": guardian, "institution_id": guardian, "public_key": key,
                                    "approval_url": self.config.get("institution_approval_urls", {}).get(guardian),
                                    "name": guardian} for guardian, key in self.verifier.public_keys.items()]}

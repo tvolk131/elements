@@ -24,6 +24,10 @@ import {
 } from "./domain";
 import { Quorum, Receive } from "./wallet";
 import { ApprovalProgress } from "./approval-progress";
+import {
+  TransferDestination,
+  type TransferTarget,
+} from "./beneficiary-routing";
 import type { Currency, Kind, Operation } from "./types";
 
 function Footer({ children }: { children: ReactNode }) {
@@ -71,7 +75,7 @@ export function Dialogs() {
     return (
       <Modal
         title="Receive on-chain"
-        description="Receive a managed transfer from another approved account."
+        description="Share a beneficiary reference or confidential receiving address."
         close={close}
       >
         <div className="dialog-body">
@@ -142,7 +146,7 @@ export function Dialogs() {
   if (d.type === "bank") return <BankForm operation={d.operation} />;
   return <RotationForm action={d.action} />;
 }
-function CreateForm({ kind }: { kind: Exclude<Kind, "refund"> }) {
+function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
   const app = useApp();
   const [account, setAccount] = useState(app.account);
   const [currency, setCurrency] = useState<Currency>(
@@ -150,6 +154,12 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund"> }) {
   );
   const [amount, setAmount] = useState("");
   const [destination, setDestination] = useState("");
+  const [transferDestination, setTransferDestination] =
+    useState<TransferTarget | null>(null);
+  const transferTarget =
+    transferDestination?.scope === account + ":" + currency
+      ? transferDestination
+      : null;
   const accountInfo = app.data.accounts.find((a) => a.id === account);
   const balance = app.data.balances.find(
     (b) => b.account_id === account && b.currency === currency,
@@ -176,7 +186,11 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund"> }) {
         currency,
         amount,
         ...(kind === "transfer"
-          ? { to_account_id: selectedDestination }
+          ? transferTarget?.route_id
+            ? { route_id: transferTarget.route_id }
+            : transferTarget?.address
+              ? { address: transferTarget.address }
+              : { to_account_id: transferTarget?.to_account_id }
           : kind === "redemption"
             ? { beneficiary_id: selectedDestination }
             : {}),
@@ -269,6 +283,14 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund"> }) {
             </Field>
             <Amount value={amount} onChange={setAmount} />
           </div>
+          {kind === "transfer" && (
+            <TransferDestination
+              key={account + ":" + currency}
+              account={account}
+              currency={currency}
+              onChange={setTransferDestination}
+            />
+          )}
           {kind !== "deposit" && (
             <div className="form-balance-summary" aria-live="polite">
               <span>Available from {accountInfo?.name || account}</span>
@@ -292,16 +314,10 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund"> }) {
             </p>
           )}
 
-          {kind !== "deposit" && (
+          {kind === "redemption" && (
             <Field
-              label={
-                kind === "transfer" ? "To on-chain account" : "To bank account"
-              }
-              detail={
-                kind === "transfer"
-                  ? "Sending to arbitrary wallet addresses is not supported in this pilot."
-                  : "Bank account details are held on the server and bound by their reference hash."
-              }
+              label="To bank account"
+              detail="Bank account details are held on the server and bound by their reference hash."
             >
               <select
                 name="beneficiary_id"
@@ -320,7 +336,7 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund"> }) {
               </select>
             </Field>
           )}
-          {kind !== "deposit" && !destinations.length && (
+          {kind === "redemption" && !destinations.length && (
             <div className="inline-warning">
               No eligible destination is configured for this account and
               currency.
@@ -338,7 +354,8 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund"> }) {
               mutation.isPending ||
               !accountInfo ||
               !accountInfo.currencies.includes(currency) ||
-              (kind !== "deposit" && !destinations.length)
+              (kind === "transfer" && !transferTarget) ||
+              (kind === "redemption" && !destinations.length)
             }
           >
             {mutation.isPending
@@ -432,13 +449,28 @@ function OperationDetail({ id }: { id: string }) {
         {!op && !query.error && <p role="status">Loading request…</p>}
         {op && (
           <>
-            <div className="detail-type">{human(op.kind)} request</div>
+            <div className="detail-type">
+              {op.kind === "receipt"
+                ? "Confirmed on-chain receipt"
+                : human(op.kind) + " request"}
+            </div>
             <div className="detail-amount number">
               {money(op.amount_minor)} <span>Test{op.currency}</span>
             </div>
             <Badge status={op.state} />
             {["awaiting_approval", "ready"].includes(op.state) ? (
-              <ApprovalProgress operation={op} />
+              op.incoming ? (
+                <div className="wallet-request-next">
+                  <strong>Incoming payment</strong>
+                  <p>
+                    The sender is completing their payment approvals. Your
+                    wallet will be credited after chain confirmation; you do not
+                    need to approve their request.
+                  </p>
+                </div>
+              ) : (
+                <ApprovalProgress operation={op} />
+              )
             ) : (
               <div className="wallet-request-next">
                 <strong>
@@ -468,12 +500,16 @@ function OperationDetail({ id }: { id: string }) {
             <div className="detail-section">
               <h3>Request details</h3>
               <CopyField label="Request reference" value={op.id} />
-              <KV label="Source account">{app.accountName(op.account_id)}</KV>
+              <KV label="Source account">
+                {op.kind === "receipt"
+                  ? "External wallet"
+                  : op.source_name || app.accountName(op.account_id)}
+              </KV>
               <KV label="Tenant / customer">{op.tenant}</KV>
               <KV label="Destination">
                 {op.kind === "transfer"
-                  ? app.accountName(op.to_account_id)
-                  : ["deposit", "refund"].includes(op.kind)
+                  ? op.destination_name || app.accountName(op.to_account_id)
+                  : ["deposit", "refund", "receipt"].includes(op.kind)
                     ? app.accountName(op.account_id)
                     : op.beneficiary_name ||
                       app.data.beneficiaries.find(
@@ -481,6 +517,12 @@ function OperationDetail({ id }: { id: string }) {
                       )?.name ||
                       "Configured bank account"}
               </KV>
+              {op.destination_address && (
+                <CopyField
+                  label="Confidential destination address"
+                  value={op.destination_address}
+                />
+              )}
               {app.guardian && (
                 <CopyField
                   label="Exact destination bound for approval"
@@ -499,22 +541,35 @@ function OperationDetail({ id }: { id: string }) {
                 ))}
               </details>
             </div>
-            <div className="detail-section">
-              <h3>Authorization</h3>
-              <KV label="Separate user approval">
-                {op.user_approved ? "Recorded" : "Awaiting authorized approver"}
-              </KV>
-              <KV label="Institution certificate quorum">
-                <Quorum operation={op} />
-              </KV>
-              <CopyField label="Bound request hash" value={op.request_hash} />
-              <KV label="Approval expiry">{date(op.expires_at, true)}</KV>
-              <p className="small-note">
-                Institution payment approval is separate from block signing and
-                threshold unblinding. Private approval credentials stay in the
-                institution’s own window.
-              </p>
-            </div>
+            {op.kind === "receipt" ? (
+              <div className="detail-section">
+                <h3>Observed receipt</h3>
+                <p>
+                  This payment was received directly on-chain and credited after
+                  confirmation. No application payment approval was requested
+                  for this receipt.
+                </p>
+              </div>
+            ) : (
+              <div className="detail-section">
+                <h3>Authorization</h3>
+                <KV label="Separate user approval">
+                  {op.user_approved
+                    ? "Recorded"
+                    : "Awaiting authorized approver"}
+                </KV>
+                <KV label="Institution certificate quorum">
+                  <Quorum operation={op} />
+                </KV>
+                <CopyField label="Bound request hash" value={op.request_hash} />
+                <KV label="Approval expiry">{date(op.expires_at, true)}</KV>
+                <p className="small-note">
+                  Institution payment approval is separate from block signing
+                  and threshold unblinding. Private approval credentials stay in
+                  the institution’s own window.
+                </p>
+              </div>
+            )}
             {history.length > 0 && (
               <div className="detail-section">
                 <h3>Request timeline</h3>
