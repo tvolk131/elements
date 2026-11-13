@@ -49,7 +49,7 @@ it("updates the mounted session observer through login and logout", async () => 
   }
   render(
     <QueryClientProvider client={queryClient}>
-      <SessionGate>
+      <SessionGate guardian={false}>
         <Probe />
       </SessionGate>
     </QueryClientProvider>,

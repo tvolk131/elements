@@ -88,9 +88,6 @@ export interface Operation {
   error?: string;
   txid?: string;
   stage?: string;
-  chain_status?: string;
-  bank_status?: string;
-  bank_event_id?: string;
   destination_hash?: string;
   bank_account_ref_hash?: string;
   cash_receipt_id?: string;
@@ -98,50 +95,33 @@ export interface Operation {
   transaction_template_hash?: string;
   request_hash?: string;
   approval_request?: ApprovalRequest;
-  history?: Activity[];
-  events?: Activity[];
 }
+/** One hash-chained evidence entry. */
 export interface Activity {
-  id?: number;
-  description?: string;
-  action?: string;
-  event?: string;
-  state?: string;
-  actor_name?: string;
-  actor?: string;
-  operation_id?: string;
-  created_at?: number;
-  timestamp?: number;
-  detail?: string;
+  id: number;
+  created_at: number;
+  operation_id: string | null;
+  actor: string;
+  event: string;
+  entry_hash: string;
 }
 export interface Institution {
-  id?: string;
-  institution_id?: string;
-  name?: string;
-  status?: string;
+  id: string;
+  institution_id: string;
+  name: string;
+  public_key: string;
   approval_url?: string;
-  historical_ready?: boolean;
-}
-export interface Audit {
-  threshold?: number;
-  guardian_count?: number;
-  roster_id?: string;
-  historical_ready?: boolean;
 }
 export interface Network {
-  disclosure_available?: boolean;
-  connected?: boolean;
-  chain?: string;
-  height?: number;
-  block_height?: number;
-  genesis_hash?: string;
-  registry_version?: number;
+  connected: boolean;
+  chain: string;
+  genesis_hash: string;
+  height: number;
   audit_version?: number;
-  audit_threshold?: number;
-  audit_guardians?: number;
-  error?: string;
-  settlement_hold?: string;
-  audit?: Audit;
+  registry_version: number;
+  audit_threshold: number;
+  audit_guardians: number;
+  disclosure_available: boolean;
 }
 export interface Reserve {
   currency: Currency;
@@ -158,80 +138,79 @@ export interface Reserve {
   payout_mode: string;
 }
 export interface Asset {
-  currency?: Currency;
+  currency: Currency;
   asset_id: string;
-  registered?: boolean;
-  registry_version?: number;
-  issuer?: string;
+  registered: boolean;
+  registry_version: number;
+  issuer: string;
 }
 export interface Membership {
-  threshold?: number;
-  count?: number;
-  guardian_count?: number;
-  members?: (string | { id?: string; name?: string; member?: string })[];
+  threshold: number;
+  count: number;
+  members: string[];
   script?: string;
-  state?: string;
-  status?: string;
-  detail?: string;
 }
 export interface FederationPolicy {
-  id?: string;
-  label?: string;
-  epoch?: number;
-  state?: string;
-  status?: string;
-  audit?: Membership;
-  block_signing?: Membership;
-  treasury?: Membership;
-}
-export interface Stage {
-  id?: string;
-  label?: string;
-  kind?: string;
-  state?: string;
-  status?: string;
+  label: string;
+  epoch: number;
+  policy_version: string;
   detail?: string;
-  txid?: string;
-  currency?: Currency;
-  operation_id?: string;
-  amount_minor?: number;
+  audit: Membership;
+  block_signing: Membership;
+  treasury: Membership;
+}
+export interface RotationStep {
+  id: string;
+  label: string;
+  state: "complete" | "active" | "pending";
+}
+export interface Readiness {
+  id: string;
+  label: string;
+  state: string;
+  detail: string;
+}
+export interface Migration {
+  migration_id: string;
+  kind: string;
+  currency: Currency | "";
+  txid: string | null;
+  state: string;
+}
+export interface OutstandingCase {
+  id: string;
+  kind: Kind;
+  state: string;
+  currency: Currency;
+  amount_minor: number;
 }
 export interface Rotation {
   id: string;
   state: string;
-  stage?: string;
-  hold_reason?: string;
-  error?: string;
-  allowed_actions?: string[];
-  steps?: Stage[];
-  migrations?: Stage[];
-  readiness?: Stage[];
-  outstanding_cases?: Stage[];
-  created_at?: number;
-  activation_height?: number;
-  approval_count?: number;
-  guardian_approvals?: number;
-  approvals?: unknown[];
-  approval_threshold?: number;
-  guardian_threshold?: number;
-  threshold?: number;
-  manifest_hash?: string;
-  plan_hash?: string;
-  payload_hash?: string;
-  approval_request?: ApprovalRequest;
+  stage: string;
+  created_at: number;
+  error: string | null;
+  hold_reason: string | null;
+  allowed_actions: string[];
+  steps: RotationStep[];
+  readiness: Readiness[];
+  migrations: Migration[];
+  outstanding_cases: OutstandingCase[];
+  approval_count: number;
+  approval_threshold: number;
+  approvals: string[];
 }
 export interface Federation {
-  chain?: string;
-  genesis_hash?: string;
-  current?: FederationPolicy;
-  incoming?: FederationPolicy;
-  rotation?: Rotation;
-  allowed_actions?: string[];
-  hold_reason?: string;
+  id: string;
+  genesis_hash: string;
+  current: FederationPolicy;
+  incoming: FederationPolicy | null;
+  rotation: Rotation | null;
+  allowed_actions: string[];
 }
 export interface Dashboard {
-  directory_banks?: { id: string; public_key: string }[];
-  session?: Session;
+  directory_banks: { id: string; public_key: string }[];
+  session: Session;
   accounts: Account[];
   balances: Balance[];
   operations: Operation[];
@@ -239,10 +218,10 @@ export interface Dashboard {
   activity: Activity[];
   guardians: Institution[];
   network: Network;
-  audit?: Audit;
   assets: Asset[];
   reserves: Reserve[];
-  federation?: Federation;
+  /** Only present for bank-tenant users who can view federation status. */
+  federation: Federation | null;
 }
 export type Page =
   | "disclosures"

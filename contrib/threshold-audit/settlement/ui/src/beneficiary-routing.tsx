@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { schnorr } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -47,14 +47,23 @@ export function TransferDestination({
   const [route, setRoute] = useState<Route | null>(null);
   const [managed, setManaged] = useState("");
   const scope = account + ":" + currency;
+  // A check can finish after the user has edited the field. Only apply results
+  // for the value that is still on screen.
+  const current = useRef({ reference, address, mode });
+  current.current = { reference, address, mode };
   const resolve = useMutation({
-    mutationFn: () =>
+    mutationFn: (input: string) =>
       api<Route>("/api/beneficiaries/resolve", {
         account_id: account,
         currency,
-        reference,
+        reference: input,
       }),
-    onSuccess: (result) => {
+    onSuccess: (result, input) => {
+      if (
+        current.current.mode !== "reference" ||
+        current.current.reference !== input
+      )
+        return;
       const p = result.payload,
         bank = app.data.directory_banks?.find((b) => b.id === p.bank_id),
         asset = app.data.assets.find((a) => a.currency === currency);
@@ -67,7 +76,7 @@ export function TransferDestination({
       if (
         !bank ||
         result.public_key !== bank.public_key ||
-        p.reference !== reference.trim().toLowerCase() ||
+        p.reference !== input.trim().toLowerCase() ||
         p.currency !== currency ||
         p.asset_id !== asset?.asset_id ||
         p.genesis_hash !== app.data.network.genesis_hash ||
@@ -85,11 +94,19 @@ export function TransferDestination({
     },
   });
   const validate = useMutation({
-    mutationFn: () =>
+    mutationFn: (input: string) =>
       api<{ address: string }>("/api/beneficiaries/validate-address", {
-        address: address.trim(),
+        address: input.trim(),
       }),
-    onSuccess: (result) => onChange({ scope, address: result.address }),
+    onSuccess: (result, input) => {
+      if (
+        current.current.mode !== "address" ||
+        current.current.address !== input ||
+        result.address !== input.trim()
+      )
+        return;
+      onChange({ scope, address: result.address });
+    },
   });
   const changeMode = (value: string) => {
     setMode(value);
@@ -162,7 +179,7 @@ export function TransferDestination({
           <Button
             type="button"
             disabled={resolve.isPending || !reference.trim()}
-            onClick={() => resolve.mutate()}
+            onClick={() => resolve.mutate(reference)}
             data-testid="resolve-beneficiary"
           >
             {resolve.isPending
@@ -209,12 +226,12 @@ export function TransferDestination({
           <Button
             type="button"
             disabled={validate.isPending || address.trim().length < 30}
-            onClick={() => validate.mutate()}
+            onClick={() => validate.mutate(address)}
             data-testid="validate-destination"
           >
             {validate.isPending ? "Checking address…" : "Check address"}
           </Button>
-          {validate.isSuccess && (
+          {validate.isSuccess && validate.variables === address && (
             <p>
               <Badge status="ready">Valid confidential address</Badge>{" "}
               <span>Recipient identity not verified.</span>

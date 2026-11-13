@@ -9,7 +9,13 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, clearSession, queryClient, refreshData } from "./api";
 import { Brand, Button, ErrorNote, Icon } from "./components";
-import type { Dashboard, DialogState, Session, User } from "./types";
+import type {
+  ApprovalRequest,
+  Dashboard,
+  DialogState,
+  Session,
+  User,
+} from "./types";
 
 interface AppContext {
   data: Dashboard;
@@ -25,13 +31,7 @@ interface AppContext {
   openApproval: (
     id: string,
     rotation?: boolean,
-    expected?: {
-      amount_minor: number;
-      currency: string;
-      asset_id?: string;
-      destination_hash?: string;
-      manifest_hash?: string;
-    },
+    expected?: ExpectedRequest,
   ) => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => void;
@@ -39,16 +39,24 @@ interface AppContext {
   refreshing: boolean;
   error: Error | null;
 }
+/** Fields the operator reviewed; the prepared request must still match them. */
+type ExpectedRequest = Pick<
+  ApprovalRequest,
+  "amount_minor" | "currency" | "asset_id" | "destination_hash"
+>;
 const Context = createContext<AppContext | null>(null);
 export function useApp() {
   const context = useContext(Context);
   if (!context) throw new Error("Authenticated workspace required");
   return context;
 }
-export const guardianApp =
-  typeof window !== "undefined" &&
-  window.location.pathname.startsWith("/guardian");
-export function SessionGate({ children }: { children: ReactNode }) {
+export function SessionGate({
+  guardian,
+  children,
+}: {
+  guardian: boolean;
+  children: ReactNode;
+}) {
   const session = useQuery({
     queryKey: ["session"],
     queryFn: ({ signal }) => api<Session>("/api/session", undefined, signal),
@@ -67,14 +75,18 @@ export function SessionGate({ children }: { children: ReactNode }) {
         <Button onClick={() => session.refetch()}>Reconnect</Button>
       </div>
     );
-  if (!session.data?.user) return <Login />;
+  if (!session.data?.user) return <Login guardian={guardian} />;
   return (
-    <Workspace key={session.data.user.id} session={session.data}>
+    <Workspace
+      key={session.data.user.id}
+      session={session.data}
+      guardian={guardian}
+    >
       {children}
     </Workspace>
   );
 }
-function Login() {
+function Login({ guardian }: { guardian: boolean }) {
   const login = useMutation({
     gcTime: 0,
     mutationFn: (body: { username: string; password: string }) =>
@@ -88,8 +100,8 @@ function Login() {
     },
   });
   useEffect(() => {
-    document.title = `Sign in · Concord ${guardianApp ? "guardian" : "wallet"}`;
-  }, []);
+    document.title = `Sign in · Concord ${guardian ? "guardian" : "wallet"}`;
+  }, [guardian]);
   return (
     <main className="login-shell">
       <section className="login-story">
@@ -122,14 +134,13 @@ function Login() {
       <section className="login-form-side">
         <div className="login-card">
           <div className="login-badge">
-            <Icon name={guardianApp ? "shield" : "wallet"} />
-            {guardianApp ? "Federation guardian" : "Institutional wallet"}
+            <Icon name={guardian ? "shield" : "wallet"} />
+            {guardian ? "Federation guardian" : "Institutional wallet"}
           </div>
           <h2>Welcome to your workspace.</h2>
           <p className="muted">
             Sign in with your assigned{" "}
-            {guardianApp ? "guardian institution" : "bank or corporate"}{" "}
-            account.
+            {guardian ? "guardian institution" : "bank or corporate"} account.
           </p>
           <form
             data-testid="login-form"
@@ -182,8 +193,8 @@ function Login() {
             </span>
           </div>
           <p className="login-switch">
-            <a href={guardianApp ? "/wallet" : "/guardian"}>
-              Open {guardianApp ? "institutional wallet" : "guardian console"}
+            <a href={guardian ? "/wallet" : "/guardian"}>
+              Open {guardian ? "institutional wallet" : "guardian console"}
               <Icon name="arrow" />
             </a>
           </p>
@@ -194,9 +205,11 @@ function Login() {
 }
 function Workspace({
   session,
+  guardian,
   children,
 }: {
   session: Session;
+  guardian: boolean;
   children: ReactNode;
 }) {
   const [selected, setAccount] = useState("");
@@ -295,24 +308,20 @@ function Workspace({
   async function openApproval(
     id: string,
     rotation = false,
-    expected?: {
-      amount_minor: number;
-      currency: string;
-      asset_id?: string;
-      destination_hash?: string;
-      manifest_hash?: string;
-    },
+    expected?: ExpectedRequest,
   ) {
     const institution = dashboard.data?.guardians.find(
       (g) => (g.institution_id || g.id) === user.institution_id,
     );
-    const url = new URL(institution?.approval_url || "");
+    const url = URL.parse(institution?.approval_url ?? "");
     const allowedHost =
-      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
-      (location.hostname.endsWith(".ray") &&
-        url.hostname === location.hostname &&
-        url.protocol === location.protocol);
+      url &&
+      (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
+        (location.hostname.endsWith(".ray") &&
+          url.hostname === location.hostname &&
+          url.protocol === location.protocol));
     if (
+      !url ||
       url.protocol !== "http:" ||
       !allowedHost ||
       url.username ||
@@ -338,10 +347,7 @@ function Workspace({
     try {
       const prepared = await api<{
         id?: string;
-        approval_request?: import("./types").ApprovalRequest;
-        manifest_hash?: string;
-        plan_hash?: string;
-        payload_hash?: string;
+        approval_request?: ApprovalRequest;
       }>(path + "/prepare-approval", {});
       const request = prepared.approval_request;
       if (
@@ -362,17 +368,6 @@ function Workspace({
       )
         throw new Error(
           "The request changed. Close this review and inspect the updated operation.",
-        );
-      const manifest =
-        prepared.manifest_hash || prepared.plan_hash || prepared.payload_hash;
-      if (
-        rotation &&
-        expected?.manifest_hash &&
-        manifest &&
-        expected.manifest_hash !== manifest
-      )
-        throw new Error(
-          "The handover manifest changed. Review it again before approving.",
         );
       pending.current.get(id)?.popup.close();
       pending.current.set(id, {
@@ -417,7 +412,7 @@ function Workspace({
         user,
         account,
         setAccount,
-        guardian: guardianApp,
+        guardian,
         can: (p) => session.permissions.includes(p),
         accountName: (id) =>
           dashboard.data!.accounts.find((a) => a.id === id)?.name ||

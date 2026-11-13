@@ -1,5 +1,3 @@
 node_modules/
 dist/
-.releases/
-.tanstack/
-src/routeTree.gen.ts
+src/fixtures/

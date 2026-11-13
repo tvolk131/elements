@@ -3,6 +3,7 @@ import fixture from "./fixtures/sealed-disclosure.json";
 import {
   assetGenerator,
   bytes,
+  canonical,
   hex,
   newRecipientKey,
   unlockRecipientKey,
@@ -77,4 +78,12 @@ it("password-protects a recipient key and rejects another account or password", 
   await expect(
     unlockRecipientKey(key, "recipient", "different-password"),
   ).rejects.toThrow();
+});
+it("produces the same canonical JSON as Python's json.dumps(ensure_ascii=True)", () => {
+  // python3 -c 'json.dumps(v, sort_keys=True, separators=(",", ":"), ensure_ascii=True)'
+  expect(
+    new TextDecoder().decode(
+      canonical({ b: "x\x7f\u00e9\u{1F600}", a: [1, { z: true, y: null }] }),
+    ),
+  ).toBe('{"a":[1,{"y":null,"z":true}],"b":"x\\u007f\\u00e9\\ud83d\\ude00"}');
 });

@@ -134,7 +134,6 @@ class Sandbox:
         self.institution_endpoints = {}
         self.closed = False
         self.mesh = None
-        self.web_process = None
 
     def start(self, port=0):
         messages.THRESHOLD_AUDIT = True
@@ -315,18 +314,15 @@ class Sandbox:
         self.store.federation = FederationRotation(self, self.store)
         from .capability_demo import enroll
         enroll(self, config, adapter_config)
-        engine_token = secrets.token_hex(32)
-        self.server = create_server(self.store, gateway_token=engine_token)
+        self.server = create_server(self.store, port=port)
         self.server.start_worker()
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
-        from .web import launch_web
-        self.web_process, self.web_url = launch_web(self.directory, self.processes,
-            f'http://127.0.0.1:{self.server.server_port}/', engine_token, port)
+        url = f'http://127.0.0.1:{self.server.server_port}/'
         mesh_path = self.directory / 'mesh.json'
         if mesh_path.exists():
             from .mesh import MeshGateway
-            self.mesh = MeshGateway(load_config(mesh_path), self.web_url,
+            self.mesh = MeshGateway(load_config(mesh_path), url,
                                     lambda: self.store.config.get('institution_approval_urls', {})).start()
         def miner():
             while not self.stop.wait(3):
@@ -340,8 +336,7 @@ class Sandbox:
                     self.mining_error = str(error)[:300]
         self.miner = threading.Thread(target=miner, daemon=True)
         self.miner.start()
-        url = self.web_url
-        save_config(self.directory / 'ready.json', {'url': url, 'pid': os.getpid(), 'web_pid': self.web_process.pid, 'web_backend': 'tanstack-start', 'genesis_hash': node.getblockhash(0),
+        save_config(self.directory / 'ready.json', {'url': url, 'pid': os.getpid(), 'genesis_hash': node.getblockhash(0),
                                                    'credentials_file': str(self.directory / 'credentials.json'),
                                                    **({'mesh': self.mesh.urls()} if self.mesh else {})})
         print(json.dumps({'url': url, 'credentials_file': str(self.directory / 'credentials.json'),
@@ -552,8 +547,6 @@ class Sandbox:
         self.stop.set()
         if self.mesh:
             self.mesh.close()
-        if self.web_process:
-            self.processes.stop(self.web_process, timeout=60)
         if self.server:
             self.server.shutdown()
             self.server.server_close()

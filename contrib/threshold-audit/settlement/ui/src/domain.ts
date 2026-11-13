@@ -2,6 +2,7 @@ import type {
   Account,
   Beneficiary,
   Currency,
+  Dashboard,
   Kind,
   Membership,
   Operation,
@@ -36,6 +37,17 @@ export const money = (minor?: number) =>
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }).format(minor / 100);
+/** Format an on-chain amount (8 decimal places) for a known test currency. */
+export function baseUnits(amount: string | number, currency?: Currency) {
+  if (!currency) return `${amount} base units`;
+  const n = BigInt(amount);
+  const fraction = (n % 100000000n).toString().padStart(8, "0");
+  // Whole cents read like money; anything finer keeps all eight places.
+  const decimals = fraction.endsWith("000000")
+    ? fraction.slice(0, 2)
+    : fraction;
+  return `${n / 100000000n}.${decimals} Test${currency}`;
+}
 export const short = (value?: string, size = 14) =>
   value ? value.slice(0, size) + (value.length > size ? "…" : "") : "—";
 export const date = (value?: number | string, full = false) => {
@@ -61,10 +73,37 @@ export const isException = (op: Operation) =>
 export const isActiveException = (op: Operation) =>
   !["settled", "rejected", "cancelled"].includes(op.state) && isException(op);
 export const needsInstitutionApproval = (op: Operation) =>
-  isPending(op) &&
-  op.allowed_actions.some((action) =>
-    ["guardian-approve", "guardian_approve"].includes(action),
-  );
+  isPending(op) && op.allowed_actions.includes("guardian-approve");
+/** Why new settlement requests are paused, if a federation handover holds them. */
+export const settlementHold = (data: Dashboard) =>
+  data.federation?.rotation?.hold_reason || undefined;
+const SETTLED_ON_CHAIN = [
+  "settled",
+  "escrow_confirmed",
+  "bank_pending",
+  "bank_unknown",
+  "payment_failed",
+  "refund_requested",
+  "cancelled",
+];
+export function chainStatus(op: Operation) {
+  if (!op.txid) return "Not submitted";
+  return SETTLED_ON_CHAIN.includes(op.state)
+    ? "Confirmed transaction"
+    : "Awaiting chain confirmation";
+}
+const BANK_STATUS: Record<string, string> = {
+  awaiting_bank: "Awaiting bank credit",
+  bank_unknown: "Unknown · reconcile",
+  bank_pending: "Payout pending",
+  payment_failed: "Confirmed not paid",
+  cancelled: "Cancelled · escrow returned",
+  settled: "Bank evidence recorded",
+};
+export const bankStatus = (op: Operation) =>
+  op.kind === "transfer"
+    ? "Not applicable"
+    : BANK_STATUS[op.state] || "Not confirmed";
 export function requestSummary(op: Operation): string {
   if (op.state === "awaiting_approval")
     return !op.user_approved
@@ -167,13 +206,8 @@ export function nextStep(op: Operation): string {
     return "This request is closed. Review its recorded outcome before creating another.";
   return "Review this request for its current stage and available actions.";
 }
-export function thresholdLabel(policy?: Membership) {
-  const count =
-    policy?.count ?? policy?.guardian_count ?? policy?.members?.length;
-  return policy?.threshold !== undefined && count !== undefined
-    ? `${policy.threshold} of ${count}`
-    : "Not reported";
-}
+export const thresholdLabel = (policy?: Membership) =>
+  policy ? `${policy.threshold} of ${policy.count}` : "Not reported";
 export function csv(rows: unknown[][]) {
   return rows
     .map((row) =>

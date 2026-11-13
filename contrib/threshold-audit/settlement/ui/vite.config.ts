@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
-import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
-export default defineConfig({ plugins: [tanstackStart(), react()] });
+// Builds a static single-page app into dist/. The Python settlement server
+// serves it and the /api endpoints from one origin.
+export default defineConfig({ plugins: [react()] });

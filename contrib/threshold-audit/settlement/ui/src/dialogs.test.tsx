@@ -186,7 +186,9 @@ it("displays an observed outside receipt as a credit without missing application
     </QueryClientProvider>,
   );
   expect(screen.getByText("+0.01")).toBeVisible();
-  expect(screen.getByText("Confirmed", {selector:".wallet-next-summary"})).toBeVisible();
+  expect(
+    screen.getByText("Confirmed", { selector: ".wallet-next-summary" }),
+  ).toBeVisible();
   expect(screen.queryByText("0 / 3")).not.toBeInTheDocument();
   client.clear();
 });

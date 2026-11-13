@@ -96,6 +96,7 @@ export function Badge({
     "settled",
     "confirmed",
     "ready",
+    "configured",
     "healthy",
     "reconciled",
     "active",
@@ -169,12 +170,14 @@ export function Heading({
 }
 export function Panel({
   title,
+  count,
   subtitle,
   actions,
   children,
   className = "",
 }: {
   title: string;
+  count?: number;
   subtitle?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
@@ -184,7 +187,10 @@ export function Panel({
     <section className={`panel ${className}`}>
       <div className="panel-header">
         <div>
-          <h2>{title}</h2>
+          <h2>
+            {title}
+            {count !== undefined && <span className="count">{count}</span>}
+          </h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
         {actions}

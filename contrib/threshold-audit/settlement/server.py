@@ -5,6 +5,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hmac
 import ipaddress
 import json
+from pathlib import Path
+import re
 import socket
 import threading
 import time
@@ -15,6 +17,11 @@ from .store import Problem
 
 COOKIE = "settlement_session"
 MAX_BODY = 32768
+# Built single-page app (npm run build in ./ui). Client routes all load index.html.
+STATIC_DIR = Path(__file__).with_name("ui") / "dist"
+APP_ROUTE = re.compile(r"/(?:(?:wallet|guardian)(?:/[a-z]*)?)?")
+ASSET_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+               ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2"}
 
 
 def strict_object(pairs):
@@ -30,11 +37,11 @@ class SettlementServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, settlement, host="127.0.0.1", port=0, gateway_token=None):
+    def __init__(self, settlement, host="127.0.0.1", port=0, static_dir=STATIC_DIR):
         if not ipaddress.ip_address(host).is_loopback:
             raise ValueError("the sandbox HTTP server must bind a loopback address")
         self.settlement = settlement
-        self.gateway_token = gateway_token
+        self.static_dir = Path(static_dir).resolve()
         self.stop_worker = threading.Event()
         self.worker = None
         self.handler_condition = threading.Condition()
@@ -147,10 +154,6 @@ class Handler(BaseHTTPRequestHandler):
                 or len(self.headers.get_all("Origin", [])) > 1
                 or len(self.headers.get_all("Content-Length", [])) > 1):
             raise Problem("ambiguous request headers", 400)
-        if self.server.gateway_token is not None:
-            tokens = self.headers.get_all("X-Concord-Engine-Token", [])
-            if len(tokens) != 1 or not hmac.compare_digest(tokens[0], self.server.gateway_token):
-                raise Problem("private settlement engine token required", 403)
         if self.headers.get("Host", "") not in self.server.authorities:
             raise Problem("unrecognized Host header", 403)
         origin = self.headers.get("Origin")
@@ -158,8 +161,27 @@ class Handler(BaseHTTPRequestHandler):
             raise Problem("cross-origin requests are not permitted", 403)
         if self.headers.get("Sec-Fetch-Site") not in {None, "same-origin", "none"}:
             raise Problem("cross-site requests are not permitted", 403)
-        if urlsplit(self.path).query:
+        target = urlsplit(self.path)
+        # Pages ignore query strings (e.g. links with tracking parameters); the API rejects them.
+        if target.query and target.path.startswith("/api/"):
             raise Problem("query parameters are not supported")
+
+    def static(self, path):
+        if APP_ROUTE.fullmatch(path):
+            file = self.server.static_dir / "index.html"
+        elif path.startswith("/assets/"):
+            file = (self.server.static_dir / path.lstrip("/")).resolve()
+            if not file.is_relative_to(self.server.static_dir / "assets") or file.suffix not in ASSET_TYPES:
+                raise Problem("page not found", 404)
+        else:
+            raise Problem("page not found", 404)
+        if not file.is_file():
+            raise Problem("the web app is not built; run npm ci && npm run build in settlement/ui", 404)
+        data = file.read_bytes()
+        self.send_response(200)
+        self.headers_common(ASSET_TYPES.get(file.suffix, "text/html; charset=utf-8"), len(data))
+        self.end_headers()
+        self.wfile.write(data)
 
     def token(self):
         cookies = SimpleCookie()
@@ -233,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     raise Problem("endpoint not found", 404)
                 return
-            raise Problem("the settlement engine serves API endpoints only", 404)
+            self.static(path)
         except Problem as error:
             self.respond(error.status, {"error": error.code, "message": str(error)})
         except Exception:
@@ -340,5 +362,5 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(503, {"error": "service_unavailable", "message": "The local service is unavailable; no settlement was inferred."})
 
 
-def create_server(settlement, host="127.0.0.1", port=0, gateway_token=None):
-    return SettlementServer(settlement, host, port, gateway_token)
+def create_server(settlement, host="127.0.0.1", port=0, static_dir=STATIC_DIR):
+    return SettlementServer(settlement, host, port, static_dir)

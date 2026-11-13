@@ -18,9 +18,9 @@ export function Shell() {
   const items: [Page, string, string][] = app.guardian
     ? [
         ["overview", "Overview", "grid"],
-        ["approvals", "Approval queue", "shield"],
-        ["reserves", "Reserve accounts", "bank"],
-        ["network", "Network & key readiness", "network"],
+        ["approvals", "Approvals", "shield"],
+        ["reserves", "Reserves", "bank"],
+        ["network", "Network", "network"],
       ]
     : [
         ["overview", "Wallet", "wallet"],
@@ -29,18 +29,14 @@ export function Shell() {
         ["beneficiaries", "Recipients", "users"],
       ];
   if (app.guardian && app.can("view_bank"))
-    items.push(["federation", "Federation lifecycle", "refresh"]);
+    items.push(["federation", "Federation", "refresh"]);
   if (
     app.can("request_disclosure") ||
     app.can("receive_disclosure") ||
     app.can("review_disclosure")
   )
     items.push(["disclosures", "Disclosures", "lock"]);
-  items.push([
-    "activity",
-    app.guardian ? "Activity log" : "Audit log",
-    "activity",
-  ]);
+  items.push(["activity", "Activity log", "document"]);
   const pending = app.guardian
     ? app.data.operations.filter(needsInstitutionApproval).length
     : forAccount(app.data.operations, app.account).filter(isPending).length;
@@ -79,48 +75,20 @@ export function Shell() {
             </WorkspaceLink>
           ))}
         </nav>
-        <div className="sidebar-foot">
-          <div className="security-card">
-            <div className="security-card-heading">
-              <Icon name="lock" />
-              <strong>
-                {app.can("review_disclosure")
-                  ? "Recipient access"
-                  : app.can("request_disclosure") ||
-                      app.can("receive_disclosure")
-                    ? "Confidential disclosures"
-                    : app.guardian
-                      ? "Independent approvals"
-                      : "Separate approval"}
-              </strong>
-            </div>
-            <p>
-              {app.can("review_disclosure")
-                ? "Your sign-off authorizes an encrypted contribution for the named recipient."
-                : app.can("request_disclosure") || app.can("receive_disclosure")
-                  ? "A guardian quorum authorizes access to selected confidential outputs."
-                  : app.guardian
-                    ? "Review and sign in your institution’s separate approval window."
-                    : "Requests need approval from a second authorized person."}
-            </p>
-          </div>
-          <div className="sidebar-environment">
-            <strong>Local sandbox</strong>
-            <span>Sandbox issuer</span>
-            <span>Legal entity undecided</span>
-          </div>
-        </div>
       </aside>
       <div className="shell-main">
         <header className="topbar">
           <div className="breadcrumb">
-            {app.guardian ? "Federation" : app.user.tenant}
+            {app.guardian ? "Guardian" : app.user.tenant}
             <Icon name="chevron" />
             <strong>{title}</strong>
           </div>
           <div className="top-actions">
-            <span className="environment">
-              <span className="dot gold" /> LOCAL SANDBOX
+            <span
+              className="environment"
+              title="Test tokens on a local chain. Bank deposits and payouts are simulated; the legal issuer is undecided."
+            >
+              <span className="dot gold" /> Test network · simulated bank
             </span>
             <span className="top-divider" />
             <div className="user-info">
@@ -152,13 +120,6 @@ export function Shell() {
           </div>
         </header>
         <main className="content" id="main-content">
-          <div className="sandbox-note">
-            <Icon name="info" />
-            <span>
-              <strong>TEST NETWORK</strong> · On-chain tokens. Bank deposits and
-              payouts are simulated.
-            </span>
-          </div>
           {app.error && (
             <div className="error-banner" role="alert">
               <span>{app.error.message}</span>
@@ -166,14 +127,6 @@ export function Shell() {
             </div>
           )}
           <Outlet />
-          <footer className="footer">
-            <span>Concord · Institutional settlement sandbox</span>
-            <span className="secure">
-              <Icon name="lock" />
-              Authenticated session ·{" "}
-              {app.user.tenant || app.user.institution_id}
-            </span>
-          </footer>
         </main>
       </div>
       <Dialogs />

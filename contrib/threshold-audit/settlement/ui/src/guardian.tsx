@@ -20,26 +20,24 @@ import {
   isPending,
   money,
   safeFilename,
+  settlementHold,
   short,
   thresholdLabel,
 } from "./domain";
 import { OperationPanel } from "./wallet";
-import type { FederationPolicy, Membership, Stage } from "./types";
+import type {
+  FederationPolicy,
+  Membership,
+  Migration,
+  OutstandingCase,
+} from "./types";
 
 export function RotationNotice() {
   const app = useApp();
   const federation = app.data.federation;
   const rotation = federation?.rotation;
-  const hold =
-    rotation?.hold_reason ||
-    federation?.hold_reason ||
-    app.data.network.settlement_hold;
-  if (
-    !hold &&
-    (!rotation ||
-      ["complete", "completed", "cancelled"].includes(rotation.state))
-  )
-    return null;
+  const hold = settlementHold(app.data);
+  if (!hold && (!rotation || rotation.state === "complete")) return null;
   return (
     <div
       className="rotation-notice"
@@ -86,58 +84,35 @@ export function NetworkCard() {
     >
       <div className="kv-list">
         <KV label="Elements chain">{n.chain}</KV>
-        <KV label="Block height">{n.height ?? n.block_height ?? "—"}</KV>
-        <KV label="Asset registry">
-          {n.registry_version === undefined
-            ? "Not reported"
-            : `Version ${n.registry_version}`}
-        </KV>
+        <KV label="Block height">{n.height}</KV>
+        <KV label="Asset registry">Version {n.registry_version}</KV>
       </div>
       <p className="small-note">
-        {n.error ||
-          "Chain actions use the native Elements adapter. Bank events use a local simulator."}
+        Chain actions use the native Elements adapter. Bank events use a local
+        simulator.
       </p>
     </Panel>
   );
 }
-function AuditCard() {
-  const { data } = useApp();
-  const a = data.audit ||
-    data.network.audit || {
-      threshold: data.network.audit_threshold,
-      guardian_count: data.network.audit_guardians,
-      roster_id:
-        data.network.audit_version === undefined
-          ? undefined
-          : `Audit version ${data.network.audit_version}`,
-    };
+function AuditCard({ linkToDetails = false }: { linkToDetails?: boolean }) {
+  const { network } = useApp().data;
   return (
-    <Panel title="Audit key readiness" className="side-card">
+    <Panel title="Audit key" className="side-card">
       <div className="kv-list">
-        <KV label="Current roster">{a.roster_id || "Not reported"}</KV>
+        <KV label="Audit key version">{network.audit_version ?? "—"}</KV>
         <KV label="Recovery threshold">
-          {a.threshold
-            ? `${a.threshold} of ${a.guardian_count ?? "—"}`
-            : "Not reported"}
-        </KV>
-        <KV label="Historical outputs">
-          {a.historical_ready === true
-            ? "Recovery attested"
-            : a.historical_ready === false
-              ? "Readiness not attested"
-              : "Not reported in this dashboard"}
+          {network.audit_threshold} of {network.audit_guardians}
         </KV>
       </div>
       <p className="small-note">
-        {a.historical_ready === true
-          ? "Current guardians report access to historical recovery keys."
-          : a.historical_ready === false
-            ? "A DynaFed update alone does not demonstrate historical key recovery."
-            : "This view has no historical-readiness feed. Consult the recorded handover evidence; no failure is inferred."}
+        Historical recovery readiness is attested during each federation
+        handover. See the handover’s readiness evidence.
       </p>
-      <WorkspaceLink page="network" className="link-button">
-        View governance details <Icon name="arrow" />
-      </WorkspaceLink>
+      {linkToDetails && (
+        <WorkspaceLink page="network" className="link-button">
+          View governance details <Icon name="arrow" />
+        </WorkspaceLink>
+      )}
     </Panel>
   );
 }
@@ -246,7 +221,7 @@ export function GuardianOverview({
         {!approvals && (
           <aside className="aside-panels">
             <NetworkCard />
-            <AuditCard />
+            <AuditCard linkToDetails />
           </aside>
         )}
       </div>
@@ -399,33 +374,18 @@ export function NetworkPage() {
                     <tr>
                       <th>Institution</th>
                       <th>Approval signer</th>
-                      <th>Audit key access</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {app.data.guardians.map((g, i) => (
-                      <tr key={g.institution_id || g.id || i}>
-                        <td>{g.name || g.institution_id || g.id}</td>
+                    {app.data.guardians.map((g) => (
+                      <tr key={g.id}>
+                        <td>{g.name}</td>
                         <td>
                           <Badge
                             status={
-                              g.status ||
-                              (g.approval_url ? "configured" : "unconfigured")
+                              g.approval_url ? "configured" : "unconfigured"
                             }
                           />
-                        </td>
-                        <td>
-                          <Badge
-                            status={
-                              g.historical_ready === true ? "ready" : "neutral"
-                            }
-                          >
-                            {g.historical_ready === true
-                              ? "History attested"
-                              : g.historical_ready === false
-                                ? "Not attested"
-                                : "Not reported"}
-                          </Badge>
                         </td>
                       </tr>
                     ))}
@@ -447,9 +407,7 @@ export function NetworkPage() {
                   {asset.registered ? "Registered" : "Not registered"}
                 </Badge>
                 <CopyField label="Native asset ID" value={asset.asset_id} />
-                <p className="small-note">
-                  {asset.issuer || "Sandbox issuer (legal entity undecided)"}
-                </p>
+                <p className="small-note">{asset.issuer}</p>
               </div>
             ))}
           </Panel>
@@ -478,15 +436,12 @@ function PolicyDomain({
         <h4>{title}</h4>
         <strong>{thresholdLabel(policy)}</strong>
       </div>
-      {policy?.detail && <p className="small-note">{policy.detail}</p>}
-      {policy?.members?.length ? (
+      {policy?.members.length ? (
         <details className="federation-members">
           <summary>{policy.members.length} recorded members</summary>
           <ul>
-            {policy.members.map((m, i) => (
-              <li key={i}>
-                {typeof m === "string" ? m : m.name || m.id || m.member}
-              </li>
+            {policy.members.map((m) => (
+              <li key={m}>{m}</li>
             ))}
           </ul>
         </details>
@@ -504,26 +459,21 @@ function MembershipCard({
   value,
   incoming = false,
 }: {
-  value?: FederationPolicy;
+  value?: FederationPolicy | null;
   incoming?: boolean;
 }) {
   return (
     <Panel
       title={
         value?.label ||
-        value?.id ||
         (incoming ? "Awaiting a prepared handover" : "Membership unavailable")
       }
-      subtitle={`${incoming ? "Incoming" : "Current"} membership${value?.epoch !== undefined ? ` · Epoch ${value.epoch}` : ""}`}
+      subtitle={`${incoming ? "Incoming" : "Current"} membership${value ? ` · Epoch ${value.epoch}` : ""}`}
       className={`federation-membership ${incoming ? "incoming" : ""}`}
-      actions={
-        value?.state || value?.status ? (
-          <Badge status={value.state || value.status} />
-        ) : undefined
-      }
     >
       {value ? (
         <>
+          {value.detail && <p className="small-note">{value.detail}</p>}
           <PolicyDomain
             policy={value.block_signing}
             title="Block signing"
@@ -556,80 +506,14 @@ function MembershipCard({
 }
 export function FederationPage() {
   const app = useApp();
-  const f = app.data.federation || {};
+  const f = app.data.federation;
+  if (!f) return <h1>Federation status is not available to this account</h1>;
   const r = f.rotation;
   const actions = [
-    ...new Set([...(f.allowed_actions || []), ...(r?.allowed_actions || [])]),
+    ...new Set([...f.allowed_actions, ...(r?.allowed_actions || [])]),
   ];
   const steps = r?.steps || [];
-  const migrations = r?.migrations || [];
-  const readiness = r?.readiness || [];
-  const outstanding = r?.outstanding_cases || [];
-  const count =
-    r?.approval_count ?? r?.guardian_approvals ?? r?.approvals?.length;
-  const required =
-    r?.approval_threshold ?? r?.guardian_threshold ?? r?.threshold;
-  const stage = r?.stage || r?.state || "not_started";
-  const genesis = f.genesis_hash || app.data.network.genesis_hash;
-  const tables = (rows: Stage[], cases = false) =>
-    rows.length ? (
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>{cases ? "Case" : "Authority / escrow"}</th>
-              <th>Test currency</th>
-              <th>{cases ? "Amount" : "Transaction"}</th>
-              <th>State</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((item, i) => (
-              <tr key={item.id || i}>
-                <td>
-                  {cases && item.id ? (
-                    <button
-                      className="link-button"
-                      onClick={() =>
-                        app.setDialog({ type: "operation", id: item.id! })
-                      }
-                    >
-                      {human(item.kind)} · {short(item.id)}
-                    </button>
-                  ) : (
-                    item.label || human(item.kind)
-                  )}
-                </td>
-                <td>{item.currency ? "Test" + item.currency : "—"}</td>
-                <td>
-                  {cases ? (
-                    money(item.amount_minor)
-                  ) : item.txid ? (
-                    <CopyField
-                      label="Migration transaction"
-                      value={item.txid}
-                    />
-                  ) : (
-                    "Not recorded"
-                  )}
-                </td>
-                <td>
-                  <Badge status={item.state || item.status} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    ) : (
-      <Empty
-        title={
-          cases
-            ? "No outstanding cases recorded"
-            : "No migration transactions recorded"
-        }
-      />
-    );
+  const stage = r?.stage || "not_started";
   return (
     <>
       <Heading
@@ -661,37 +545,37 @@ export function FederationPage() {
           <Icon name="network" />
         </span>
         <div>
-          <strong>{f.chain || app.data.network.chain}</strong>
+          <strong>{app.data.network.chain}</strong>
           <p>
             Membership changes retain this chain, its history and its asset IDs.
           </p>
         </div>
         <Badge status="neutral">Same-chain handover</Badge>
-        <CopyField label="Genesis block" value={genesis} />
+        <CopyField label="Genesis block" value={f.genesis_hash} />
       </div>
       <RotationNotice />
       <div className="metrics federation-metrics">
         <Metric
           title="Handover stage"
           value={human(stage)}
-          detail={`${steps.filter((s) => ["complete", "completed", "confirmed", "active"].includes(s.state || s.status || "")).length} of ${steps.length} stages complete`}
+          detail={`${steps.filter((s) => s.state === "complete").length} of ${steps.length} stages complete`}
           symbol="refresh"
         />
         <Metric
           title="Current audit recovery"
-          value={thresholdLabel(f.current?.audit)}
+          value={thresholdLabel(f.current.audit)}
           detail="Threshold from the recorded current membership"
           symbol="shield"
         />
         <Metric
           title="Institution authorizations"
-          value={count === undefined ? "—" : `${count} / ${required ?? "—"}`}
+          value={r ? `${r.approval_count} / ${r.approval_threshold}` : "—"}
           detail="Exact source-policy authorization"
           symbol="lock"
         />
         <Metric
           title="Migration transactions"
-          value={migrations.length || "—"}
+          value={r?.migrations.length || "—"}
           detail="Prepared and confirmed records"
           symbol="bank"
         />
@@ -715,17 +599,13 @@ export function FederationPage() {
               <ol className="rotation-steps">
                 {steps.map((s, i) => (
                   <li
-                    className={`rotation-step ${["complete", "completed", "confirmed", "active"].includes(s.state || s.status || "") ? "done" : ""}`}
-                    key={s.id || i}
+                    className={`rotation-step ${s.state === "complete" ? "done" : ""}`}
+                    key={s.id}
                   >
                     <span className="rotation-step-number">{i + 1}</span>
-                    <div>
-                      <div className="rotation-step-title">
-                        <strong>{s.label || human(s.id)}</strong>
-                        <Badge status={s.state || s.status} />
-                      </div>
-                      {s.detail && <p>{s.detail}</p>}
-                      <CopyField label="Elements transaction" value={s.txid} />
+                    <div className="rotation-step-title">
+                      <strong>{s.label}</strong>
+                      <Badge status={s.state} />
                     </div>
                   </li>
                 ))}
@@ -738,45 +618,38 @@ export function FederationPage() {
             title="Treasury migrations"
             subtitle="Reissuance authority and recorded redemption escrows on the existing chain."
           >
-            {tables(migrations)}
+            <MigrationTable rows={r?.migrations || []} />
           </Panel>
           <Panel
             title="Outstanding settlement cases"
             subtitle="Continuity must be preserved through the handover."
           >
-            {tables(outstanding, true)}
+            <CaseTable rows={r?.outstanding_cases || []} />
           </Panel>
         </section>
         <aside className="aside-panels">
           <Panel title="Handover authorization" className="side-card">
             <div className="kv-list">
               <KV label="Source institution approvals">
-                {count === undefined
-                  ? "Not reported"
-                  : `${count} / ${required ?? "—"}`}
+                {r ? `${r.approval_count} / ${r.approval_threshold}` : "—"}
               </KV>
               <KV label="Current stage">{human(stage)}</KV>
-              {r?.activation_height !== undefined && (
-                <KV label="Planned activation height">{r.activation_height}</KV>
-              )}
             </div>
             {r?.error && (
               <div className="inline-warning" role="alert">
                 {r.error}
               </div>
             )}
-            {r?.hold_reason && (
-              <div className="inline-warning">{r.hold_reason}</div>
-            )}
             <div className="rotation-actions">
-              {actions.some((a) =>
-                ["guardian-approve", "guardian_approve", "approve"].includes(a),
-              ) && (
+              {actions.includes("guardian-approve") && (
                 <Button
                   className="primary"
                   data-testid="rotation-approve"
                   onClick={() =>
-                    app.setDialog({ type: "rotation", action: "approve" })
+                    app.setDialog({
+                      type: "rotation",
+                      action: "guardian-approve",
+                    })
                   }
                 >
                   Review institution authorization
@@ -828,27 +701,101 @@ export function FederationPage() {
             )}
           </Panel>
           <Panel title="Readiness evidence" className="side-card">
-            {readiness.length ? (
+            {r?.readiness.length ? (
               <ul className="rotation-readiness">
-                {readiness.map((s, i) => (
-                  <li key={s.id || i}>
+                {r.readiness.map((s) => (
+                  <li key={s.id}>
                     <div>
-                      <strong>{s.label || s.id}</strong>
-                      {s.detail && <p>{s.detail}</p>}
+                      <strong>{s.label}</strong>
+                      <p>{s.detail}</p>
                     </div>
-                    <Badge status={s.state || s.status} />
+                    <Badge status={s.state} />
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="small-note">
-                No readiness attestations are reported. An incoming roster alone
-                does not establish possession of historical recovery shares.
+                No handover is in progress. Readiness evidence is recorded when
+                a handover is prepared.
               </p>
             )}
           </Panel>
         </aside>
       </div>
     </>
+  );
+}
+function MigrationTable({ rows }: { rows: Migration[] }) {
+  if (!rows.length) return <Empty title="No migration transactions recorded" />;
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Authority / escrow</th>
+            <th>Test currency</th>
+            <th>Transaction</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((item) => (
+            <tr key={item.migration_id}>
+              <td>{human(item.kind)}</td>
+              <td>{item.currency ? "Test" + item.currency : "—"}</td>
+              <td>
+                {item.txid ? (
+                  <CopyField label="Migration transaction" value={item.txid} />
+                ) : (
+                  "Not recorded"
+                )}
+              </td>
+              <td>
+                <Badge status={item.state} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function CaseTable({ rows }: { rows: OutstandingCase[] }) {
+  const app = useApp();
+  if (!rows.length) return <Empty title="No outstanding cases recorded" />;
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>Test currency</th>
+            <th>Amount</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((item) => (
+            <tr key={item.id}>
+              <td>
+                <button
+                  className="link-button"
+                  onClick={() =>
+                    app.setDialog({ type: "operation", id: item.id })
+                  }
+                >
+                  {human(item.kind)} · {short(item.id)}
+                </button>
+              </td>
+              <td>Test{item.currency}</td>
+              <td>{money(item.amount_minor)}</td>
+              <td>
+                <Badge status={item.state} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

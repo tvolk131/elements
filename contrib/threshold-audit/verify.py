@@ -197,8 +197,7 @@ def runtime_snapshot(runtime, minimum_identity):
             continue
         role = (b'settlement.treasury' in arguments or b'settlement.sandbox' in arguments
                 or any(argument.endswith(b'/guardian_service.py') for argument in arguments)
-                or any(argument.endswith(b'/elementsd') for argument in arguments)
-                or os.fsencode(ROOT / 'contrib/threshold-audit/settlement/ui/scripts/serve.mjs') in arguments)
+                or any(argument.endswith(b'/elementsd') for argument in arguments))
         paths = [argument.decode(errors='replace').split('=', 1)[-1] for argument in arguments]
         if role and any(path.startswith(root) for path in paths):
             found[pid] = identity

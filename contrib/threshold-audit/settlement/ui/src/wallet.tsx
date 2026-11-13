@@ -8,6 +8,8 @@ import {
   Button,
   CopyField,
   Empty,
+  ErrorNote,
+  Field,
   Heading,
   Icon,
   Panel,
@@ -26,7 +28,7 @@ import {
   short,
 } from "./domain";
 import { NetworkCard, RotationNotice } from "./guardian";
-import type { Operation } from "./types";
+import type { Currency, Operation } from "./types";
 
 export function AccountContext() {
   const { data, account, setAccount, can } = useApp();
@@ -43,7 +45,6 @@ export function AccountContext() {
           {data.accounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
-              {can("view_bank") ? ` · ${a.tenant}` : ""}
             </option>
           ))}
         </select>
@@ -87,6 +88,7 @@ export function WalletPage({
       title: "Add funds from bank",
       direction: "Bank → chain · Peg in",
       description: "Create a funding request for this wallet.",
+      action: "Create funding request",
       icon: "download",
     },
     {
@@ -94,6 +96,7 @@ export function WalletPage({
       title: "Withdraw to bank",
       direction: "Chain → bank · Peg out",
       description: "Request a payout to a configured bank account.",
+      action: "Request withdrawal",
       icon: "upload",
     },
     {
@@ -101,6 +104,7 @@ export function WalletPage({
       title: "Send on-chain",
       direction: "Wallet → wallet",
       description: "Transfer tokens between approved accounts.",
+      action: "Start transfer",
       icon: "send",
     },
     {
@@ -108,6 +112,7 @@ export function WalletPage({
       title: "Receive on-chain",
       direction: "Wallet → this account",
       description: "Share a bank reference or confidential receiving address.",
+      action: "Show receiving details",
       icon: "wallet",
     },
   ] as const;
@@ -131,6 +136,32 @@ export function WalletPage({
       </Heading>
       <AccountContext />
       <RotationNotice />
+      {attention.length > 0 && (
+        <section className="wallet-attention">
+          <h2>
+            Needs your attention
+            <span className="count">{attention.length}</span>
+          </h2>
+          {attention.map((op) => (
+            <button
+              key={op.id}
+              className="wallet-attention-item"
+              data-id={op.id}
+              onClick={() => app.setDialog({ type: "operation", id: op.id })}
+            >
+              <span>
+                <strong>
+                  {human(op.kind)} · {money(op.amount_minor)} Test{op.currency}
+                </strong>
+                <small>{nextStep(op)}</small>
+              </span>
+              <span>
+                Review <Icon name="chevron" />
+              </span>
+            </button>
+          ))}
+        </section>
+      )}
       {home && (
         <>
           <Balances />
@@ -167,54 +198,17 @@ export function WalletPage({
                   <span className="wallet-task-description">
                     {t.description}
                   </span>
-                  {t.kind !== "receive" && !app.can(`create_${t.kind}`) ? (
-                    <span className="wallet-task-permission">
-                      View steps and who can request
-                    </span>
-                  ) : (
-                    <span className="wallet-task-link">
-                      {
-                        {
-                          deposit: "Create funding request",
-                          redemption: "Request withdrawal",
-                          transfer: "Start transfer",
-                          receive: "Show receiving details",
-                        }[t.kind]
-                      }{" "}
-                      <Icon name="arrow" />
-                    </span>
-                  )}
+                  <span className="wallet-task-link">
+                    {t.kind !== "receive" && !app.can(`create_${t.kind}`)
+                      ? "See who can request"
+                      : t.action}
+                    <Icon name="arrow" />
+                  </span>
                 </button>
               ))}
             </div>
           </section>
         </>
-      )}
-      {attention.length > 0 && (
-        <section className="wallet-attention">
-          <h2>
-            Needs your attention{" "}
-            <span className="count">{attention.length}</span>
-          </h2>
-          {attention.map((op) => (
-            <button
-              key={op.id}
-              className="wallet-attention-item"
-              data-id={op.id}
-              onClick={() => app.setDialog({ type: "operation", id: op.id })}
-            >
-              <span>
-                <strong>
-                  {human(op.kind)} · {money(op.amount_minor)} Test{op.currency}
-                </strong>
-                <small>{nextStep(op)}</small>
-              </span>
-              <span>
-                Review <Icon name="chevron" />
-              </span>
-            </button>
-          ))}
-        </section>
       )}
       {banking && (
         <div className="wallet-bank-guide">
@@ -430,7 +424,8 @@ export function OperationPanel({
   }
   return (
     <Panel
-      title={`${title} ${operations.length}`}
+      title={title}
+      count={operations.length}
       subtitle={
         app.guardian
           ? "Approval binds the exact request, destination and evidence."
@@ -730,10 +725,10 @@ export function ActivityPage() {
                 csv([
                   ["Event", "Actor", "Request ID", "Recorded UTC"],
                   ...rows.map((e) => [
-                    e.description || e.action || e.event,
-                    e.actor_name || e.actor,
+                    human(e.event),
+                    e.actor,
                     e.operation_id,
-                    e.created_at || e.timestamp,
+                    new Date(e.created_at * 1000).toISOString(),
                   ]),
                 ]),
                 "concord-activity.csv",
@@ -757,10 +752,10 @@ export function ActivityPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((e, i) => (
-                  <tr key={e.id ?? i}>
-                    <td>{e.description || human(e.action || e.event)}</td>
-                    <td>{e.actor_name || e.actor || "System"}</td>
+                {rows.map((e) => (
+                  <tr key={e.id}>
+                    <td>{human(e.event)}</td>
+                    <td>{e.actor}</td>
                     <td>
                       {e.operation_id ? (
                         <button
@@ -778,7 +773,7 @@ export function ActivityPage() {
                         "—"
                       )}
                     </td>
-                    <td>{date(e.created_at || e.timestamp, true)}</td>
+                    <td>{date(e.created_at, true)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -794,7 +789,13 @@ export function ActivityPage() {
 export function Receive() {
   const app = useApp();
   const account = app.data.accounts.find((a) => a.id === app.account);
-  const [currency, setCurrency] = useState("EUR");
+  const [chosen, setCurrency] = useState<Currency>();
+  // Default to the account's first currency; a USD-only account must not
+  // request an EUR address.
+  const currency =
+    chosen && account?.currencies.includes(chosen)
+      ? chosen
+      : account?.currencies[0];
   const address = useMutation({
     mutationFn: () =>
       api<{ address: string; reference: string }>("/api/receive-address", {
@@ -802,7 +803,8 @@ export function Receive() {
         currency,
       }),
   });
-  if (!account) return <Empty title="No receiving account configured" />;
+  if (!account || !currency)
+    return <Empty title="No receiving account configured" />;
   return (
     <>
       <div className="receive-account">
@@ -832,13 +834,12 @@ export function Receive() {
           You can also share a confidential address for this chain. The address
           itself does not identify or verify you to the sender.
         </p>
-        <label>
-          Asset{" "}
+        <Field label="Asset">
           <select
             aria-label="Receive currency"
             value={currency}
             onChange={(e) => {
-              setCurrency(e.target.value);
+              setCurrency(e.target.value as Currency);
               address.reset();
             }}
           >
@@ -848,7 +849,7 @@ export function Receive() {
               </option>
             ))}
           </select>
-        </label>
+        </Field>
         <Button
           disabled={address.isPending}
           onClick={() => address.mutate()}
@@ -864,7 +865,7 @@ export function Receive() {
             value={address.data.address}
           />
         )}
-        {address.error && <p role="alert">{address.error.message}</p>}
+        <ErrorNote error={address.error} />
         <p>
           Only supported test assets with whole-cent amounts are credited by
           this demo. Bank funding is a separate action:{" "}

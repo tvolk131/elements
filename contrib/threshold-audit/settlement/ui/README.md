@@ -1,9 +1,10 @@
 # Concord web application
 
-React and TypeScript, TanStack Start/Router, and TanStack Query power the wallet
-and guardian interfaces. Vite builds the browser and Node server bundles. The
-Python settlement engine, Elements daemon, and independent institution/guardian
-services retain transaction execution and key custody.
+React and TypeScript, TanStack Router, and TanStack Query power the wallet and
+guardian interfaces. Vite builds a static single-page app into `dist/`. The
+Python settlement server serves those files and the `/api` endpoints from one
+loopback origin. Python, the Elements daemon, and the independent
+institution/guardian services keep transaction execution and key custody.
 
 ## Build and run
 
@@ -16,42 +17,33 @@ npm test
 npm run build
 ```
 
-From the repository root, start the selected existing demo normally:
+Then start the selected demo from the repository root:
 
 ```sh
-ELEMENTS_UI_NODE=/absolute/path/to/node python3 contrib/threshold-audit/manage.py start
+python3 contrib/threshold-audit/manage.py start
 ```
 
-`ELEMENTS_UI_NODE` is optional when Node is on PATH. The launcher remembers its
-resolved executable in the runtime's private `start-web.json`; later resumes can
-use the manager without the environment variable. Build artifacts and installed
-packages are ignored by Git and must be recreated in a fresh checkout.
+The server reads `dist/` on each request, so a rebuild takes effect on the next
+page load without restarting the demo. Build artifacts and installed packages
+are ignored by Git and must be recreated in a fresh checkout.
 
-`manage.py` owns the Node web process along with the settlement engine and its
-other services. The launcher snapshots each build into ignored `.releases/<digest>` directories,
-so rebuilding cannot replace assets used by a running server. Stop/start after
-rebuilding to switch to the new release; stop before changing installed
-dependency versions. The existing
-`/wallet` and `/guardian` entry points and Rayfish URLs are preserved. Navigation
-now uses paths such as `/wallet/payments` and `/guardian/federation`; old hash
-bookmarks are redirected in the browser. Deep links are served by Start.
+The `/wallet` and `/guardian` entry points and Rayfish URLs are unchanged.
+Navigation uses paths such as `/wallet/payments` and `/guardian/federation`;
+the server returns the app for those paths and old hash bookmarks are
+redirected in the browser.
 
 ## Boundaries
 
-- Start's server route `src/routes/api.$.ts` exposes an explicit set of existing
-  settlement endpoints. Its server-only adapter forwards to one configured
-  loopback engine, preserving session cookies and CSRF. Authenticated sessions,
-  role checks, approval policy and durable financial state remain in Python.
-- The engine listens on a separate loopback port and requires a random gateway
-  token. The private engine serves no HTML. The token and engine configuration
-  are never included in the browser bundle.
-- The Node adapter binds only 127.0.0.1, rejects unrecognized Host/Origin and
-  cross-site requests, bounds request bodies, and issues a per-response CSP nonce
-  for Start's bootstrap scripts. The existing mesh gateway remains the private
-  Rayfish entry point and keeps independent institution origins separate.
+- The settlement server binds only loopback, rejects unrecognized Host/Origin
+  and cross-site requests, bounds request bodies, and serves only `index.html`
+  for app routes and files under `dist/assets/`. The CSP allows only same-origin
+  scripts. The mesh gateway remains the private Rayfish entry point and keeps
+  independent institution origins separate.
+- Authenticated sessions use an HttpOnly, SameSite=Strict cookie plus a CSRF
+  header on every POST. Role checks, approval policy and durable financial
+  state stay in Python.
 - Query caches are kept in browser memory, scoped by identity, and cleared on
-  logout or session expiry. Authenticated data is fetched in the browser and is
-  not embedded into Start's initial HTML. Financial mutations have no automatic
+  logout or session expiry. Financial mutations have no automatic
   retry or optimistic balance updates.
 - Institution approval passphrases stay in the independent institution windows.
   The callback checks the popup, origin, request ID and institution identity
@@ -75,23 +67,20 @@ custody system.
 ## Tests
 
 `npm test` covers user/session transitions, account and currency filtering,
-request payloads, recipient key/password isolation, native-to-browser recovery, CSRF, cache isolation, CSV escaping,
-and the Node Host/Origin/CSP boundary. The Python suite starts a real built Start
-server against a disposable engine to check cookies, CSRF, logout, deep links,
-CSP nonces, and private-engine isolation:
+request payloads, stale address and beneficiary checks, recipient key/password
+isolation, native-to-browser recovery, Python-compatible canonical JSON, CSRF,
+cache isolation and CSV escaping. The Python web test serves a temporary build
+to check deep links, asset confinement, CSP, cookies, CSRF and logout:
 
 ```sh
-ELEMENTS_UI_NODE=/absolute/path/to/node PYTHONPATH=contrib/threshold-audit \
-  python3 -m unittest settlement.test_web
+cd contrib/threshold-audit && python3 -m unittest settlement.test_web
 ```
 
-No test issues money or contacts a real bank. Running the built web server by
-itself requires a launcher-generated private configuration; it is normally
-started through `manage.py`, not as an extra development server.
+No test issues money or contacts a real bank.
 
 ## Visual review coverage
 
-Inspect each changed component at reading size, including the sidebar/footer,
+Inspect each changed component at reading size, including the sidebar,
 wrapping headings, icons, and supporting text. Whole-page screenshots alone do
 not establish that these details were checked. Check wallet and guardian variants
 at 1440, 1280, and 1024px widths, a short desktop window, and the mobile breakpoint.

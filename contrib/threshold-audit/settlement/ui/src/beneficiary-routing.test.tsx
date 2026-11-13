@@ -123,3 +123,24 @@ it("keeps raw-address identity unverified after chain address validation", async
   );
   expect(screen.getByText("Recipient identity not verified.")).toBeVisible();
 });
+it("ignores an address check that finishes after the address was edited", async () => {
+  const first = "el1fixture" + "a".repeat(80);
+  let finish: (value: { address: string }) => void = () => {};
+  vi.mocked(api).mockImplementation(
+    () => new Promise((resolve) => (finish = resolve as typeof finish)),
+  );
+  show();
+  await userEvent.selectOptions(
+    screen.getByTestId("destination-type"),
+    "address",
+  );
+  await userEvent.type(screen.getByTestId("destination-address"), first);
+  await userEvent.click(screen.getByTestId("validate-destination"));
+  await userEvent.type(screen.getByTestId("destination-address"), "b");
+  finish({ address: first });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(changed.mock.calls.some(([v]) => v?.address)).toBe(false);
+  expect(
+    screen.queryByText("Recipient identity not verified."),
+  ).not.toBeInTheDocument();
+});

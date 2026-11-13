@@ -1,20 +1,14 @@
-"""Exercise the built Start server against an isolated private Python engine."""
+"""Exercise the settlement server's static app and API boundary together."""
 
 import http.client
 import json
-import os
 from pathlib import Path
-import re
-import shutil
-import socket
 import tempfile
 import threading
 import unittest
 
-from .runtime import OwnedProcesses
 from .server import create_server
 from .store import Problem
-from .web import UI, launch_web
 
 
 class EngineFixture:
@@ -41,53 +35,53 @@ class EngineFixture:
         self.active = False
 
 
-@unittest.skipUnless((os.environ.get('ELEMENTS_UI_NODE') or shutil.which('node'))
-                     and (UI / 'dist/server/server.js').exists(), 'build Start and provide Node.js')
-class StartWebTests(unittest.TestCase):
+class WebTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix='elements-start-test-')
-        cls.directory = Path(cls.temporary.name)
-        cls.processes = OwnedProcesses(cls.directory)
-        cls.token = 'ab' * 32
-        cls.engine = create_server(EngineFixture(), gateway_token=cls.token)
-        cls.serving = threading.Thread(target=cls.engine.serve_forever, daemon=True)
+        cls.temporary = tempfile.TemporaryDirectory(prefix='elements-web-test-')
+        root = Path(cls.temporary.name)
+        (root / 'dist/assets').mkdir(parents=True)
+        (root / 'dist/index.html').write_text('<!doctype html><div id="app"></div>')
+        (root / 'dist/assets/app.js').write_text('console.log(1)')
+        (root / 'secret.txt').write_text('outside the build')
+        cls.server = create_server(EngineFixture(), static_dir=root / 'dist')
+        cls.serving = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.serving.start()
-        with socket.socket() as listener:
-            listener.bind(('127.0.0.1', 0)); cls.port = listener.getsockname()[1]
-        try:
-            cls.process, cls.url = launch_web(cls.directory, cls.processes,
-                f'http://127.0.0.1:{cls.engine.server_port}/', cls.token, cls.port)
-        except BaseException:
-            cls.processes.close(); cls.engine.shutdown(); cls.engine.server_close()
-            raise
 
     @classmethod
     def tearDownClass(cls):
-        cls.processes.close()
-        cls.engine.shutdown(); cls.engine.server_close(); cls.serving.join(timeout=5)
+        cls.server.shutdown(); cls.server.server_close(); cls.serving.join(timeout=5)
         cls.temporary.cleanup()
 
-    def request(self, path, body=None, headers=None, *, private=False):
-        conn = http.client.HTTPConnection('127.0.0.1', self.engine.server_port if private else self.port, timeout=15)
+    def request(self, path, body=None, headers=None):
+        conn = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=15)
         values = dict(headers or {})
         if body is not None:
             values['Content-Type'] = 'application/json'
         conn.request('GET' if body is None else 'POST', path, None if body is None else json.dumps(body), values)
-        response = conn.getresponse(); result = (response.status, {name.lower(): value for name, value in response.getheaders()}, response.read())
-        conn.close(); return result
+        response = conn.getresponse()
+        result = (response.status, {name.lower(): value for name, value in response.getheaders()}, response.read())
+        conn.close()
+        return result
 
-    def test_pages_and_deep_links_use_start_with_nonce_csp(self):
-        for path in ['/wallet', '/wallet/payments', '/guardian', '/guardian/federation']:
+    def test_app_routes_and_deep_links_serve_the_app(self):
+        for path in ['/', '/wallet', '/wallet/', '/wallet/payments', '/guardian', '/guardian/federation', '/wallet?ref=mail']:
             status, headers, body = self.request(path)
-            self.assertEqual(status, 200, body[:300])
+            self.assertEqual(status, 200, path)
             self.assertIn('text/html', headers['content-type'])
-            policy = headers['content-security-policy']
-            nonce = re.search("'nonce-([^']+)'", policy)[1]
-            self.assertIn(('nonce="' + nonce + '"').encode(), body)
+            self.assertIn(b'id="app"', body)
+            self.assertIn("script-src 'self'", headers['content-security-policy'])
             self.assertEqual(headers['cache-control'], 'no-store')
 
-    def test_cookie_csrf_and_logout_are_preserved_through_start(self):
+    def test_assets_are_confined_to_the_build(self):
+        status, headers, _ = self.request('/assets/app.js')
+        self.assertEqual(status, 200)
+        self.assertIn('text/javascript', headers['content-type'])
+        for path in ['/assets/../secret.txt', '/assets/../../secret.txt', '/assets/missing.js',
+                     '/index.html', '/secret.txt', '/wallet/../secret.txt', '/other']:
+            self.assertEqual(self.request(path)[0], 404, path)
+
+    def test_cookie_csrf_and_logout(self):
         status, headers, body = self.request('/api/login', {'username': 'maker', 'password': 'fixture-password'})
         self.assertEqual(status, 200)
         session = json.loads(body)
@@ -99,15 +93,10 @@ class StartWebTests(unittest.TestCase):
         self.assertEqual(self.request('/api/logout', {}, {'Cookie': cookie, 'X-CSRF-Token': session['csrf']})[0], 200)
         self.assertEqual(self.request('/api/dashboard', headers={'Cookie': cookie})[0], 401)
 
-    def test_engine_is_private_and_does_not_serve_pages(self):
-        self.assertEqual(self.request('/api/session', private=True)[0], 403)
-        self.assertEqual(self.request('/api/session', headers={'X-Concord-Engine-Token': self.token}, private=True)[0], 200)
-        self.assertEqual(self.request('/wallet', headers={'X-Concord-Engine-Token': self.token}, private=True)[0], 404)
-
-    def test_web_boundary_rejects_cross_origin_and_private_rpc(self):
+    def test_rejects_cross_origin_unknown_host_and_queries(self):
         self.assertEqual(self.request('/api/session', headers={'Origin': 'https://attacker.invalid'})[0], 403)
         self.assertEqual(self.request('/api/session', headers={'Host': 'attacker.invalid'})[0], 403)
-        self.assertEqual(self.request('/api/sign', {})[0], 404)
+        self.assertEqual(self.request('/wallet', headers={'Host': 'attacker.invalid'})[0], 403)
         self.assertEqual(self.request('/api/session?unexpected=1')[0], 400)
 
 

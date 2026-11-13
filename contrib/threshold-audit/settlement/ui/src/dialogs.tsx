@@ -13,6 +13,8 @@ import {
   Modal,
 } from "./components";
 import {
+  bankStatus,
+  chainStatus,
   date,
   download,
   eligibleDestinations,
@@ -21,6 +23,7 @@ import {
   nextStep,
   viewerNextAction,
   safeFilename,
+  settlementHold,
 } from "./domain";
 import { Quorum, Receive } from "./wallet";
 import { ApprovalProgress } from "./approval-progress";
@@ -30,6 +33,74 @@ import {
 } from "./beneficiary-routing";
 import type { Currency, Kind, Operation } from "./types";
 
+const REVIEW: Record<
+  string,
+  { open: string; title: string; context: string; confirm: string }
+> = {
+  approve: {
+    open: "Review and approve",
+    title: "Approve settlement request",
+    context:
+      "The server checks the current state, exact authorization and permitted next stage. A user approval does not establish an institution quorum or bank payout.",
+    confirm: "Confirm approval",
+  },
+  "guardian-approve": {
+    open: "Review institution approval",
+    title: "Institution approval",
+    context: "",
+    confirm: "Open institution approval",
+  },
+  execute: {
+    open: "Execute next stage",
+    title: "Execute next settlement stage",
+    context:
+      "The server checks the current state, exact authorization and permitted next stage before executing.",
+    confirm: "Execute next stage",
+  },
+  cancel: {
+    open: "Request escrow return",
+    title: "Request escrow return",
+    context:
+      "Only a definitive failed bank payout can create a new return request. Separate approval and institution quorum are required.",
+    confirm: "Create escrow-return request",
+  },
+  reject: {
+    open: "Reject",
+    title: "Reject settlement request",
+    context:
+      "Rejection records your identity and reason. The server checks the current state.",
+    confirm: "Confirm rejection",
+  },
+};
+const ROTATION: Record<
+  string,
+  { title: string; context: string; confirm: string }
+> = {
+  prepare: {
+    title: "Prepare the next federation membership",
+    context:
+      "The coordinator prepares the incoming membership, readiness evidence and authority inventory. New requests may be held. Institutions authorize the exact manifest separately.",
+    confirm: "Prepare handover",
+  },
+  "guardian-approve": {
+    title: "Review federation authorization",
+    context:
+      "Review the complete source and target policies, audit readiness binding and migration templates in your institution’s separate window.",
+    confirm: "Open institution approval",
+  },
+  advance: {
+    title: "Advance the federation handover",
+    context:
+      "The coordinator performs only the next permitted durable stage. Retries use the recorded handover and transaction bytes.",
+    confirm: "Advance handover",
+  },
+  retry: {
+    title: "Retry the recorded handover stage",
+    context:
+      "The coordinator performs only the next permitted durable stage. Retries use the recorded handover and transaction bytes.",
+    confirm: "Retry recorded stage",
+  },
+};
 function Footer({ children }: { children: ReactNode }) {
   return <div className="dialog-footer">{children}</div>;
 }
@@ -113,10 +184,7 @@ export function Dialogs() {
           </Footer>
         </Modal>
       );
-    const hold =
-      app.data.federation?.hold_reason ||
-      app.data.federation?.rotation?.hold_reason ||
-      app.data.network.settlement_hold;
+    const hold = settlementHold(app.data);
     if (hold)
       return (
         <Modal title="Requests are temporarily paused" close={close}>
@@ -256,7 +324,7 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
             >
               {app.data.accounts.map((a) => (
                 <option value={a.id} key={a.id}>
-                  {a.name} · {a.tenant}
+                  {a.name}
                 </option>
               ))}
             </select>
@@ -399,39 +467,10 @@ function OperationDetail({ id }: { id: string }) {
         ["Elements transaction ID", op.txid],
       ]
     : [];
-  const chain =
-    op?.chain_status ||
-    (op?.txid
-      ? [
-          "settled",
-          "escrow_confirmed",
-          "bank_pending",
-          "bank_unknown",
-          "payment_failed",
-          "refund_requested",
-          "cancelled",
-        ].includes(op.state)
-        ? "Confirmed transaction"
-        : "Awaiting chain confirmation"
-      : "Not submitted");
-  const bank =
-    op?.bank_status ||
-    (op?.kind === "transfer"
-      ? "Not applicable"
-      : op?.state === "awaiting_bank"
-        ? "Awaiting bank credit"
-        : op?.state === "bank_unknown"
-          ? "Unknown · reconcile"
-          : op?.state === "bank_pending"
-            ? "Payout pending"
-            : op?.state === "payment_failed"
-              ? "Confirmed not paid"
-              : op?.state === "cancelled"
-                ? "Cancelled · escrow returned"
-                : op?.state === "settled"
-                  ? "Bank evidence recorded"
-                  : "Not confirmed");
-  const history = op?.history || op?.events || [];
+  // Evidence entries are newest first; show the timeline oldest first.
+  const history = app.data.activity
+    .filter((e) => e.operation_id === id)
+    .reverse();
   return (
     <Modal
       title="Settlement request"
@@ -485,11 +524,11 @@ function OperationDetail({ id }: { id: string }) {
             <div className="status-pair">
               <div className="status-box">
                 <span>ELEMENTS CHAIN</span>
-                <strong>{human(chain)}</strong>
+                <strong>{chainStatus(op)}</strong>
               </div>
               <div className="status-box">
                 <span>SIMULATED BANK</span>
-                <strong>{human(bank)}</strong>
+                <strong>{bankStatus(op)}</strong>
               </div>
             </div>
             {op.error && (
@@ -574,13 +613,11 @@ function OperationDetail({ id }: { id: string }) {
               <div className="detail-section">
                 <h3>Request timeline</h3>
                 <ol className="detail-timeline">
-                  {history.map((e, i) => (
-                    <li key={i}>
-                      <strong>
-                        {e.description || human(e.action || e.event || e.state)}
-                      </strong>
+                  {history.map((e) => (
+                    <li key={e.id}>
+                      <strong>{human(e.event)}</strong>
                       <span>
-                        {e.actor} · {date(e.created_at || e.timestamp, true)}
+                        {e.actor} · {date(e.created_at, true)}
                       </span>
                     </li>
                   ))}
@@ -628,15 +665,8 @@ function OperationDetail({ id }: { id: string }) {
             Receipt
           </Button>
           {actions
-            .filter((a) =>
-              [
-                "approve",
-                "guardian-approve",
-                "execute",
-                "reject",
-                "cancel",
-              ].includes(a),
-            )
+            .filter((action) => action in REVIEW)
+            // While approvals are open, ApprovalProgress shows these actions.
             .filter(
               (action) =>
                 !["awaiting_approval", "ready"].includes(op.state) ||
@@ -655,19 +685,11 @@ function OperationDetail({ id }: { id: string }) {
                   app.setDialog({ type: "review", operation: op, action })
                 }
               >
-                {action === "approve"
-                  ? "Review and approve"
-                  : action === "guardian-approve"
-                    ? "Review institution approval"
-                    : action === "execute"
-                      ? app.guardian
-                        ? "Execute next stage"
-                        : op.state === "ready"
-                          ? "Submit to chain"
-                          : "Continue request"
-                      : action === "cancel"
-                        ? "Request escrow return"
-                        : "Reject"}
+                {action === "execute" && !app.guardian
+                  ? op.state === "ready"
+                    ? "Submit to chain"
+                    : "Continue request"
+                  : REVIEW[action].open}
               </Button>
             ))}
         </Footer>
@@ -686,22 +708,14 @@ function ReviewForm({
   const [reason, setReason] = useState("");
   const guardian = action === "guardian-approve";
   const reject = action === "reject";
-  const title = reject
-    ? "Reject settlement request"
-    : guardian
-      ? "Institution approval"
-      : action === "execute"
-        ? "Execute next settlement stage"
-        : action === "cancel"
-          ? "Request escrow return"
-          : "Approve settlement request";
+  const copy = REVIEW[action];
   const mutation = useMutation({
     mutationFn: async () => {
       if (guardian) return app.openApproval(op.id, false, op);
-      return api(`/api/operations/${encodeURIComponent(op.id)}/${action}`, {
-        reason,
-        note: reason,
-      });
+      return api(
+        `/api/operations/${encodeURIComponent(op.id)}/${action}`,
+        reject ? { reason } : {},
+      );
     },
     onSuccess: async () => {
       if (!guardian) {
@@ -717,7 +731,7 @@ function ReviewForm({
   });
   return (
     <Modal
-      title={title}
+      title={copy.title}
       description="Review the request exactly as it is bound for authorization."
       close={() => app.setDialog(null)}
     >
@@ -731,11 +745,7 @@ function ReviewForm({
           <div className="form-context">
             {guardian
               ? `Continue in ${app.user.institution_id || "your institution"}’s independent approval window. This console never receives the institution passphrase or signing key.`
-              : reject
-                ? "Rejection records your identity and reason. The server checks the current state."
-                : action === "cancel"
-                  ? "Only a definitive failed bank payout can create a new return request. Separate approval and institution quorum are required."
-                  : "The server checks the current state, exact authorization and permitted next stage. A user approval does not establish an institution quorum or bank payout."}
+              : copy.context}
           </div>
           <div className="confirmation-summary">
             <span>{human(op.kind)}</span>
@@ -766,19 +776,19 @@ function ReviewForm({
             label="Transaction template hash"
             value={op.transaction_template_hash}
           />
-          <Field
-            label={reject ? "Reason for rejection" : "Review note (optional)"}
-          >
-            <textarea
-              name="reason"
-              aria-label={reject ? "Reason for rejection" : "Review note"}
-              required={reject}
-              maxLength={500}
-              rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            />
-          </Field>
+          {reject && (
+            <Field label="Reason for rejection">
+              <textarea
+                name="reason"
+                aria-label="Reason for rejection"
+                required
+                maxLength={500}
+                rows={3}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </Field>
+          )}
           <label className="rotation-review-confirm">
             <input type="checkbox" required data-testid="confirm-review" />
             <span>
@@ -796,17 +806,7 @@ function ReviewForm({
             data-testid="confirm-operation"
             disabled={mutation.isPending}
           >
-            {mutation.isPending
-              ? "Submitting…"
-              : reject
-                ? "Confirm rejection"
-                : guardian
-                  ? "Open institution approval"
-                  : action === "execute"
-                    ? "Execute next stage"
-                    : action === "cancel"
-                      ? "Create escrow-return request"
-                      : "Confirm approval"}
+            {mutation.isPending ? "Submitting…" : copy.confirm}
           </Button>
         </Footer>
       </form>
@@ -984,26 +984,21 @@ function BankForm({ operation }: { operation?: Operation }) {
 }
 function RotationForm({ action }: { action: string }) {
   const app = useApp();
-  const f = app.data.federation || {};
-  const r = f.rotation;
+  const f = app.data.federation;
+  const r = f?.rotation;
   const prepare = action === "prepare";
-  const approve = action === "approve";
-  const allowed = [...(f.allowed_actions || []), ...(r?.allowed_actions || [])];
-  const permitted = approve
-    ? allowed.some((a) =>
-        ["approve", "guardian-approve", "guardian_approve"].includes(a),
-      )
-    : allowed.includes(action);
+  const approve = action === "guardian-approve";
+  const copy = ROTATION[action];
+  const permitted = [
+    ...(f?.allowed_actions || []),
+    ...(r?.allowed_actions || []),
+  ].includes(action);
   const mutation = useMutation({
     mutationFn: async () => {
       if (!permitted || (!prepare && !r))
         throw new Error("This handover action is not currently available.");
-      if (approve)
-        return app.openApproval(r!.id, true, {
-          amount_minor: 0,
-          currency: "",
-          manifest_hash: r!.manifest_hash || r!.plan_hash || r!.payload_hash,
-        });
+      // The institution window shows the full manifest it is asked to sign.
+      if (approve) return app.openApproval(r!.id, true);
       return api(
         prepare
           ? "/api/federation/prepare"
@@ -1023,15 +1018,7 @@ function RotationForm({ action }: { action: string }) {
   });
   return (
     <Modal
-      title={
-        prepare
-          ? "Prepare the next federation membership"
-          : approve
-            ? "Review federation authorization"
-            : action === "retry"
-              ? "Retry the recorded handover stage"
-              : "Advance the federation handover"
-      }
+      title={copy.title}
       description="Membership changes continue on the existing Elements chain."
       close={() => app.setDialog(null)}
     >
@@ -1042,29 +1029,17 @@ function RotationForm({ action }: { action: string }) {
         }}
       >
         <div className="dialog-body">
-          <div className="form-context">
-            {prepare
-              ? "The coordinator prepares the incoming membership, readiness evidence and authority inventory. New requests may be held. Institutions authorize the exact manifest separately."
-              : approve
-                ? "Review the complete source and target policies, audit readiness binding and migration templates in your institution’s separate window."
-                : "The coordinator performs only the next permitted durable stage. Retries use the recorded handover and transaction bytes."}
-          </div>
+          <div className="form-context">{copy.context}</div>
           <KV label="Source membership">
-            {f.current?.label || f.current?.id || "Current membership"}
+            {f?.current.label || "Current membership"}
           </KV>
           <KV label="Incoming membership">
-            {f.incoming?.label ||
-              f.incoming?.id ||
-              "Prepared incoming membership"}
+            {f?.incoming?.label || "Prepared incoming membership"}
           </KV>
           <CopyField label="Handover request" value={r?.id} />
           <CopyField
             label="Existing chain genesis"
-            value={f.genesis_hash || app.data.network.genesis_hash}
-          />
-          <CopyField
-            label="Prepared manifest binding"
-            value={r?.manifest_hash || r?.plan_hash || r?.payload_hash}
+            value={app.data.network.genesis_hash}
           />
           {r?.error && <div className="inline-warning">{r.error}</div>}
           <label className="rotation-review-confirm">
@@ -1089,15 +1064,7 @@ function RotationForm({ action }: { action: string }) {
             data-testid="confirm-rotation-action"
             disabled={!permitted || mutation.isPending}
           >
-            {mutation.isPending
-              ? "Submitting…"
-              : prepare
-                ? "Prepare handover"
-                : approve
-                  ? "Open institution approval"
-                  : action === "retry"
-                    ? "Retry recorded stage"
-                    : "Advance handover"}
+            {mutation.isPending ? "Submitting…" : copy.confirm}
           </Button>
         </Footer>
       </form>

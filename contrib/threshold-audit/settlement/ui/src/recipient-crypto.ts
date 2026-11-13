@@ -64,8 +64,9 @@ function sorted(value: unknown): unknown {
 }
 export const canonical = (value: unknown) =>
   text(
+    // Match Python's json.dumps(ensure_ascii=True), which also escapes DEL.
     JSON.stringify(sorted(value)).replace(
-      /[^\x00-\x7f]/g,
+      /[^\x00-\x7e]/g,
       (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"),
     ),
   );

@@ -8,10 +8,10 @@ The legal entity owing redemption remains an open product/legal decision.
 
 ## Run and resume
 
-Build the [TanStack Start web app](settlement/ui/README.md) first (`npm ci` and
-`npm run build` in `contrib/threshold-audit/settlement/ui`). Node.js 22.12+ is
-required for the web process. Set `ELEMENTS_UI_NODE` if Node is not on PATH;
-the selected runtime remembers the executable for subsequent resumes.
+Build the [web app](settlement/ui/README.md) first (`npm ci` and `npm run build`
+in `contrib/threshold-audit/settlement/ui`, with Node.js 22.12+). Node is only a
+build tool: the Python settlement server serves the built files, so the running
+demo needs no Node process.
 
 For everyday use, select one existing runtime and control it through the demo
 manager. These commands resume the same chain and preserve wallets, keys,
@@ -35,11 +35,11 @@ an unrelated process merely because it reuses an old PID. Concurrent manager
 start/stop commands on one runtime are refused. Failed startup retains a private
 `manager.log` and cleans up only the process tree it just launched.
 
-A rotated demo normally has 23 processes: one Python settlement coordinator,
-one TanStack Start web server, one Elements node, 15 audit guardians and five
-institution signers. The private engine also has a separate loopback listener. The isolated guardians
-and signers deliberately retain separate key custody. Wallet and guardian
-consoles share the one Start web port. Python serves only the private engine API. Additional stacks are needed only for explicit
+A rotated demo normally has 22 processes: one Python settlement coordinator,
+one Elements node, 15 audit guardians and five institution signers. The isolated
+guardians and signers deliberately retain separate key custody. The coordinator
+serves the wallet and guardian consoles and their API from one loopback port.
+Additional stacks are needed only for explicit
 test scenarios; stop superseded demos rather than keeping every milestone live.
 
 Keep one native build and one shared-library build for reuse. Reports, review
@@ -53,7 +53,8 @@ state as though they were a build cache.
 ### Optional Rayfish access
 
 A private `mesh.json` in the selected runtime enables IPv6 HTTP front ends on
-one explicit Rayfish interface address, forwarding the app to TanStack Start. Its versioned configuration contains
+one explicit Rayfish interface address, forwarding the app to the settlement
+server. Its versioned configuration contains
 `bind_address`, an exact `.ray` `hostname`, `port`, and an ordered list of
 `institution_ports`. The app and approval-window ports must be distinct. Each
 institution keeps a separate browser origin. The sandbox starts and stops the
@@ -255,7 +256,7 @@ representation. See the native documentation for the remaining protocol limits.
 This capability milestone leaves Elements consensus and the existing ordinary
 payment approval policy unchanged. It adds case management and sealed delivery
 around the existing mandatory TAC2 output recovery. The demo still runs one
-managed chain and 23 processes after rotation; it adds no recipient server or
+managed chain and 22 processes after rotation; it adds no recipient server or
 extra development web server.
 
 Python now also requires `cryptography` (`pip install -r contrib/threshold-audit/requirements-demo.txt`) for recipient-envelope ECDH,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  baseUnits,
   csv,
   eligibleDestinations,
   forAccount,
@@ -121,4 +122,9 @@ describe("operator work", () => {
       ),
     ).toContain("independent approval window");
   });
+});
+it("formats on-chain base units for test currencies", () => {
+  expect(baseUnits("1050000000", "EUR")).toBe("10.50 TestEUR");
+  expect(baseUnits("1", "USD")).toBe("0.00000001 TestUSD");
+  expect(baseUnits("5", undefined)).toBe("5 base units");
 });

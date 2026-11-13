@@ -12,7 +12,7 @@ import {
   Heading,
   Panel as BasePanel,
 } from "./components";
-import { date, download, human } from "./domain";
+import { baseUnits, date, download, human, money } from "./domain";
 import {
   newRecipientKey,
   unlockRecipientKey,
@@ -413,8 +413,8 @@ function NewCase({
                   </option>
                   {choices.map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.amount_minor / 100} Test{o.currency} · {o.kind} ·{" "}
-                      {o.id.slice(0, 8)}
+                      {money(o.amount_minor)} Test{o.currency} · {human(o.kind)}{" "}
+                      · {o.id.slice(0, 8)}
                     </option>
                   ))}
                 </select>
@@ -592,7 +592,7 @@ function CaseDetail({
           </div>
           <div>
             <dt>Release deadline</dt>
-            <dd>{date(c.expires_at)}</dd>
+            <dd>{date(c.expires_at, true)}</dd>
           </div>
           <div>
             <dt>Guardian approvals</dt>
@@ -769,25 +769,11 @@ function CaseDetail({
               <div key={r.txid + ":" + r.output_index}>
                 <strong>
                   Output {r.output_index}:{" "}
-                  {(() => {
-                    const currency = app.data.assets.find(
-                      (a) => a.asset_id === r.asset_id,
-                    )?.currency;
-                    if (!currency) return r.amount_base_units + " base units";
-                    const n = BigInt(r.amount_base_units),
-                      remainder = n % 100000000n;
-                    const decimals =
-                      remainder % 1000000n === 0n
-                        ? remainder.toString().padStart(8, "0").slice(0, 2)
-                        : remainder.toString().padStart(8, "0");
-                    return (
-                      (n / 100000000n).toString() +
-                      "." +
-                      decimals +
-                      " Test" +
-                      currency
-                    );
-                  })()}
+                  {baseUnits(
+                    r.amount_base_units,
+                    app.data.assets.find((a) => a.asset_id === r.asset_id)
+                      ?.currency,
+                  )}
                 </strong>
                 <CopyField label="Asset ID" value={r.asset_id} />
                 <span>

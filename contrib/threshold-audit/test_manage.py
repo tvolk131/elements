@@ -73,16 +73,6 @@ class DemoManagerTests(unittest.TestCase):
         owned.wait(timeout=2)
         self.assertIsNone(unrelated.poll())
 
-    def test_start_web_orphan_uses_exact_script_and_runtime(self):
-        script = manage.ROOT / 'contrib/threshold-audit/settlement/ui/scripts/serve.mjs'
-        owned = self.sleeper(script, '--config', self.runtime / 'start-web.json')
-        other = self.root / 'runtime-other'; other.mkdir()
-        unrelated = self.sleeper(script, '--config', other / 'start-web.json')
-        self.assertEqual(manage.status(self.runtime)['roles']['web'], 1)
-        manage.stop(self.runtime, timeout=3)
-        owned.wait(timeout=2)
-        self.assertIsNone(unrelated.poll())
-
     def test_start_refuses_existing_orphans(self):
         child = self.sleeper('settlement.treasury', self.runtime / 'service.json')
         with self.assertRaisesRegex(RuntimeError, 'orphaned runtime services'):
