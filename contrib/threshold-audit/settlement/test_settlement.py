@@ -166,6 +166,57 @@ class SettlementTests(unittest.TestCase):
         self.store.poll()
         self.assertEqual(self.store._operation(operation["id"])["state"], "settled")
 
+    def test_automatic_issuance_after_bank_and_institution_approvals(self):
+        self.store.config["deposit_issuance"] = "automatic"
+        operation = self.create_deposit("10.00")
+        self.credit(operation)
+        credited = self.store.operation(self.users["maker"], operation["id"])
+        self.assertTrue(credited["user_approved"], "the bank's confirmation is its approval")
+        self.assertTrue(credited["issues_automatically"])
+        self.store.add_signature(self.users["guardian-1"], operation["id"])
+        self.assertEqual(self.store._operation(operation["id"])["state"], "awaiting_approval")
+        self.store.add_signature(self.users["guardian-2"], operation["id"])
+        self.assertEqual(self.store._operation(operation["id"])["state"], "preparing")
+        authorized = [row for row in self.store.db.execute(
+            "SELECT actor,data FROM evidence WHERE operation_id=? AND event='execution_authorized'", (operation["id"],))]
+        self.assertEqual(len(authorized), 1)
+        self.assertEqual(authorized[0][0], "settlement")
+        self.store.poll()
+        self.chain.confirm_all()
+        self.store.poll()
+        self.assertEqual(self.store._operation(operation["id"])["state"], "settled")
+        self.assertEqual(self.store.token_balance("alpha", "EUR"), 1000)
+        self.assert_reconciled()
+
+    def test_automatic_issuance_still_needs_a_second_person(self):
+        self.store.config["deposit_issuance"] = "automatic"
+        # The bank administrator both creates and confirms: that is not a second person.
+        operation = self.store.create(self.users["admin"], "deposit", {"account_id": "alpha", "currency": "EUR", "amount": "10.00"})
+        self.credit(operation)
+        self.assertFalse(self.store.approved(self.store._operation(operation["id"])))
+        self.store.add_signature(self.users["guardian-1"], operation["id"])
+        self.store.add_signature(self.users["guardian-2"], operation["id"])
+        self.assertEqual(self.store._operation(operation["id"])["state"], "awaiting_approval")
+        self.store.approve(self.users["approver"], operation["id"])
+        self.assertEqual(self.store._operation(operation["id"])["state"], "preparing")
+
+    def test_automatic_issuance_falls_back_to_manual_send(self):
+        self.store.config["deposit_issuance"] = "automatic"
+        operation = self.create_deposit("10.00")
+        self.credit(operation)
+        self.store.add_signature(self.users["guardian-1"], operation["id"])
+        def held(*_):
+            raise Problem("wallet reconciliation is unavailable; new settlement is held", 409)
+        with mock.patch.object(self.store, "check_chain_balance", held):
+            self.store.add_signature(self.users["guardian-2"], operation["id"])
+        waiting = self.store._operation(operation["id"])
+        self.assertEqual(waiting["state"], "ready")
+        self.assertIn("did not start automatically", waiting["error"])
+        self.store.execute(self.users["approver"], operation["id"])
+        self.chain.confirm_all()
+        self.store.poll()
+        self.assertEqual(self.store._operation(operation["id"])["state"], "settled")
+
     def credit(self, operation):
         return self.store.bank_event(self.users["admin"], {"event_id": "cash:" + operation["id"], "kind": "credit",
                                     "operation_id": operation["id"], "currency": "EUR", "amount": operation["amount"]})

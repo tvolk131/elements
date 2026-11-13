@@ -203,12 +203,16 @@ export function viewerNextAction(op: Operation): string | undefined {
   // "Execute" is offered while settling only as a retry after an error.
   if (SETTLING.includes(op.state) && !op.error) return undefined;
   if (actions.includes("bank-credit"))
-    return "Record the bank deposit so the tokens can be issued.";
+    return op.issues_automatically
+      ? "Confirm the bank deposit arrived. That is the bank’s approval; tokens are issued once three institutions approve."
+      : "Record the bank deposit so the tokens can be issued.";
   if (actions.includes("approve"))
     return op.guardian_approvals >= op.guardian_threshold
-      ? op.guardian_threshold
-        ? "The institutions have approved. Your approval is the last one needed: approve and send."
-        : "Your approval is the only one needed: approve and send."
+      ? op.issues_automatically
+        ? "The institutions have approved. Your approval is the last one needed; the tokens are then issued."
+        : op.guardian_threshold
+          ? "The institutions have approved. Your approval is the last one needed: approve and send."
+          : "Your approval is the only one needed: approve and send."
       : "Your approval is needed. Check the amount and destination, then approve.";
   if (needsInstitutionApproval(op))
     return "Your institution’s approval is needed. You sign in your institution’s own approval window.";
@@ -246,7 +250,9 @@ export function nextStep(op: Operation): string {
   if (op.error && isPending(op))
     return "Review required. An operator must resolve the recorded issue before proceeding.";
   if (op.state === "awaiting_bank")
-    return "Next: a bank administrator records the matching simulated bank credit. Tokens have not been issued yet.";
+    return op.issues_automatically
+      ? "Next: the bank confirms the deposit arrived. Tokens are then issued as soon as three institutions approve."
+      : "Next: a bank administrator records the matching simulated bank credit. Tokens have not been issued yet.";
   if (op.state === "awaiting_approval") {
     if (!op.user_approved) {
       const reviewers = op.approval_workflow?.user_reviewers
@@ -258,10 +264,12 @@ export function nextStep(op: Operation): string {
       0,
       op.guardian_threshold - op.guardian_approvals,
     );
-    return `Waiting for ${remaining || "the remaining"} institution ${remaining === 1 ? "approval" : "approvals"}.`;
+    return `Waiting for ${remaining || "the remaining"} institution ${remaining === 1 ? "approval" : "approvals"}.${op.issues_automatically ? " Tokens are issued as soon as they are in." : ""}`;
   }
   if (op.state === "ready")
-    return "All approvals are in place. An approver sends it to settle.";
+    return op.issues_automatically
+      ? "All approvals are in place, but issuing did not start automatically. An approver can issue it."
+      : "All approvals are in place. An approver sends it to settle.";
   if (op.state === "preparing")
     return "The transaction is being prepared. It has not been confirmed; an authorized operator can retry the recorded request if needed.";
   if (op.state === "chain_pending")

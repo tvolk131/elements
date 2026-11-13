@@ -371,6 +371,12 @@ class Settlement:
             return operation["amount_minor"] > policy["above_minor"]
         return True
 
+    def issues_automatically(self, operation):
+        """With deposit_issuance "automatic", the bank's deposit confirmation
+        is its approval and tokens are issued once the institutions approve;
+        "manual" (default) keeps a separate approval and Send."""
+        return operation["kind"] == "deposit" and self.config.get("deposit_issuance", "manual") == "automatic"
+
     def _require_institution_approval(self, operation):
         if not self.institutions_required(operation):
             raise Problem("this payment does not need institution approval", 409)
@@ -489,18 +495,20 @@ class Settlement:
 
     def approve(self, user, operation_id):
         self.require(user, "approve")
-        with self.transaction():
-            self.check_rotation_hold()
-            operation = self._operation(operation_id)
-            self.accessible_account(user, operation["account_id"])
-            if operation["maker"] == user["id"]:
-                raise Problem("a different user must approve this operation", 403)
-            if operation["state"] not in {"awaiting_approval", "ready"}:
-                raise Problem("operation is not awaiting approval", 409)
-            self.db.execute("INSERT OR IGNORE INTO user_approvals VALUES(?,?,?)",
-                            (operation_id, user["id"], int(time.time())))
-            self.evidence(user["id"], "user_approved", {}, operation_id)
-            self.refresh_ready(operation)
+        with self.lock:
+            with self.transaction():
+                self.check_rotation_hold()
+                operation = self._operation(operation_id)
+                self.accessible_account(user, operation["account_id"])
+                if operation["maker"] == user["id"]:
+                    raise Problem("a different user must approve this operation", 403)
+                if operation["state"] not in {"awaiting_approval", "ready"}:
+                    raise Problem("operation is not awaiting approval", 409)
+                self.db.execute("INSERT OR IGNORE INTO user_approvals VALUES(?,?,?)",
+                                (operation_id, user["id"], int(time.time())))
+                self.evidence(user["id"], "user_approved", {}, operation_id)
+                self.refresh_ready(operation)
+            self._issue_if_complete(operation)
             return self.public_operation(user, operation)
 
     def add_signature(self, user, operation_id, signature=None):
@@ -534,7 +542,22 @@ class Settlement:
                                 (operation_id, signature["guardian_id"], self.encode(signature)))
                 self.evidence(user["id"], "institution_approved", signature, operation_id)
                 self.refresh_ready(operation)
-                return self.public_operation(user, operation)
+            self._issue_if_complete(operation)
+            return self.public_operation(user, operation)
+
+    def _issue_if_complete(self, operation):
+        """Hand a fully approved automatic deposit to the settlement worker.
+
+        Called with self.lock held, after the last approval is committed. If
+        an execution check fails, the request stays ready with the reason,
+        and an approver can still send it by hand.
+        """
+        if operation["state"] != "ready" or not self.issues_automatically(operation):
+            return
+        try:
+            self._authorize_execution(operation, "settlement", {"automatic": "bank and institution approvals complete"})
+        except Problem as error:
+            self._record_error(operation, "Issuance did not start automatically: " + str(error)[:400])
 
     def _bind_approval(self, operation):
         if (operation["kind"] == "deposit" and operation.get("transaction_template_hash") is None
@@ -689,6 +712,11 @@ class Settlement:
                 operation["expires_at"] = int(time.time()) + self.config.get("approval_ttl", 24 * 3600)
                 self.journal(operation, "bank_credit", "reserve_cash", "deposit_payable")
                 self.save(operation)
+                if self.issues_automatically(operation) and user["id"] != operation["maker"]:
+                    # The bank confirming the money arrived is its approval.
+                    self.db.execute("INSERT OR IGNORE INTO user_approvals VALUES(?,?,?)",
+                                    (operation["id"], user["id"], int(time.time())))
+                    self.evidence(user["id"], "user_approved", {"by": "confirming the bank credit"}, operation["id"])
             elif kind in {"freeze", "unfreeze"}:
                 self.db.execute("UPDATE bank_accounts SET frozen=? WHERE currency=?", (int(kind == "freeze"), currency))
             elif kind == "payout_mode":
@@ -801,30 +829,35 @@ class Settlement:
             operation = self._operation(operation_id)
             self.accessible_account(user, operation["account_id"])
             if operation["state"] == "ready":
-                self.check_chain_balance(operation['account_id'], operation['currency'])
-                certificate = None
-                if self.institutions_required(operation):
-                    try:
-                        certificate = self.certificate(operation)
-                    except ValueError as error:
-                        raise Problem(str(error), 409, "approval_invalid") from error
-                elif operation["expires_at"] <= int(time.time()):
-                    raise Problem("operation approval expired", 409, "approval_invalid")
-                if not self.approved(operation):
-                    raise Problem("second-person approval is missing", 409)
-                if operation["kind"] == "deposit" and not operation["cash_receipt_id"]:
-                    raise Problem("bank receipt is missing", 409)
-                with self.transaction():
-                    operation["certificate"], operation["execution_started_at"] = certificate, int(time.time())
-                    operation["state"] = "preparing"
-                    self.save(operation)
-                    self.evidence(user["id"], "execution_authorized",
-                                  {"payload_hash": certificate["payload_hash"]} if certificate
-                                  else {"institution_approval": "not required by payment policy"}, operation_id)
+                self._authorize_execution(operation, user["id"])
             elif operation["state"] not in IN_FLIGHT:
                 raise Problem("operation is not executable in its current state", 409)
         self._advance_unlocked(operation_id)
         return self.operation(user, operation_id)
+
+    def _authorize_execution(self, operation, actor, details=None):
+        """Check a ready request and mark it for sending (self.lock held)."""
+        self.check_chain_balance(operation['account_id'], operation['currency'])
+        certificate = None
+        if self.institutions_required(operation):
+            try:
+                certificate = self.certificate(operation)
+            except ValueError as error:
+                raise Problem(str(error), 409, "approval_invalid") from error
+        elif operation["expires_at"] <= int(time.time()):
+            raise Problem("operation approval expired", 409, "approval_invalid")
+        if not self.approved(operation):
+            raise Problem("second-person approval is missing", 409)
+        if operation["kind"] == "deposit" and not operation["cash_receipt_id"]:
+            raise Problem("bank receipt is missing", 409)
+        with self.transaction():
+            operation["certificate"], operation["execution_started_at"] = certificate, int(time.time())
+            operation["state"], operation["error"] = "preparing", None
+            self.save(operation)
+            self.evidence(actor, "execution_authorized",
+                          {**({"payload_hash": certificate["payload_hash"]} if certificate
+                              else {"institution_approval": "not required by payment policy"}), **(details or {})},
+                          operation["id"])
 
     def _advance_unlocked(self, operation_id):
         """Advance one request without blocking the rest of the service.
@@ -1014,6 +1047,7 @@ class Settlement:
         institutions = operation.get("certificate") is not None or self.institutions_required(operation)
         result["guardian_threshold"] = self.verifier.threshold if institutions else 0
         result["user_approved"] = self.approved(operation)
+        result["issues_automatically"] = self.issues_automatically(operation)
         result["approval_workflow"] = self.approval_workflow(operation)
         result["allowed_actions"] = []
         result['source_name'] = self.account(operation['account_id']).get('name', operation['account_id'])
@@ -1074,6 +1108,7 @@ class Settlement:
             activity = []
             operation_ids = {operation["id"] for operation in operations}
             names = {row["id"]: json.loads(row["data"]).get("name", row["id"]) for row in self.db.execute("SELECT id,data FROM users")}
+            names.setdefault("settlement", "Automatic, once approvals were complete")
             for row in self.db.execute("SELECT * FROM evidence ORDER BY seq DESC LIMIT 300"):
                 if row["operation_id"] in operation_ids or (row["operation_id"] is None and "view_bank" in ROLES[user["role"]]):
                     activity.append({"id": row["seq"], "created_at": row["created"], "operation_id": row["operation_id"],
@@ -1090,6 +1125,7 @@ class Settlement:
                             "operational_guardians": len(self.verifier.public_keys)})
             return {"session": session, "network": network, "assets": self.chain.assets(),
                     "transfer_institution_approval": self.config.get("transfer_institution_approval", "always"),
+                    "deposit_issuance": self.config.get("deposit_issuance", "manual"),
                     "federation": self.federation.status(user) if self.federation is not None and "view_bank" in ROLES[user["role"]] and user["tenant"] == self.config.get("bank_tenant", "bank") else None,
                     "accounts": safe_accounts, "balances": balances,
                     "reserves": self.reconcile() if "view_bank" in ROLES[user["role"]] and user["tenant"] == self.config.get("bank_tenant", "bank") else [],

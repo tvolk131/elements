@@ -51,7 +51,7 @@ PERSONAS = [
     ('acme-maker', 'wallet', 'Acme · creates payments'),
     ('acme-approver', 'wallet', 'Acme · approves payments'),
     ('bank-maker', 'wallet', 'Bank · creates funding requests'),
-    ('bank-admin', 'wallet', 'Bank · records bank credits'),
+    ('bank-admin', 'wallet', 'Bank · confirms deposits'),
     ('bank-approver', 'wallet', 'Bank · approves requests'),
     ('initech-maker', 'wallet', 'Initech (Bank B) · receives payments'),
     ('bank-compliance', 'wallet', 'Bank compliance · requests disclosures'),
@@ -103,6 +103,9 @@ def configure(directory, mesh):
     # The federation runs the ledger and controls what enters and leaves it;
     # payments between customers need only the customer's own approvals.
     config['transfer_institution_approval'] = 'never'
+    # The bank's deposit confirmation is its approval; tokens are issued as
+    # soon as three institutions approve.
+    config['deposit_issuance'] = 'automatic'
     config['demo_sign_in'] = [{'username': u, 'workspace': w, 'label': label} for u, w, label in PERSONAS]
     # Lets the console's demo shortcut sign as the remaining institutions.
     credentials = json.loads((directory / 'credentials.json').read_text())
@@ -159,7 +162,8 @@ class Seeder:
     def settle(self, operation, checker):
         if operation['state'] in {'awaiting_approval', 'ready'}:
             operation = self.authorize(operation, checker)
-            operation = self.call(checker, f"/api/operations/{operation['id']}/execute", {})
+            if operation['state'] == 'ready':  # automatic deposits are already issuing
+                operation = self.call(checker, f"/api/operations/{operation['id']}/execute", {})
         return self.pilot.wait(operation, timeout=180)
 
     def deposit(self, label, account, currency, amount, finish=True):

@@ -340,7 +340,9 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
         <div className="dialog-body">
           <div className="form-context">
             {kind === "deposit"
-              ? "After the bank confirms the deposit, a second person and three independent institutions approve before tokens are issued."
+              ? app.data.deposit_issuance === "automatic"
+                ? "Once the bank confirms the deposit arrived, three independent institutions approve and the tokens are issued automatically."
+                : "After the bank confirms the deposit, a second person and three independent institutions approve before tokens are issued."
               : kind === "redemption"
                 ? "Tokens are locked while the bank pays out, then destroyed once the payment is confirmed. A second person and three institutions approve first."
                 : transferNeedsInstitutions(
@@ -866,7 +868,11 @@ function BankCreditForm({ operation: op }: { operation: Operation }) {
         amount: (op.amount_minor / 100).toFixed(2),
       }),
     onSuccess: async () => {
-      app.notify("Bank deposit recorded. The request now needs approvals.");
+      app.notify(
+        op.issues_automatically
+          ? "Deposit confirmed. Tokens are issued once three institutions approve."
+          : "Bank deposit recorded. The request now needs approvals.",
+      );
       app.setDialog({ type: "operation", id: op.id });
       await refreshData();
     },
@@ -892,8 +898,9 @@ function BankCreditForm({ operation: op }: { operation: Operation }) {
           </div>
           <KV label="For">{app.accountName(op.account_id)}</KV>
           <p className="small-note">
-            Simulated bank: no real money moves. Tokens are issued only after a
-            second person and three institutions approve.
+            {op.issues_automatically
+              ? "Simulated bank: no real money moves. Confirming is the bank’s approval; tokens are issued once three institutions approve."
+              : "Simulated bank: no real money moves. Tokens are issued only after a second person and three institutions approve."}
           </p>
           <ErrorNote error={mutation.error} />
         </div>

@@ -46,7 +46,9 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
   const ready = op.state === "ready";
   // When institutions have already approved, the second person's approval is
   // the last one, so it can send the request in the same step.
-  const lastApproval = approved >= required && app.can("execute");
+  // Automatic deposits issue on the server once approvals are complete.
+  const automatic = !!op.issues_automatically;
+  const lastApproval = !automatic && approved >= required && app.can("execute");
   // Payments may not need institutions (see the runtime's payment policy).
   const institutionsNeeded = required > 0;
   const personStep = institutionsNeeded ? 2 : 1;
@@ -110,8 +112,8 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                   <>
                     Any <strong>{required}</strong>
                     {institutionCount ? ` of the ${institutionCount}` : ""}{" "}
-                    independent institutions must also approve this payment,
-                    each in its own approval window.
+                    independent institutions must also approve this {kind}, each
+                    in its own approval window.
                   </>
                 )}
               </p>
@@ -173,7 +175,7 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
           </span>
           <div>
             <div className="payment-step-title">
-              <h4>Second-person check</h4>
+              <h4>{automatic ? "Bank approval" : "Second-person check"}</h4>
               <Badge status={op.user_approved ? "complete" : "pending"}>
                 {op.user_approved ? "Approved" : "Not approved"}
               </Badge>
@@ -236,70 +238,108 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                 )}
               </>
             ) : (
-              <p>The required approval from a different person is recorded.</p>
+              <p>
+                {automatic
+                  ? "The bank confirmed the deposit, which is its approval."
+                  : "The required approval from a different person is recorded."}
+              </p>
             )}
           </div>
         </li>
-        <li>
-          <span className="payment-step-number">{sendStep}</span>
-          <div>
-            <div className="payment-step-title">
-              <h4>Send</h4>
-              <Badge status={ready ? "ready" : "neutral"}>
-                {ready
-                  ? "Ready"
-                  : approved >= required && !op.user_approved
-                    ? `Together with step ${personStep}`
-                    : `Waiting for ${earlier}`}
-              </Badge>
+        {automatic ? (
+          <li>
+            <span className="payment-step-number">{sendStep}</span>
+            <div>
+              <div className="payment-step-title">
+                <h4>Issue tokens</h4>
+                <Badge status={ready ? "ready" : "neutral"}>
+                  {ready ? "Not started" : "Automatic"}
+                </Badge>
+              </div>
+              <p>
+                Tokens are issued automatically once {earlier}{" "}
+                {institutionsNeeded ? "are" : "is"} complete. Nobody needs to
+                press Send.
+              </p>
+              {ready && op.allowed_actions.includes("execute") && (
+                <Button
+                  className="primary small"
+                  data-testid="workflow-execute"
+                  onClick={() =>
+                    app.setDialog({
+                      type: "review",
+                      operation: op,
+                      action: "execute",
+                    })
+                  }
+                >
+                  Review and issue
+                </Button>
+              )}
             </div>
-            {workflow?.submitters.length === 0 ? (
-              <p>
-                No chain submitter is configured. Ask the bank administrator to
-                assign an authorized payment approver.
-              </p>
-            ) : approved >= required && !op.user_approved ? (
-              <p>
-                {institutionsNeeded
-                  ? "The institutions have approved, so the"
-                  : "The"}{" "}
-                step {personStep} approval also sends the request.
-              </p>
-            ) : (
-              <p>
-                Once {earlier} {institutionsNeeded ? "are" : "is"} complete,{" "}
-                <Actors
-                  actors={workflow?.submitters}
-                  fallback="an authorized payment approver"
-                />{" "}
-                selects <b>Send</b>. This does not happen automatically.
-              </p>
-            )}
-            {ready && !op.allowed_actions.includes("execute") && (
-              <DemoNext
-                usernames={workflow?.submitters.map((a) => a.id)}
-                operation={op.id}
-                guardian={app.guardian}
-                current={app.user.id}
-              />
-            )}
-            {ready && op.allowed_actions.includes("execute") && (
-              <Button
-                className="primary small"
-                data-testid="workflow-execute"
-                onClick={() =>
-                  app.setDialog({
-                    type: "review",
-                    operation: op,
-                    action: "execute",
-                  })
-                }
-              >
-                Review and send
-              </Button>
-            )}
-          </div>
-        </li>
+          </li>
+        ) : (
+          <li>
+            <span className="payment-step-number">{sendStep}</span>
+            <div>
+              <div className="payment-step-title">
+                <h4>Send</h4>
+                <Badge status={ready ? "ready" : "neutral"}>
+                  {ready
+                    ? "Ready"
+                    : approved >= required && !op.user_approved
+                      ? `Together with step ${personStep}`
+                      : `Waiting for ${earlier}`}
+                </Badge>
+              </div>
+              {workflow?.submitters.length === 0 ? (
+                <p>
+                  No chain submitter is configured. Ask the bank administrator
+                  to assign an authorized payment approver.
+                </p>
+              ) : approved >= required && !op.user_approved ? (
+                <p>
+                  {institutionsNeeded
+                    ? "The institutions have approved, so the"
+                    : "The"}{" "}
+                  step {personStep} approval also sends the request.
+                </p>
+              ) : (
+                <p>
+                  Once {earlier} {institutionsNeeded ? "are" : "is"} complete,{" "}
+                  <Actors
+                    actors={workflow?.submitters}
+                    fallback="an authorized payment approver"
+                  />{" "}
+                  selects <b>Send</b>. This does not happen automatically.
+                </p>
+              )}
+              {ready && !op.allowed_actions.includes("execute") && (
+                <DemoNext
+                  usernames={workflow?.submitters.map((a) => a.id)}
+                  operation={op.id}
+                  guardian={app.guardian}
+                  current={app.user.id}
+                />
+              )}
+              {ready && op.allowed_actions.includes("execute") && (
+                <Button
+                  className="primary small"
+                  data-testid="workflow-execute"
+                  onClick={() =>
+                    app.setDialog({
+                      type: "review",
+                      operation: op,
+                      action: "execute",
+                    })
+                  }
+                >
+                  Review and send
+                </Button>
+              )}
+            </div>
+          </li>
+        )}
       </ol>
     </section>
   );

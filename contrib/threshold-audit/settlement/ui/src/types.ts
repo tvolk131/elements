@@ -82,6 +82,9 @@ export interface Operation {
   maker?: string;
   approval_workflow?: ApprovalWorkflow;
   user_approved: boolean;
+  /** Deposits under deposit_issuance "automatic": the bank's confirmation is
+   * its approval and tokens issue once the institutions approve. */
+  issues_automatically?: boolean;
   guardian_approvals: number;
   guardian_threshold: number;
   allowed_actions: string[];
@@ -221,6 +224,7 @@ export interface Dashboard {
   network: Network;
   /** Whether payments between customers need institution approval. */
   transfer_institution_approval: "always" | "never" | { above_minor: number };
+  deposit_issuance?: "manual" | "automatic";
   assets: Asset[];
   reserves: Reserve[];
   /** Only present for bank-tenant users who can view federation status. */

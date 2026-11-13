@@ -160,3 +160,23 @@ it("leaves out institutions when the payment policy does not need them", async (
     action: "approve-send",
   });
 });
+it("shows automatic issuing for a confirmed deposit instead of a Send step", () => {
+  app.user = { id: "bank-approver", name: "Bank Approver" };
+  render(
+    <ApprovalProgress
+      operation={operation({
+        kind: "deposit",
+        user_approved: true,
+        guardian_approvals: 1,
+        issues_automatically: true,
+        allowed_actions: ["execute"],
+      })}
+    />,
+  );
+  expect(screen.getByText("Issue tokens")).toBeVisible();
+  expect(screen.getByText(/Nobody needs to press Send/)).toBeVisible();
+  expect(
+    screen.getByText("The bank confirmed the deposit, which is its approval."),
+  ).toBeVisible();
+  expect(screen.queryByRole("button", { name: /send|issue/i })).toBeNull();
+});

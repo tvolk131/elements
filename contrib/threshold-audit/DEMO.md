@@ -44,10 +44,11 @@ On each request, **Switch to …** buttons sign in as the next person who needs
 to act and reopen the same request. Use them instead of the header's
 **Switch user** to keep the story moving.
 
-The demo runtime uses the payment policy that matches the product: the
-federation runs the ledger and controls what enters and leaves it, so
-payments between customers need only the customer's own approvals. Funding
-and withdrawals still need three institutions.
+The demo runtime uses the policies that match the product: the federation
+runs the ledger and controls what enters and leaves it, so payments between
+customers need only the customer's own approvals. Funding and withdrawals
+still need three institutions. Funding finishes on its own once they approve;
+a withdrawal waits for a person at the company to release it.
 
 1. **Pay another bank's customer (2 min).** As *Acme · creates payments*,
    choose **Send on-chain → A company, by bank reference**, enter
@@ -60,17 +61,21 @@ and withdrawals still need three institutions.
    and it settles in seconds. The ledger sees one transaction with the amount
    and parties hidden, carrying an encrypted record the guardians can open if
    needed.
-2. **Money in (3 min).** Switch to *Bank · records bank credits*, open the
-   €500,000 request under **Needs your attention** and confirm the deposit.
-   **Switch to Institution 1** and sign in its own approval window, then
-   **Add the other institutions' approvals**. Switch to *Bank Approver* →
-   **Review, approve and send**. Show Acme's balance.
+2. **Money in (2 min).** Switch to *Bank · confirms deposits*, open the
+   €500,000 request under **Needs your attention** and confirm the deposit;
+   that confirmation is the bank's approval. **Switch to Institution 1** and
+   sign in its own approval window, then **Add the other institutions'
+   approvals**. The tokens are issued within seconds: show Acme's balance.
    *Point:* tokens are created only when three independent institutions
    co-sign the issuing transaction, after the bank confirms the money arrived.
+   Nobody presses a final Send: the institutions' co-signature is the moment
+   money is created.
 3. **Money out (2 min).** Open the $75,000 withdrawal (Acme, Requests). Acme
    and two institutions have approved: switch to Institution 3, sign, then
    switch to the approver and send. The payout and token burn finish on their
    own.
+   *Point:* unlike funding, money leaving the bank waits for a person at the
+   company to release it, so they control the timing and can still stop it.
 4. **Private, but accountable (4 min).** As *Bank compliance*, show the
    Disclosures page: a request names one payment and one recipient, and
    guardians approve it. Switch to *Regulator · opens disclosures*, enter the
@@ -90,13 +95,21 @@ and withdrawals still need three institutions.
 | | Enforced by the Elements ledger | Enforced by the application |
 |---|---|---|
 | **Payments between customers** | The sender's wallet signature, hidden amounts and assets with valid proofs, the mandatory recovery packet for disclosure, and 3 of 5 operators confirming the block | The customer's second-person check; institution approval only if the payment policy asks for it |
-| **Money in and out** (issuing tokens, the withdrawal payout and burn, refunds) | All of the above, **plus** 3 of 5 institutions co-signing the transaction with their own keys; each institution's service checks the approval before signing | Second-person check |
+| **Money in and out** (issuing tokens, the withdrawal payout and burn, refunds) | All of the above, **plus** 3 of 5 institutions co-signing the transaction with their own keys; each institution's service checks the approval before signing | Funding: the bank's confirmation that the money arrived. Withdrawals: the company's second-person check and release |
 | **Disclosures** | The encrypted recovery packet on every payment; only 7 of 10 guardians together can open it | Who may request a disclosure and for whom |
 
 The payment policy is the runtime setting `transfer_institution_approval`:
 `"always"` (the default outside the demo), `"never"` (the demo), or
 `{"above_minor": N}` to require institution approval only for payments above
 N minor units (for example `{"above_minor": 100000000}` for over €1,000,000).
+
+Funding follows `deposit_issuance`: `"manual"` (the default outside the demo)
+needs a separate bank approver to approve and send; `"automatic"` (the demo)
+counts the bank's deposit confirmation as its approval and issues the tokens
+once the institutions approve. If the person confirming the deposit also
+created the request, a second bank person must still approve. If issuing
+cannot start (for example, the wallet does not reconcile), the request shows
+why and an approver can issue it by hand.
 
 Intervention today means disclosure. The federation cannot freeze or reverse
 a payment between customers, because those are signed with the customer's
