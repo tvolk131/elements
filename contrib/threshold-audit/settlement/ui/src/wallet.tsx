@@ -23,6 +23,7 @@ import {
   isException,
   isPending,
   money,
+  needsAction,
   nextStep,
   viewerNextAction,
   requestSummary,
@@ -68,21 +69,7 @@ export function WalletPage({
   const ops = forAccount(app.data.operations, app.account).filter(
     (op) => !banking || ["deposit", "redemption", "refund"].includes(op.kind),
   );
-  const attention = ops
-    .filter(
-      (op) =>
-        isPending(op) &&
-        op.allowed_actions.some((a) =>
-          [
-            "approve",
-            "guardian-approve",
-            "execute",
-            "bank-credit",
-            "cancel",
-          ].includes(a),
-        ),
-    )
-    .slice(0, 4);
+  const attention = ops.filter(needsAction).slice(0, 4);
   const tasks = [
     {
       kind: "deposit",
@@ -618,7 +605,9 @@ export function OperationPanel({
         </Empty>
       )}
       <div className="panel-footer">
-        <span>{rows.length} requests · Current authorized workspace</span>
+        <span>
+          {rows.length} {rows.length === 1 ? "request" : "requests"}
+        </span>
         <span>All times UTC</span>
       </div>
     </Panel>

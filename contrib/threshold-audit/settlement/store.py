@@ -31,6 +31,8 @@ ROLES = {
     "bankcompliance": {"view_bank", "request_disclosure", "receive_disclosure"},
     "federationcompliance": {"view_bank", "request_disclosure", "receive_disclosure", "network_disclosures"},
     "auditguardian": {"review_disclosure"},
+    # An outside authority: receives approved disclosures, sees no accounts.
+    "regulator": {"receive_disclosure"},
 }
 FINAL = {"settled", "rejected", "failed", "cancelled"}
 PENDING_TOKEN = {"awaiting_approval", "ready", "preparing", "chain_pending"}

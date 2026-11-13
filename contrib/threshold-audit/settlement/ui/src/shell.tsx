@@ -3,9 +3,9 @@ import { useEffect } from "react";
 import { useApp } from "./context";
 import { Brand, Button, Icon } from "./components";
 import {
-  isPending,
   forAccount,
   human,
+  needsAction,
   needsInstitutionApproval,
 } from "./domain";
 import { DemoSwitcher } from "./demo";
@@ -23,12 +23,14 @@ export function Shell() {
         ["reserves", "Reserves", "bank"],
         ["network", "Network", "network"],
       ]
-    : [
-        ["overview", "Wallet", "wallet"],
-        ["payments", "Requests", "activity"],
-        ["banking", "Bank transfers", "bank"],
-        ["beneficiaries", "Recipients", "users"],
-      ];
+    : app.data.accounts.length
+      ? [
+          ["overview", "Wallet", "wallet"],
+          ["payments", "Requests", "activity"],
+          ["banking", "Bank transfers", "bank"],
+          ["beneficiaries", "Recipients", "users"],
+        ]
+      : []; // e.g. a regulator: no accounts, only disclosures and activity
   if (app.guardian && app.can("view_bank"))
     items.push(["federation", "Federation", "refresh"]);
   if (
@@ -38,9 +40,10 @@ export function Shell() {
   )
     items.push(["disclosures", "Disclosures", "lock"]);
   items.push(["activity", "Activity log", "document"]);
+  // Same count as "Needs your attention": requests this person can act on.
   const pending = app.guardian
     ? app.data.operations.filter(needsInstitutionApproval).length
-    : forAccount(app.data.operations, app.account).filter(isPending).length;
+    : forAccount(app.data.operations, app.account).filter(needsAction).length;
   const title = items.find((item) => item[0] === page)?.[1] || "Overview";
   useEffect(() => {
     document.title = `${title} · Concord ${app.guardian ? "guardian" : "wallet"}`;

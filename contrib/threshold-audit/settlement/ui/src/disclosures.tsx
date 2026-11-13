@@ -171,7 +171,7 @@ function RecipientKeys({ onChange }: { onChange: () => unknown }) {
       } catch {
         app.notify(
           "Browser storage is unavailable. Download your encrypted key backup.",
-          true,
+          "error",
         );
       }
       download(
@@ -278,6 +278,9 @@ function RecipientKeys({ onChange }: { onChange: () => unknown }) {
                 );
                 setFile(parsed);
                 setImportError(null);
+                app.notify(
+                  "Recipient key imported. You can now open cases addressed to it.",
+                );
                 void onChange();
               } catch (error) {
                 setImportError(

@@ -115,10 +115,25 @@ const BANK_STATUS: Record<string, string> = {
   cancelled: "Cancelled · escrow returned",
   settled: "Bank evidence recorded",
 };
-export const bankStatus = (op: Operation) =>
-  op.kind === "transfer"
-    ? "Not applicable"
-    : BANK_STATUS[op.state] || "Not confirmed";
+export function bankStatus(op: Operation) {
+  if (op.kind === "transfer") return "Not applicable";
+  if (op.kind === "deposit" && op.cash_receipt_id && op.state !== "settled")
+    return "Deposit received";
+  return BANK_STATUS[op.state] || "Not confirmed";
+}
+/** Requests waiting on something the signed-in person can do. */
+export const needsAction = (op: Operation) =>
+  isPending(op) &&
+  op.allowed_actions.some((a) =>
+    [
+      "approve",
+      "guardian-approve",
+      "execute",
+      "bank-credit",
+      "cancel",
+    ].includes(a),
+  ) &&
+  !(SETTLING.includes(op.state) && !op.error);
 export function requestSummary(op: Operation): string {
   if (op.state === "awaiting_approval")
     return !op.user_approved
@@ -143,8 +158,18 @@ export function requestSummary(op: Operation): string {
     }[op.state] || human(op.state)
   );
 }
+/** States where the server finishes the request on its own. */
+export const SETTLING = [
+  "preparing",
+  "chain_pending",
+  "escrow_confirmed",
+  "bank_pending",
+  "burn_pending",
+];
 export function viewerNextAction(op: Operation): string | undefined {
   const actions = op.allowed_actions;
+  // "Execute" is offered while settling only as a retry after an error.
+  if (SETTLING.includes(op.state) && !op.error) return undefined;
   if (actions.includes("bank-credit"))
     return "Record the bank deposit so the tokens can be issued.";
   if (actions.includes("approve"))

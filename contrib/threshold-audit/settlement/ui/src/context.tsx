@@ -15,7 +15,7 @@ import {
   startSession,
 } from "./api";
 import { Brand, Button, ErrorNote, Icon } from "./components";
-import { DemoSignIn, usePersonas } from "./demo";
+import { DemoSignIn, takeReopenRequest, usePersonas } from "./demo";
 import type {
   ApprovalRequest,
   Dashboard,
@@ -34,7 +34,7 @@ interface AppContext {
   accountName: (id?: string) => string;
   dialog: DialogState;
   setDialog: (dialog: DialogState) => void;
-  notify: (message: string, error?: boolean) => void;
+  notify: (message: string, tone?: Tone) => number;
   openApproval: (
     id: string,
     rotation?: boolean,
@@ -51,6 +51,7 @@ type ExpectedRequest = Pick<
   ApprovalRequest,
   "amount_minor" | "currency" | "asset_id" | "destination_hash"
 >;
+type Tone = "success" | "error" | "info";
 const Context = createContext<AppContext | null>(null);
 export function useApp() {
   const context = useContext(Context);
@@ -269,19 +270,19 @@ function Workspace({
   const [selected, setAccount] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [toasts, setToasts] = useState<
-    { id: number; message: string; error: boolean }[]
+    { id: number; message: string; tone: Tone }[]
   >([]);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const seq = useRef(0);
-  const notify = (message: string, error = false) => {
+  const dismiss = (id: number) =>
+    setToasts((items) => items.filter((item) => item.id !== id));
+  const notify = (message: string, tone: Tone = "success") => {
     const id = ++seq.current;
-    setToasts((items) => [...items, { id, message, error }]);
+    setToasts((items) => [...items, { id, message, tone }]);
     timers.current.push(
-      setTimeout(
-        () => setToasts((items) => items.filter((item) => item.id !== id)),
-        error ? 14000 : 7000,
-      ),
+      setTimeout(() => dismiss(id), tone === "error" ? 14000 : 7000),
     );
+    return id;
   };
   const pending = useRef(
     new Map<
@@ -292,10 +293,15 @@ function Workspace({
         institution: string;
         path: string;
         rotation: boolean;
+        toast: number;
       }
     >(),
   );
   const user = session.user!;
+  useEffect(() => {
+    const id = takeReopenRequest();
+    if (id) setDialog({ type: "operation", id });
+  }, []);
   const dashboard = useQuery({
     queryKey: ["dashboard", user.id],
     queryFn: ({ signal }) =>
@@ -309,7 +315,7 @@ function Workspace({
       await queryClient.cancelQueries();
       clearSession();
     },
-    onError: (e) => notify(e.message, true),
+    onError: (e) => notify(e.message, "error"),
   });
   useEffect(() => {
     const handler = async (event: MessageEvent) => {
@@ -330,20 +336,26 @@ function Workspace({
       )
         return;
       pending.current.delete(message.operation_id);
+      dismiss(expected.toast);
       try {
         await api(expected.path + "/certificates", {
           signature: message.signature,
         });
         notify(
-          `Independent ${expected.rotation ? "handover authorization" : "institution certificate"} verified and recorded.`,
+          expected.rotation
+            ? "Handover authorization recorded."
+            : "Institution approval recorded.",
         );
         await refreshData();
+        // Show the request again so the updated approval count is visible.
+        if (!expected.rotation)
+          setDialog({ type: "operation", id: message.operation_id });
       } catch (error) {
         notify(
           error instanceof Error
             ? error.message
             : "Certificate could not be recorded.",
-          true,
+          "error",
         );
       }
     };
@@ -388,7 +400,9 @@ function Workspace({
     // Open synchronously while still in the user's submit gesture.
     const popup = window.open(
       "about:blank",
-      `concord-institution-${user.institution_id}`,
+      // One window per request: reusing a name can target a window that has
+      // already closed itself, and then nothing visibly opens.
+      `concord-institution-${user.institution_id}-${id}`,
       "popup,width=750,height=900",
     );
     if (!popup)
@@ -423,22 +437,27 @@ function Workspace({
         throw new Error(
           "The request changed. Close this review and inspect the updated operation.",
         );
-      pending.current.get(id)?.popup.close();
+      const previous = pending.current.get(id);
+      if (previous) {
+        previous.popup.close();
+        dismiss(previous.toast);
+      }
+      url.hash = encodeURIComponent(
+        JSON.stringify({ ...request, return_origin: location.origin }),
+      );
+      popup.location.href = url.href;
+      setDialog(null);
       pending.current.set(id, {
         popup,
         origin: url.origin,
         institution: user.institution_id,
         path,
         rotation,
+        toast: notify(
+          "Sign in your institution’s approval window to record this approval.",
+          "info",
+        ),
       });
-      url.hash = encodeURIComponent(
-        JSON.stringify({ ...request, return_origin: location.origin }),
-      );
-      popup.location.href = url.href;
-      setDialog(null);
-      notify(
-        "Continue in your institution’s independent approval window. No approval is recorded yet.",
-      );
     } catch (error) {
       popup.close();
       throw error;
@@ -488,16 +507,14 @@ function Workspace({
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`toast${t.error ? " error" : ""}`}
-            role={t.error ? "alert" : "status"}
+            className={`toast ${t.tone}`}
+            role={t.tone === "error" ? "alert" : "status"}
           >
-            <Icon name={t.error ? "info" : "check"} />
+            <Icon name={t.tone === "success" ? "check" : "info"} />
             <span>{t.message}</span>
             <button
               aria-label="Dismiss notification"
-              onClick={() =>
-                setToasts((items) => items.filter((item) => item.id !== t.id))
-              }
+              onClick={() => dismiss(t.id)}
             >
               <Icon name="close" />
             </button>

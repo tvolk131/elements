@@ -96,6 +96,7 @@ export function Badge({
     "settled",
     "confirmed",
     "ready",
+    "delivered",
     "configured",
     "healthy",
     "reconciled",

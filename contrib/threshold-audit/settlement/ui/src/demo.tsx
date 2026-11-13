@@ -157,3 +157,81 @@ export function DemoSwitcher({
     </>
   );
 }
+
+const REOPEN = "concord-demo-reopen";
+
+/** After a demo switch, reopen the request the presenter was looking at. */
+export function takeReopenRequest(): string | null {
+  try {
+    const id = sessionStorage.getItem(REOPEN);
+    sessionStorage.removeItem(REOPEN);
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Demo only: one-click "Switch to …" buttons for the people who can take a
+ * request's next step. Renders nothing outside demo runtimes.
+ */
+export function DemoNext({
+  usernames = [],
+  roles = [],
+  operation,
+  guardian,
+  current,
+}: {
+  usernames?: string[];
+  roles?: string[];
+  operation: string;
+  guardian: boolean;
+  current: string;
+}) {
+  const workspace = guardian ? "guardian" : "wallet";
+  const personas = usePersonas();
+  const signIn = useSignInAs(workspace);
+  const wanted = (personas.data || []).filter(
+    (p) =>
+      p.username !== current &&
+      (usernames.includes(p.username) || roles.includes(p.role)),
+  );
+  // One button per person, preferring the console where they act.
+  const choices = [...new Set(wanted.map((p) => p.username))].map(
+    (username) => {
+      const options = wanted.filter((p) => p.username === username);
+      return (
+        options.find((p) =>
+          p.role === "institutionguardian"
+            ? p.workspace === "guardian"
+            : p.workspace === "wallet",
+        ) || options[0]
+      );
+    },
+  );
+  if (!choices.length) return null;
+  return (
+    <div className="demo-next">
+      {choices.map((p) => (
+        <button
+          key={p.username}
+          type="button"
+          className="demo-next-button"
+          disabled={signIn.isPending}
+          onClick={() => {
+            try {
+              sessionStorage.setItem(REOPEN, operation);
+            } catch {
+              /* Reopening is a convenience only. */
+            }
+            signIn.mutate(p);
+          }}
+          data-testid={`demo-next-${p.username}`}
+        >
+          <Icon name="users" />
+          Switch to {p.name}
+        </button>
+      ))}
+    </div>
+  );
+}

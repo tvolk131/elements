@@ -13,6 +13,7 @@ import {
   Modal,
 } from "./components";
 import {
+  SETTLING,
   bankStatus,
   chainStatus,
   date,
@@ -27,6 +28,7 @@ import {
 } from "./domain";
 import { Quorum, Receive } from "./wallet";
 import { ApprovalProgress } from "./approval-progress";
+import { DemoNext } from "./demo";
 import {
   TransferDestination,
   type TransferTarget,
@@ -111,14 +113,11 @@ const ROTATION: Record<
     confirm: "Retry recorded stage",
   },
 };
-// States where the server is still working; poll quickly so the result shows.
-const IN_FLIGHT = [
-  "preparing",
-  "chain_pending",
-  "escrow_confirmed",
-  "bank_pending",
-  "burn_pending",
-];
+function sourceName(op: Operation, app: ReturnType<typeof useApp>): string {
+  if (op.kind === "receipt") return "External wallet";
+  if (op.kind === "deposit") return "Bank account (simulated)";
+  return op.source_name || app.accountName(op.account_id);
+}
 function destinationName(
   op: Operation,
   app: ReturnType<typeof useApp>,
@@ -485,7 +484,7 @@ function OperationDetail({ id }: { id: string }) {
         signal,
       ),
     refetchInterval: (q) =>
-      IN_FLIGHT.includes(q.state.data?.state ?? "") ? 2000 : 30000,
+      SETTLING.includes(q.state.data?.state ?? "") ? 2000 : 30000,
   });
   const op = query.data;
   const actions = op?.allowed_actions || [];
@@ -515,12 +514,7 @@ function OperationDetail({ id }: { id: string }) {
     .filter((e) => e.operation_id === id)
     .reverse();
   return (
-    <Modal
-      title="Settlement request"
-      description="Review exact amounts, assets and destination before approving."
-      close={() => app.setDialog(null)}
-      drawer
-    >
+    <Modal title="Request details" close={() => app.setDialog(null)} drawer>
       <div className="dialog-body">
         {query.error && (
           <>
@@ -561,6 +555,14 @@ function OperationDetail({ id }: { id: string }) {
                     : "What happens next"}
                 </strong>
                 <p>{viewerNextAction(op) || nextStep(op)}</p>
+                {op.state === "awaiting_bank" && !viewerNextAction(op) && (
+                  <DemoNext
+                    roles={["bankadmin"]}
+                    operation={op.id}
+                    guardian={app.guardian}
+                    current={app.user.id}
+                  />
+                )}
               </div>
             )}
 
@@ -582,12 +584,8 @@ function OperationDetail({ id }: { id: string }) {
             <div className="detail-section">
               <h3>Request details</h3>
               <CopyField label="Request reference" value={op.id} />
-              <KV label="Source account">
-                {op.kind === "receipt"
-                  ? "External wallet"
-                  : op.source_name || app.accountName(op.account_id)}
-              </KV>
-              <KV label="Destination">{destinationName(op, app)}</KV>
+              <KV label="From">{sourceName(op, app)}</KV>
+              <KV label="To">{destinationName(op, app)}</KV>
               {op.reference && <KV label="Reference">{op.reference}</KV>}
               <KV label="Created">{date(op.created_at, true)}</KV>
               <details className="wallet-technical">
@@ -680,6 +678,13 @@ function OperationDetail({ id }: { id: string }) {
           </Button>
           {actions
             .filter((action) => action in REVIEW)
+            // Settling requests finish on their own; "execute" is only a retry.
+            .filter(
+              (action) =>
+                action !== "execute" ||
+                !SETTLING.includes(op.state) ||
+                !!op.error,
+            )
             // While approvals are open, ApprovalProgress shows these actions.
             .filter(
               (action) =>
@@ -720,6 +725,7 @@ function ReviewForm({
 }) {
   const app = useApp();
   const [reason, setReason] = useState("");
+  const [checked, setChecked] = useState(false);
   const guardian = action === "guardian-approve";
   const reject = action === "reject";
   const copy = REVIEW[action];
@@ -764,9 +770,7 @@ function ReviewForm({
               {money(op.amount_minor)} Test{op.currency}
             </strong>
           </div>
-          <KV label="From">
-            {op.source_name || app.accountName(op.account_id)}
-          </KV>
+          <KV label="From">{sourceName(op, app)}</KV>
           <KV label="To">{destinationName(op, app)}</KV>
           <details className="wallet-technical">
             <summary>Technical details</summary>
@@ -800,7 +804,13 @@ function ReviewForm({
             </Field>
           )}
           <label className="rotation-review-confirm">
-            <input type="checkbox" required data-testid="confirm-review" />
+            <input
+              type="checkbox"
+              required
+              checked={checked}
+              onChange={(e) => setChecked(e.target.checked)}
+              data-testid="confirm-review"
+            />
             <span>I have checked the amount and destination.</span>
           </label>
           <ErrorNote error={mutation.error} />
@@ -811,7 +821,7 @@ function ReviewForm({
             type="submit"
             className={reject ? "danger" : "primary"}
             data-testid="confirm-operation"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !checked}
           >
             {mutation.isPending ? "Submitting…" : copy.confirm}
           </Button>
@@ -854,7 +864,7 @@ function BankCreditForm({ operation: op }: { operation: Operation }) {
           <div className="confirmation-summary">
             <span>Deposit received</span>
             <strong className="number">
-              {money(op.amount_minor)} Test{op.currency}
+              {money(op.amount_minor)} {op.currency}
             </strong>
           </div>
           <KV label="For">{app.accountName(op.account_id)}</KV>

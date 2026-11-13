@@ -50,7 +50,7 @@ def enroll(sandbox, config, adapter_config):
     credentials_path = sandbox.directory / 'credentials.json'
     credentials = json.loads(credentials_path.read_text())
     roles = [('bank-compliance', 'bankcompliance', 'bank'), ('bank-b-compliance', 'bankcompliance', 'bank-b'),
-             ('demo-recipient', 'auditor', 'bank'),
+             ('demo-recipient', 'regulator', 'regulator'),
              ('federation-compliance', 'federationcompliance', 'federation'),
              ('bank-b-maker', 'bankmaker', 'bank-b'), ('bank-b-approver', 'bankapprover', 'bank-b'),
              ('bank-b-admin', 'bankadmin', 'bank-b'),
@@ -63,11 +63,20 @@ def enroll(sandbox, config, adapter_config):
         if known is None:
             known = {'username': username, 'password': secrets.token_urlsafe(18), 'role': role}
             credentials.append(known)
-        users.append({'id': username, 'username': username, 'name': username.replace('-', ' ').title(),
+        users.append({'id': username, 'username': username,
+                      'name': 'Financial Regulator' if username == 'demo-recipient' else username.replace('-', ' ').title(),
                       'role': role, 'tenant': tenant, 'password': known['password'],
                       **({'audit_member': int(username.rsplit('-', 1)[1])} if role == 'auditguardian' else {})})
     atomic_write(credentials_path, credentials)
     store.register_users(users)
+    with store.transaction():
+        # Earlier runtimes enrolled the recipient as a bank auditor, which can
+        # see every customer account. A regulator sees only its disclosures.
+        row = store.db.execute('SELECT data FROM users WHERE id=?', ('demo-recipient',)).fetchone()
+        data = json.loads(row['data']) if row else None
+        if data and data.get('role') != 'regulator':
+            data.update(role='regulator', tenant='regulator', name='Financial Regulator')
+            store.db.execute('UPDATE users SET data=? WHERE id=?', (store.encode(data), 'demo-recipient'))
     with store.transaction():
         for row in list(store.db.execute('SELECT id,data FROM users')):
             data = json.loads(row['data'])

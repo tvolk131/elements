@@ -198,7 +198,7 @@ class Seeder:
                 'operation_id': operation_id, 'targets': [{'txid': target['txid'], 'output_index': target['output_index']}],
                 'recipient_id': 'demo-recipient', 'recipient_key': key['public_key'],
                 'authority': 'Financial regulator · routine supervisory review',
-                'reason': 'Confirm the amount and recipient of Acme’s payment to Initech for the quarterly review.',
+                'reason': 'Confirm the amount of Acme’s payment to Initech for the quarterly review.',
                 'expires_in': 86400})
             self.state['disclosure'] = case['id']
             self.save()

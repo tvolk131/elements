@@ -312,7 +312,14 @@ export function ReservesPage() {
                             : "reconciled"
                         }
                       >
-                        {r.frozen ? "Issuance frozen" : undefined}
+                        {r.frozen
+                          ? "Issuance frozen"
+                          : r.cash_reconciles &&
+                              r.liabilities_reconcile &&
+                              r.supply_reconciles &&
+                              r.journal_balances
+                            ? "Fully backed"
+                            : undefined}
                       </Badge>
                       <span className="cell-secondary">
                         Escrow {money(r.escrow_minor)} · Test payout mode:{" "}

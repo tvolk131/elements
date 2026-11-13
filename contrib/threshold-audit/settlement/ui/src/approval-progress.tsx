@@ -1,5 +1,6 @@
 import { useApp } from "./context";
 import { Badge, Button, Icon } from "./components";
+import { DemoNext } from "./demo";
 import { money } from "./domain";
 import type { Operation, WorkflowActor } from "./types";
 
@@ -124,6 +125,14 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                     </p>
                   )
                 )}
+                {!op.allowed_actions.includes("approve") && (
+                  <DemoNext
+                    usernames={workflow?.user_reviewers.map((a) => a.id)}
+                    operation={op.id}
+                    guardian={app.guardian}
+                    current={app.user.id}
+                  />
+                )}
                 {op.allowed_actions.includes("approve") && (
                   <Button
                     className="primary small"
@@ -188,9 +197,18 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                 </ul>
               </details>
             )}
-            {op.allowed_actions.some((a) =>
-              ["guardian-approve", "guardian_approve"].includes(a),
-            ) && (
+            {approved < required &&
+              !op.allowed_actions.includes("guardian-approve") && (
+                <DemoNext
+                  usernames={policyIds.filter(
+                    (id) => !workflow?.approved_institution_ids.includes(id),
+                  )}
+                  operation={op.id}
+                  guardian={app.guardian}
+                  current={app.user.id}
+                />
+              )}
+            {op.allowed_actions.includes("guardian-approve") && (
               <Button
                 className="primary small"
                 data-testid="workflow-institution-approve"
@@ -230,6 +248,14 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                 />{" "}
                 selects <b>Send</b>. This does not happen automatically.
               </p>
+            )}
+            {ready && !op.allowed_actions.includes("execute") && (
+              <DemoNext
+                usernames={workflow?.submitters.map((a) => a.id)}
+                operation={op.id}
+                guardian={app.guardian}
+                current={app.user.id}
+              />
             )}
             {ready && op.allowed_actions.includes("execute") && (
               <Button

@@ -6,6 +6,9 @@ It creates **TestEUR and TestUSD**, with simulated custodian balances. There is
 no real bank connection, reserve account, licensed issuer or redemption promise.
 The legal entity owing redemption remains an open product/legal decision.
 
+For a product or leadership walkthrough, see the [live demo runbook](DEMO.md).
+It seeds a dedicated runtime with demo sign-in and a reset point.
+
 ## Run and resume
 
 Build the [web app](settlement/ui/README.md) first (`npm ci` and `npm run build`

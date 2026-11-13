@@ -1,8 +1,15 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render as baseRender, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 import { ApprovalProgress } from "./approval-progress";
 import type { Operation } from "./types";
+// Demo-only helpers query the (absent) persona list; give them a client.
+const render = (ui: ReactElement) =>
+  baseRender(
+    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
+  );
 const app = vi.hoisted(() => ({
   user: { id: "bank-maker", name: "Bank Maker" },
   accountName: () => "Acme · Operating",

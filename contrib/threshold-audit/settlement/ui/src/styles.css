@@ -1013,6 +1013,31 @@ tbody tr:hover {
 .revealed-output > small {
   color: var(--ink-soft);
 }
+.demo-next {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.demo-next-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px dashed var(--teal);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--teal-deep);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.demo-next-button:hover {
+  background: var(--teal-wash);
+}
+.demo-next-button svg {
+  width: 14px;
+  height: 14px;
+}
 .demo-sign-in {
   margin-top: 20px;
 }
@@ -1051,6 +1076,9 @@ tbody tr:hover {
   padding: 0;
   display: grid;
   gap: 6px;
+}
+.persona-list > li {
+  display: grid;
 }
 .persona {
   width: 100%;
@@ -1359,6 +1387,9 @@ dialog::backdrop {
 }
 .toast.error {
   background: #6f302a;
+}
+.toast.info svg {
+  color: #c9d6d3;
 }
 .toast.error svg {
   color: #f4d7c9;

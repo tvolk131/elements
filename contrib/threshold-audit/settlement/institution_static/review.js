@@ -17,7 +17,7 @@ async function initialize() {
        Amount:(operation.amount_minor/100).toLocaleString('en-GB',{minimumFractionDigits:2})+' Test'+operation.currency,
        From:operation.source_name||operation.account_id,
        To:operation.destination_name||operation.beneficiary_name||(operation.kind==='deposit'||operation.kind==='refund'?operation.account_id:'Configured bank account'),
-       'Approval valid until':new Date(operation.expires_at*1000).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}),
+       'Approval valid until':new Date(operation.expires_at*1000).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'UTC'})+' UTC',
        Case:operation.id};
   for (const [label, value] of Object.entries(fields)) {
     const dt=document.createElement('dt'), dd=document.createElement('dd'); dt.textContent=label; dd.textContent=value; terms.append(dt,dd);
