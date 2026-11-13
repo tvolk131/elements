@@ -124,13 +124,13 @@ export function TransferDestination({
           onChange={(e) => changeMode(e.target.value)}
           data-testid="destination-type"
         >
-          <option value="managed">Another managed account</option>
-          <option value="reference">Beneficiary at a bank</option>
-          <option value="address">Confidential wallet address</option>
+          <option value="managed">One of my accounts</option>
+          <option value="reference">A company, by bank reference</option>
+          <option value="address">A wallet address</option>
         </select>
       </Field>
       {mode === "managed" ? (
-        <Field label="To on-chain account">
+        <Field label="To account">
           <select
             aria-label="Destination"
             data-testid="beneficiary"
@@ -182,27 +182,27 @@ export function TransferDestination({
             onClick={() => resolve.mutate(reference)}
             data-testid="resolve-beneficiary"
           >
-            {resolve.isPending
-              ? "Checking receiving bank…"
-              : "Look up beneficiary"}
+            {resolve.isPending ? "Checking with their bank…" : "Look up"}
           </Button>
           {route && (
             <div className="beneficiary-confirmation">
-              <Badge status="complete">
-                Verified routing signature · Demo bank
-              </Badge>
+              <Badge status="complete">Verified by the receiving bank</Badge>
               <h4>{route.payload.beneficiary_name}</h4>
               <p>
-                {route.payload.bank_id} · Test{route.payload.currency}
+                Account at {route.payload.bank_id} · Test
+                {route.payload.currency}
               </p>
-              <CopyField
-                label="Receiving confidential address"
-                value={route.payload.address}
-              />
               <p className="small-note">
-                The receiving bank signed this destination. Confirm the
-                beneficiary before creating the payment request.
+                The receiving bank confirmed who this reference belongs to.
+                Check the name before you continue.
               </p>
+              <details className="wallet-technical">
+                <summary>Technical details</summary>
+                <CopyField
+                  label="Receiving confidential address"
+                  value={route.payload.address}
+                />
+              </details>
             </div>
           )}
         </>

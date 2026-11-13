@@ -27,6 +27,16 @@ export function clearSession() {
     permissions: [],
   });
 }
+/** Replace any prior identity's cached data with a newly signed-in session. */
+export async function startSession(session: Session) {
+  await queryClient.cancelQueries();
+  queryClient.removeQueries({
+    predicate: (query) =>
+      query.queryKey[0] !== "session" && query.queryKey[0] !== "demo-personas",
+  });
+  queryClient.getMutationCache().clear();
+  queryClient.setQueryData(["session"], session);
+}
 export async function api<T>(
   path: string,
   body?: unknown,

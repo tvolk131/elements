@@ -184,14 +184,42 @@ class Settlement:
                 candidate, digest = "", "!"
             if not hmac.compare_digest(candidate, digest):
                 raise Problem("invalid username or password", 401, "authentication_failed")
-            if json.loads(row["data"]).get("disabled"):
-                raise Problem("institution membership is no longer active", 401, "membership_inactive")
-            token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-            self.db.execute("INSERT INTO sessions VALUES(?,?,?,?)", (reference_hash(token), row["id"], csrf,
-                                                                   int(time.time()) + 8 * 3600))
-            self.evidence(row["id"], "login", {})
-            return token, {"user": json.loads(row["data"]), "csrf": csrf,
-                           "permissions": sorted(ROLES[json.loads(row["data"])["role"]])}
+            return self._open_session(row, {})
+
+    def _open_session(self, row, evidence):
+        if json.loads(row["data"]).get("disabled"):
+            raise Problem("institution membership is no longer active", 401, "membership_inactive")
+        token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        self.db.execute("INSERT INTO sessions VALUES(?,?,?,?)", (reference_hash(token), row["id"], csrf,
+                                                               int(time.time()) + 8 * 3600))
+        self.evidence(row["id"], "login", evidence)
+        return token, {"user": json.loads(row["data"]), "csrf": csrf,
+                       "permissions": sorted(ROLES[json.loads(row["data"])["role"]])}
+
+    def demo_personas(self):
+        """Personas offered for password-less sign-in. Only a runtime explicitly
+        configured for live demos lists any; otherwise the feature is absent."""
+        personas = self.config.get("demo_sign_in") or []
+        if not personas:
+            raise Problem("endpoint not found", 404)
+        result = []
+        with self.lock:
+            for persona in personas:
+                row = self.db.execute("SELECT data FROM users WHERE username=?", (persona["username"],)).fetchone()
+                if row and not json.loads(row["data"]).get("disabled"):
+                    user = json.loads(row["data"])
+                    result.append({"username": persona["username"], "label": persona["label"],
+                                   "workspace": persona["workspace"], "name": user["name"], "role": user["role"]})
+        return result
+
+    def demo_login(self, username):
+        if username not in {persona["username"] for persona in self.config.get("demo_sign_in") or []}:
+            raise Problem("demo sign-in is not available for this account", 404)
+        with self.transaction():
+            row = self.db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            if not row:
+                raise Problem("demo sign-in is not available for this account", 404)
+            return self._open_session(row, {"demo_sign_in": True})
 
     def session(self, token):
         with self.lock:
@@ -655,7 +683,9 @@ class Settlement:
             previous = self.db.execute("SELECT * FROM payments WHERE operation_id=?", (operation["id"],)).fetchone()
             if previous:
                 return  # Query the same payment ID; never initiate another payout after uncertainty.
-            self.verifier.verify_certificate(operation, operation["certificate"])
+            # Execution was authorized while the approval was current; a payout
+            # delayed by a freeze, shortfall or handover must not strand escrow.
+            self.verifier.verify_certificate(operation, operation["certificate"], allow_expired=True)
             bank = self.db.execute("SELECT * FROM bank_accounts WHERE currency=?", (operation["currency"],)).fetchone()
             if bank["frozen"]:
                 operation["error"] = "Simulated custody account is frozen; escrow remains locked."

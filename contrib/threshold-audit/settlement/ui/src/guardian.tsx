@@ -94,7 +94,7 @@ export function NetworkCard() {
     </Panel>
   );
 }
-function AuditCard({ linkToDetails = false }: { linkToDetails?: boolean }) {
+function AuditCard() {
   const { network } = useApp().data;
   return (
     <Panel title="Audit key" className="side-card">
@@ -108,11 +108,6 @@ function AuditCard({ linkToDetails = false }: { linkToDetails?: boolean }) {
         Historical recovery readiness is attested during each federation
         handover. See the handover’s readiness evidence.
       </p>
-      {linkToDetails && (
-        <WorkspaceLink page="network" className="link-button">
-          View governance details <Icon name="arrow" />
-        </WorkspaceLink>
-      )}
     </Panel>
   );
 }
@@ -201,7 +196,7 @@ export function GuardianOverview({
           </WorkspaceLink>
         </div>
       )}
-      <div className={approvals ? "guardian-queue-layout" : "panels"}>
+      <div className="guardian-queue-layout">
         <section>
           <OperationPanel
             key={approvals ? "institution-queue" : "settlement-history"}
@@ -218,12 +213,6 @@ export function GuardianOverview({
             }
           />
         </section>
-        {!approvals && (
-          <aside className="aside-panels">
-            <NetworkCard />
-            <AuditCard linkToDetails />
-          </aside>
-        )}
       </div>
       {!approvals && (
         <Panel

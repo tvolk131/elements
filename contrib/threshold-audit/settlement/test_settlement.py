@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from curve import Curve
@@ -287,6 +288,33 @@ class SettlementTests(unittest.TestCase):
         self.store.poll()
         self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM payments").fetchone()[0], 1)
         self.assert_reconciled()
+
+    def test_payout_after_approval_expiry_once_execution_authorized(self):
+        # Execution was authorized while the approval was current; a payout
+        # delayed past its expiry (freeze, shortfall, handover) must still run.
+        self.issue()
+        self.store.bank_event(self.users["admin"], {"event_id": "freeze-expiry", "kind": "freeze", "currency": "EUR"})
+        operation = self.redeem()
+        self.store.bank_event(self.users["admin"], {"event_id": "unfreeze-expiry", "kind": "unfreeze", "currency": "EUR"})
+        later = self.store._operation(operation["id"])["expires_at"] + 3600
+        with mock.patch("settlement.approval.time.time", return_value=later):
+            self.store.poll()
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM payments").fetchone()[0], 1)
+        self.assertIsNone(self.store.operation(self.users["approver"], operation["id"]).get("error"))
+        self.assert_reconciled()
+
+    def test_demo_sign_in_is_absent_unless_configured_and_limited_to_personas(self):
+        for call in (self.store.demo_personas, lambda: self.store.demo_login("maker")):
+            with self.assertRaises(Problem) as raised:
+                call()
+            self.assertEqual(raised.exception.status, 404)
+        self.store.config["demo_sign_in"] = [{"username": "maker", "label": "Bank maker", "workspace": "wallet"}]
+        self.assertEqual([p["username"] for p in self.store.demo_personas()], ["maker"])
+        token, session = self.store.demo_login("maker")
+        self.assertEqual(self.store.session(token)["user"]["id"], "maker")
+        self.assertEqual(session["user"]["id"], "maker")
+        with self.assertRaises(Problem):
+            self.store.demo_login("admin")
 
     def test_idempotent_receipt_and_token_reservations(self):
         operation = self.create_deposit()

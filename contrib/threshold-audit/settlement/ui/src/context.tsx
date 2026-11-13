@@ -7,8 +7,15 @@ import {
   type ReactNode,
 } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { api, clearSession, queryClient, refreshData } from "./api";
+import {
+  api,
+  clearSession,
+  queryClient,
+  refreshData,
+  startSession,
+} from "./api";
 import { Brand, Button, ErrorNote, Icon } from "./components";
+import { DemoSignIn, usePersonas } from "./demo";
 import type {
   ApprovalRequest,
   Dashboard,
@@ -87,17 +94,12 @@ export function SessionGate({
   );
 }
 function Login({ guardian }: { guardian: boolean }) {
+  const demo = !!usePersonas().data?.length;
   const login = useMutation({
     gcTime: 0,
     mutationFn: (body: { username: string; password: string }) =>
       api<Session>("/api/login", body),
-    onSuccess: async (session) => {
-      await queryClient.cancelQueries();
-      queryClient.removeQueries({
-        predicate: (query) => query.queryKey[0] !== "session",
-      });
-      queryClient.setQueryData(["session"], session);
-    },
+    onSuccess: startSession,
   });
   useEffect(() => {
     document.title = `Sign in · Concord ${guardian ? "guardian" : "wallet"}`;
@@ -139,51 +141,103 @@ function Login({ guardian }: { guardian: boolean }) {
           </div>
           <h2>Welcome to your workspace.</h2>
           <p className="muted">
-            Sign in with your assigned{" "}
-            {guardian ? "guardian institution" : "bank or corporate"} account.
+            {demo
+              ? "Choose who to sign in as. Each person sees only what their role allows."
+              : `Sign in with your assigned ${guardian ? "guardian institution" : "bank or corporate"} account.`}
           </p>
-          <form
-            data-testid="login-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const form = new FormData(e.currentTarget);
-              login.mutate({
-                username: String(form.get("username")),
-                password: String(form.get("password")),
-              });
-            }}
-          >
-            <div className="form-field">
-              <label htmlFor="username">Username</label>
-              <input
-                id="username"
-                name="username"
-                autoComplete="username"
-                required
-                autoFocus
-              />
-            </div>
-            <div className="form-field">
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                name="password"
-                autoComplete="current-password"
-                required
-              />
-            </div>
-            <ErrorNote error={login.error} />
-            <Button
-              type="submit"
-              className="primary"
-              disabled={login.isPending}
-              data-testid="login-submit"
+          {demo ? (
+            <>
+              <DemoSignIn guardian={guardian} />
+              <details className="password-sign-in">
+                <summary>Sign in with a password</summary>
+                <form
+                  data-testid="login-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = new FormData(e.currentTarget);
+                    login.mutate({
+                      username: String(form.get("username")),
+                      password: String(form.get("password")),
+                    });
+                  }}
+                >
+                  <div className="form-field">
+                    <label htmlFor="username">Username</label>
+                    <input
+                      id="username"
+                      name="username"
+                      autoComplete="username"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor="password">Password</label>
+                    <input
+                      id="password"
+                      type="password"
+                      name="password"
+                      autoComplete="current-password"
+                      required
+                    />
+                  </div>
+                  <ErrorNote error={login.error} />
+                  <Button
+                    type="submit"
+                    className="primary"
+                    disabled={login.isPending}
+                    data-testid="login-submit"
+                  >
+                    {login.isPending ? "Signing in…" : "Sign in securely"}
+                    <Icon name="arrow" />
+                  </Button>
+                </form>
+              </details>
+            </>
+          ) : (
+            <form
+              data-testid="login-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = new FormData(e.currentTarget);
+                login.mutate({
+                  username: String(form.get("username")),
+                  password: String(form.get("password")),
+                });
+              }}
             >
-              {login.isPending ? "Signing in…" : "Sign in securely"}
-              <Icon name="arrow" />
-            </Button>
-          </form>
+              <div className="form-field">
+                <label htmlFor="username">Username</label>
+                <input
+                  id="username"
+                  name="username"
+                  autoComplete="username"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="password">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  name="password"
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+              <ErrorNote error={login.error} />
+              <Button
+                type="submit"
+                className="primary"
+                disabled={login.isPending}
+                data-testid="login-submit"
+              >
+                {login.isPending ? "Signing in…" : "Sign in securely"}
+                <Icon name="arrow" />
+              </Button>
+            </form>
+          )}
           <div className="login-notice">
             <Icon name="info" />
             <span>

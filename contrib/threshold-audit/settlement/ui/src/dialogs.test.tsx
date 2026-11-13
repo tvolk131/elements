@@ -117,10 +117,7 @@ it("uses the selected source account and opens the created request", async () =>
   show();
   expect(screen.getByLabelText("From wallet account")).toHaveValue("b");
   await userEvent.type(screen.getByLabelText("Amount"), "1.23");
-  await userEvent.selectOptions(
-    screen.getByLabelText("To on-chain account"),
-    "a",
-  );
+  await userEvent.selectOptions(screen.getByLabelText("To account"), "a");
   await userEvent.click(screen.getByTestId("submit-request"));
   await waitFor(() =>
     expect(api).toHaveBeenCalledWith("/api/transfers", {

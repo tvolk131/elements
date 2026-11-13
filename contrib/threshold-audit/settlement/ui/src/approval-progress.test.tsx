@@ -59,7 +59,7 @@ it("explains every missing requirement to the maker and does not offer self appr
   render(<ApprovalProgress operation={operation()} />);
   expect(screen.getByText(/It has not been transferred yet/)).toBeVisible();
   expect(screen.getByText(/You cannot approve your own request/)).toBeVisible();
-  expect(screen.getByText("(acme-approver)")).toBeVisible();
+  expect(screen.getAllByText("Acme Approver")[0]).toBeVisible();
   expect(screen.getByText("0 of 3 recorded")).toBeVisible();
   expect(screen.getByText(/of the 5/)).toBeVisible();
   expect(screen.getByText(/does not happen automatically/)).toBeVisible();
@@ -94,7 +94,7 @@ it("keeps chain submission unavailable while institutions still need to approve"
   );
   expect(screen.getByText("2 of 3 recorded")).toBeVisible();
   expect(
-    screen.queryByRole("button", { name: "Review chain submission" }),
+    screen.queryByRole("button", { name: "Review and send" }),
   ).not.toBeInTheDocument();
 });
 it("offers a submission review only after the server says it is ready", async () => {
@@ -107,7 +107,7 @@ it("offers a submission review only after the server says it is ready", async ()
   });
   render(<ApprovalProgress operation={op} />);
   await userEvent.click(
-    screen.getByRole("button", { name: "Review chain submission" }),
+    screen.getByRole("button", { name: "Review and send" }),
   );
   expect(app.setDialog).toHaveBeenCalledWith({
     type: "review",

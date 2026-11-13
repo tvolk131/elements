@@ -222,6 +222,9 @@ class Handler(BaseHTTPRequestHandler):
             self.check_request()
             path = urlsplit(self.path).path
             store = self.server.settlement
+            if path == "/api/demo/personas":
+                self.respond(200, store.demo_personas())
+                return
             if path == "/api/session":
                 try:
                     session = self.session()
@@ -267,8 +270,11 @@ class Handler(BaseHTTPRequestHandler):
             path = urlsplit(self.path).path
             body = self.body()
             store = self.server.settlement
-            if path == "/api/login":
-                token, session = store.login(body.get("username"), body.get("password"))
+            if path in {"/api/login", "/api/demo/login"}:
+                if path == "/api/login":
+                    token, session = store.login(body.get("username"), body.get("password"))
+                else:
+                    token, session = store.demo_login(body.get("username"))
                 self.respond(200, session, f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800")
                 return
             session = self.session(csrf=True)

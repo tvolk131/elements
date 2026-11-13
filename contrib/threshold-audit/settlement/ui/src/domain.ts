@@ -26,6 +26,21 @@ export const human = (value?: string): string =>
     awaiting_approval: "Payment approvals needed",
     payment_failed: "Bank payout failed",
     refund_requested: "Escrow return requested",
+    // Activity log events.
+    operation_created: "Request created",
+    user_approved: "Second-person approval",
+    institution_approved: "Institution approval",
+    operation_rejected: "Request rejected",
+    execution_authorized: "Submitted for settlement",
+    issuance_template_bound: "Token issuance prepared",
+    credit_receipt_sealed: "Bank deposit confirmed",
+    simulated_bank_credit: "Bank deposit received",
+    transaction_prepared: "Transaction prepared",
+    transaction_confirmed: "Confirmed on chain",
+    execution_waiting: "Waiting to continue",
+    payment_initiated: "Bank payout started",
+    external_receipt_confirmed: "Payment received",
+    login: "Signed in",
   })[value || ""] ||
   (value || "Not available")
     .replace(/_/g, " ")
@@ -46,7 +61,7 @@ export function baseUnits(amount: string | number, currency?: Currency) {
   const decimals = fraction.endsWith("000000")
     ? fraction.slice(0, 2)
     : fraction;
-  return `${n / 100000000n}.${decimals} Test${currency}`;
+  return `${(n / 100000000n).toLocaleString("en-GB")}.${decimals} Test${currency}`;
 }
 export const short = (value?: string, size = 14) =>
   value ? value.slice(0, size) + (value.length > size ? "…" : "") : "—";
@@ -131,15 +146,15 @@ export function requestSummary(op: Operation): string {
 export function viewerNextAction(op: Operation): string | undefined {
   const actions = op.allowed_actions;
   if (actions.includes("bank-credit"))
-    return "Record the matching simulated bank credit before tokens can be issued.";
+    return "Record the bank deposit so the tokens can be issued.";
   if (actions.includes("approve"))
-    return "Review the amount and destination, then record your separate user approval.";
+    return "Your approval is needed. Check the amount and destination, then approve.";
   if (needsInstitutionApproval(op))
-    return "Review this payment request in your institution’s independent approval window. Your certificate can be provided while other required reviews are pending.";
+    return "Your institution’s approval is needed. You sign in your institution’s own approval window.";
   if (actions.includes("execute"))
     return op.state === "ready"
-      ? "Submit the approved request to the chain. The server checks all current authorizations before execution."
-      : "Review the recorded state and continue the next permitted settlement stage.";
+      ? "All approvals are in place. Send it to settle."
+      : "Continue this request to its next step.";
   if (actions.includes("cancel"))
     return "Review the failed payout and request an approved return of the locked tokens.";
   return undefined;
@@ -185,7 +200,7 @@ export function nextStep(op: Operation): string {
     return `Waiting for ${remaining || "the remaining"} institution ${remaining === 1 ? "approval" : "approvals"}.`;
   }
   if (op.state === "ready")
-    return "Next: an authorized approver submits the approved request to the chain.";
+    return "All approvals are in place. An approver sends it to settle.";
   if (op.state === "preparing")
     return "The transaction is being prepared. It has not been confirmed; an authorized operator can retry the recorded request if needed.";
   if (op.state === "chain_pending")

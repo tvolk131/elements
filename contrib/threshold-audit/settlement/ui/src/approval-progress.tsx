@@ -23,7 +23,7 @@ function Actors({
       {actors.map((actor, index) => (
         <span key={actor.id}>
           {index > 0 ? " or " : ""}
-          <strong>{actor.name}</strong> <code>({actor.id})</code>
+          <strong>{actor.name}</strong>
         </span>
       ))}
     </>
@@ -139,10 +139,6 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                     Review and approve
                   </Button>
                 )}
-                <p className="payment-step-help">
-                  Another person signs in with an eligible account and opens
-                  this request.
-                </p>
               </>
             ) : (
               <p>The required approval from a different person is recorded.</p>
@@ -155,7 +151,7 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
           </span>
           <div>
             <div className="payment-step-title">
-              <h4>Institution payment approvals</h4>
+              <h4>Institution approvals</h4>
               <Badge status={approved >= required ? "complete" : "pending"}>
                 {approved} of {required} recorded
               </Badge>
@@ -167,9 +163,8 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                 <>
                   Any <strong>{required}</strong>
                   {institutionCount ? ` of the ${institutionCount}` : ""}{" "}
-                  institutions must approve this payment in the{" "}
-                  <b>Guardian approval queue</b>. This is separate from the
-                  second-person check.
+                  independent institutions must also approve this payment, each
+                  in its own approval window.
                 </>
               )}
             </p>
@@ -184,7 +179,6 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                     return (
                       <li key={id}>
                         <span>{institution?.name || id}</span>
-                        <code>{id}</code>
                         {workflow?.approved_institution_ids.includes(id) && (
                           <span>Approved</span>
                         )}
@@ -217,7 +211,7 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
           <span className="payment-step-number">3</span>
           <div>
             <div className="payment-step-title">
-              <h4>Submit to chain</h4>
+              <h4>Send</h4>
               <Badge status={ready ? "ready" : "neutral"}>
                 {ready ? "Ready" : "Waiting for steps 1 and 2"}
               </Badge>
@@ -234,8 +228,7 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                   actors={workflow?.submitters}
                   fallback="an authorized payment approver"
                 />{" "}
-                selects <b>Submit to chain</b>. This does not happen
-                automatically.
+                selects <b>Send</b>. This does not happen automatically.
               </p>
             )}
             {ready && op.allowed_actions.includes("execute") && (
@@ -250,17 +243,12 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                   })
                 }
               >
-                Review chain submission
+                Review and send
               </Button>
             )}
           </div>
         </li>
       </ol>
-      <p className="payment-policy-note">
-        Current pilot payment policy. Institution payment approvals are separate
-        from confidential-transaction recovery; these approvals do not request
-        threshold unblinding.
-      </p>
     </section>
   );
 }

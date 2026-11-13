@@ -8,6 +8,7 @@ import {
   human,
   needsInstitutionApproval,
 } from "./domain";
+import { DemoSwitcher } from "./demo";
 import { Dialogs } from "./dialogs";
 import { WorkspaceLink } from "./navigation";
 import type { Page } from "./types";
@@ -108,6 +109,7 @@ export function Shell() {
                 </div>
               </div>
             </div>
+            <DemoSwitcher guardian={app.guardian} current={app.user.id} />
             <button
               className="icon-button"
               aria-label="Sign out"

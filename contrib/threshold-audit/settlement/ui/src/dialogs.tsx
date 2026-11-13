@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, refreshData } from "./api";
 import { useApp } from "./context";
@@ -35,41 +35,51 @@ import type { Currency, Kind, Operation } from "./types";
 
 const REVIEW: Record<
   string,
-  { open: string; title: string; context: string; confirm: string }
+  {
+    open: string;
+    title: string;
+    context: string;
+    confirm: string;
+    done: string;
+  }
 > = {
   approve: {
     open: "Review and approve",
-    title: "Approve settlement request",
+    title: "Approve this request",
     context:
-      "The server checks the current state, exact authorization and permitted next stage. A user approval does not establish an institution quorum or bank payout.",
-    confirm: "Confirm approval",
+      "Your approval is the second-person check. Institution approvals are still needed before it can be sent.",
+    confirm: "Approve",
+    done: "Approval recorded.",
   },
   "guardian-approve": {
     open: "Review institution approval",
     title: "Institution approval",
     context: "",
-    confirm: "Open institution approval",
+    confirm: "Open approval window",
+    done: "",
   },
   execute: {
-    open: "Execute next stage",
-    title: "Execute next settlement stage",
+    open: "Continue",
+    title: "Send this request",
     context:
-      "The server checks the current state, exact authorization and permitted next stage before executing.",
-    confirm: "Execute next stage",
+      "All approvals are in place. The request is submitted to the chain and settles automatically.",
+    confirm: "Send",
+    done: "Submitted. It settles in a few seconds.",
   },
   cancel: {
     open: "Request escrow return",
     title: "Request escrow return",
     context:
-      "Only a definitive failed bank payout can create a new return request. Separate approval and institution quorum are required.",
-    confirm: "Create escrow-return request",
+      "The bank payout failed, so the locked tokens can be returned. A new set of approvals is required.",
+    confirm: "Request return",
+    done: "Return requested. It needs approvals before tokens are released.",
   },
   reject: {
     open: "Reject",
-    title: "Reject settlement request",
-    context:
-      "Rejection records your identity and reason. The server checks the current state.",
-    confirm: "Confirm rejection",
+    title: "Reject this request",
+    context: "Rejecting closes the request and records your reason.",
+    confirm: "Reject request",
+    done: "Request rejected.",
   },
 };
 const ROTATION: Record<
@@ -101,6 +111,28 @@ const ROTATION: Record<
     confirm: "Retry recorded stage",
   },
 };
+// States where the server is still working; poll quickly so the result shows.
+const IN_FLIGHT = [
+  "preparing",
+  "chain_pending",
+  "escrow_confirmed",
+  "bank_pending",
+  "burn_pending",
+];
+function destinationName(
+  op: Operation,
+  app: ReturnType<typeof useApp>,
+): string {
+  if (op.kind === "transfer")
+    return op.destination_name || app.accountName(op.to_account_id);
+  if (["deposit", "refund", "receipt"].includes(op.kind))
+    return app.accountName(op.account_id);
+  return (
+    op.beneficiary_name ||
+    app.data.beneficiaries.find((b) => b.id === op.beneficiary_id)?.name ||
+    "Configured bank account"
+  );
+}
 function Footer({ children }: { children: ReactNode }) {
   return <div className="dialog-footer">{children}</div>;
 }
@@ -211,7 +243,12 @@ export function Dialogs() {
         action={d.action}
       />
     );
-  if (d.type === "bank") return <BankForm operation={d.operation} />;
+  if (d.type === "bank")
+    return d.operation?.state === "awaiting_bank" ? (
+      <BankCreditForm operation={d.operation} />
+    ) : (
+      <BankForm operation={d.operation} />
+    );
   return <RotationForm action={d.action} />;
 }
 function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
@@ -280,10 +317,10 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
       title={kind === "transfer" ? "Send on-chain" : human(kind)}
       description={
         kind === "deposit"
-          ? "Bank → chain · Peg in. Request test tokens after a matching simulated bank credit."
+          ? "Turn a bank deposit into tokens in this wallet."
           : kind === "redemption"
-            ? "Chain → bank · Peg out. Request a simulated bank payout from your token balance."
-            : "Wallet → wallet. This transfer stays on the chain and requires approvals."
+            ? "Turn tokens back into money in a bank account."
+            : "Pay another account. Payments need approvals before they are sent."
       }
       close={() => app.setDialog(null)}
     >
@@ -295,13 +332,11 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
       >
         <div className="dialog-body">
           <div className="form-context">
-            <strong>Sandbox issuer (legal entity undecided)</strong>
-            <br />
             {kind === "deposit"
-              ? "A bank administrator records a matching simulated credit using this request reference and amount. A separate user and the institution quorum must approve before test tokens are issued on-chain. Do not send real money."
+              ? "After the bank confirms the deposit, a second person and three independent institutions approve before tokens are issued."
               : kind === "redemption"
-                ? "Tokens are held for redemption before a simulated bank payout. An unknown bank result remains pending reconciliation."
-                : "This pilot requires a separate authorized user and an institution quorum before the application executes a transfer. This is application policy, separate from threshold unblinding."}
+                ? "Tokens are locked while the bank pays out, then destroyed once the payment is confirmed. A second person and three institutions approve first."
+                : "A second person and three independent institutions approve before the payment is sent."}
           </div>
           <Field
             label={kind === "deposit" ? "Add tokens to" : "From wallet account"}
@@ -449,22 +484,30 @@ function OperationDetail({ id }: { id: string }) {
         undefined,
         signal,
       ),
-    refetchInterval: 30000,
+    refetchInterval: (q) =>
+      IN_FLIGHT.includes(q.state.data?.state ?? "") ? 2000 : 30000,
   });
   const op = query.data;
   const actions = op?.allowed_actions || [];
+  // Keep balances and lists in step when this request changes state.
+  const state = op?.state;
+  useEffect(() => {
+    if (state) void refreshData();
+  }, [state]);
   const bankEvent =
     app.can("simulate_bank") &&
     op &&
     ["awaiting_bank", "bank_pending", "bank_unknown"].includes(op.state);
   const technical: [string, string | undefined][] = op
     ? [
-        ["Bound destination hash", op.destination_hash],
-        ["Bank destination reference hash", op.bank_account_ref_hash],
-        ["Simulated cash receipt / original redemption", op.cash_receipt_id],
-        ["Native asset ID", op.asset_id],
-        ["Bound transaction template hash", op.transaction_template_hash],
         ["Elements transaction ID", op.txid],
+        ["Confidential destination address", op.destination_address],
+        ["Approved request hash", op.request_hash],
+        ["Destination hash", op.destination_hash],
+        ["Bank account reference hash", op.bank_account_ref_hash],
+        ["Bank receipt", op.cash_receipt_id],
+        ["Asset ID", op.asset_id],
+        ["Transaction template hash", op.transaction_template_hash],
       ]
     : [];
   // Evidence entries are newest first; show the timeline oldest first.
@@ -523,11 +566,11 @@ function OperationDetail({ id }: { id: string }) {
 
             <div className="status-pair">
               <div className="status-box">
-                <span>ELEMENTS CHAIN</span>
+                <span>Chain</span>
                 <strong>{chainStatus(op)}</strong>
               </div>
               <div className="status-box">
-                <span>SIMULATED BANK</span>
+                <span>Bank</span>
                 <strong>{bankStatus(op)}</strong>
               </div>
             </div>
@@ -544,37 +587,11 @@ function OperationDetail({ id }: { id: string }) {
                   ? "External wallet"
                   : op.source_name || app.accountName(op.account_id)}
               </KV>
-              <KV label="Tenant / customer">{op.tenant}</KV>
-              <KV label="Destination">
-                {op.kind === "transfer"
-                  ? op.destination_name || app.accountName(op.to_account_id)
-                  : ["deposit", "refund", "receipt"].includes(op.kind)
-                    ? app.accountName(op.account_id)
-                    : op.beneficiary_name ||
-                      app.data.beneficiaries.find(
-                        (b) => b.id === op.beneficiary_id,
-                      )?.name ||
-                      "Configured bank account"}
-              </KV>
-              {op.destination_address && (
-                <CopyField
-                  label="Confidential destination address"
-                  value={op.destination_address}
-                />
-              )}
-              {app.guardian && (
-                <CopyField
-                  label="Exact destination bound for approval"
-                  value={op.approval_request?.destination}
-                />
-              )}
-              <KV label="Issuer">
-                {op.issuer || "Sandbox issuer (legal entity undecided)"}
-              </KV>
-              <KV label="Reference">{op.reference || "—"}</KV>
+              <KV label="Destination">{destinationName(op, app)}</KV>
+              {op.reference && <KV label="Reference">{op.reference}</KV>}
               <KV label="Created">{date(op.created_at, true)}</KV>
               <details className="wallet-technical">
-                <summary>Technical transaction details</summary>
+                <summary>Technical details</summary>
                 {technical.map(([label, value]) => (
                   <CopyField key={label} label={label} value={value} />
                 ))}
@@ -589,24 +606,19 @@ function OperationDetail({ id }: { id: string }) {
                   for this receipt.
                 </p>
               </div>
-            ) : (
+            ) : ["awaiting_approval", "ready"].includes(op.state) ? null : (
+              // While approvals are open, the progress panel above covers this.
               <div className="detail-section">
-                <h3>Authorization</h3>
-                <KV label="Separate user approval">
-                  {op.user_approved
-                    ? "Recorded"
-                    : "Awaiting authorized approver"}
+                <h3>Approvals</h3>
+                <KV label="Second-person approval">
+                  {op.user_approved ? "Recorded" : "Waiting"}
                 </KV>
-                <KV label="Institution certificate quorum">
+                <KV label="Institution approvals">
                   <Quorum operation={op} />
                 </KV>
-                <CopyField label="Bound request hash" value={op.request_hash} />
-                <KV label="Approval expiry">{date(op.expires_at, true)}</KV>
-                <p className="small-note">
-                  Institution payment approval is separate from block signing
-                  and threshold unblinding. Private approval credentials stay in
-                  the institution’s own window.
-                </p>
+                <KV label="Approvals valid until">
+                  {date(op.expires_at, true)}
+                </KV>
               </div>
             )}
             {history.length > 0 && (
@@ -640,7 +652,9 @@ function OperationDetail({ id }: { id: string }) {
               data-testid="bank-credit"
               onClick={() => app.setDialog({ type: "bank", operation: op })}
             >
-              Record bank event
+              {op.state === "awaiting_bank"
+                ? "Confirm bank deposit"
+                : "Record bank event"}
             </Button>
           )}
           <Button
@@ -687,8 +701,8 @@ function OperationDetail({ id }: { id: string }) {
               >
                 {action === "execute" && !app.guardian
                   ? op.state === "ready"
-                    ? "Submit to chain"
-                    : "Continue request"
+                    ? "Review and send"
+                    : "Continue"
                   : REVIEW[action].open}
               </Button>
             ))}
@@ -719,12 +733,9 @@ function ReviewForm({
     },
     onSuccess: async () => {
       if (!guardian) {
-        app.notify(
-          reject
-            ? "Request rejected with an attributable reason."
-            : "Request action recorded. Check its bank and chain status.",
-        );
-        app.setDialog(null);
+        app.notify(copy.done);
+        // Return to the request so its progress stays in view.
+        app.setDialog({ type: "operation", id: op.id });
         await refreshData();
       }
     },
@@ -732,7 +743,7 @@ function ReviewForm({
   return (
     <Modal
       title={copy.title}
-      description="Review the request exactly as it is bound for authorization."
+      description="Check the amount and destination before you confirm."
       close={() => app.setDialog(null)}
     >
       <form
@@ -744,7 +755,7 @@ function ReviewForm({
         <div className="dialog-body">
           <div className="form-context">
             {guardian
-              ? `Continue in ${app.user.institution_id || "your institution"}’s independent approval window. This console never receives the institution passphrase or signing key.`
+              ? `You sign in ${app.user.institution_id || "your institution"}’s own approval window. This console never sees the institution’s signing key.`
               : copy.context}
           </div>
           <div className="confirmation-summary">
@@ -753,29 +764,28 @@ function ReviewForm({
               {money(op.amount_minor)} Test{op.currency}
             </strong>
           </div>
-          <KV label="Source">{app.accountName(op.account_id)}</KV>
-          <KV label="Destination">
-            {op.approval_request?.destination ||
-              op.destination ||
-              op.to_account_id}
+          <KV label="From">
+            {op.source_name || app.accountName(op.account_id)}
           </KV>
-          <CopyField
-            label="Bound destination hash"
-            value={op.destination_hash}
-          />
-          <CopyField
-            label="Bank reference hash"
-            value={op.bank_account_ref_hash}
-          />
-          <CopyField
-            label="Cash receipt / original redemption"
-            value={op.cash_receipt_id}
-          />
-          <CopyField label="Native asset ID" value={op.asset_id} />
-          <CopyField
-            label="Transaction template hash"
-            value={op.transaction_template_hash}
-          />
+          <KV label="To">{destinationName(op, app)}</KV>
+          <details className="wallet-technical">
+            <summary>Technical details</summary>
+            <CopyField
+              label="Exact destination"
+              value={op.approval_request?.destination || op.destination_address}
+            />
+            <CopyField label="Destination hash" value={op.destination_hash} />
+            <CopyField
+              label="Bank account reference hash"
+              value={op.bank_account_ref_hash}
+            />
+            <CopyField label="Bank receipt" value={op.cash_receipt_id} />
+            <CopyField label="Asset ID" value={op.asset_id} />
+            <CopyField
+              label="Transaction template hash"
+              value={op.transaction_template_hash}
+            />
+          </details>
           {reject && (
             <Field label="Reason for rejection">
               <textarea
@@ -791,10 +801,7 @@ function ReviewForm({
           )}
           <label className="rotation-review-confirm">
             <input type="checkbox" required data-testid="confirm-review" />
-            <span>
-              I have reviewed the exact amount, test currency, asset and
-              destination for this request.
-            </span>
+            <span>I have checked the amount and destination.</span>
           </label>
           <ErrorNote error={mutation.error} />
         </div>
@@ -807,6 +814,65 @@ function ReviewForm({
             disabled={mutation.isPending}
           >
             {mutation.isPending ? "Submitting…" : copy.confirm}
+          </Button>
+        </Footer>
+      </form>
+    </Modal>
+  );
+}
+/** The common case: the bank confirms a funding request's deposit arrived. */
+function BankCreditForm({ operation: op }: { operation: Operation }) {
+  const app = useApp();
+  const mutation = useMutation({
+    mutationFn: () =>
+      api("/api/bank/events", {
+        event_id: `credit-${op.id}`,
+        kind: "credit",
+        currency: op.currency,
+        operation_id: op.id,
+        amount: (op.amount_minor / 100).toFixed(2),
+      }),
+    onSuccess: async () => {
+      app.notify("Bank deposit recorded. The request now needs approvals.");
+      app.setDialog({ type: "operation", id: op.id });
+      await refreshData();
+    },
+  });
+  return (
+    <Modal
+      title="Confirm bank deposit"
+      description="Record that the money for this funding request arrived."
+      close={() => app.setDialog({ type: "operation", id: op.id })}
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          mutation.mutate();
+        }}
+      >
+        <div className="dialog-body">
+          <div className="confirmation-summary">
+            <span>Deposit received</span>
+            <strong className="number">
+              {money(op.amount_minor)} Test{op.currency}
+            </strong>
+          </div>
+          <KV label="For">{app.accountName(op.account_id)}</KV>
+          <p className="small-note">
+            Simulated bank: no real money moves. Tokens are issued only after a
+            second person and three institutions approve.
+          </p>
+          <ErrorNote error={mutation.error} />
+        </div>
+        <Footer>
+          <Cancel />
+          <Button
+            type="submit"
+            className="primary"
+            data-testid="confirm-bank-credit"
+            disabled={mutation.isPending}
+          >
+            {mutation.isPending ? "Recording…" : "Confirm deposit"}
           </Button>
         </Footer>
       </form>

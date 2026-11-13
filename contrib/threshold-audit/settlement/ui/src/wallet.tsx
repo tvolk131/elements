@@ -24,6 +24,7 @@ import {
   isPending,
   money,
   nextStep,
+  viewerNextAction,
   requestSummary,
   short,
 } from "./domain";
@@ -86,7 +87,7 @@ export function WalletPage({
     {
       kind: "deposit",
       title: "Add funds from bank",
-      direction: "Bank → chain · Peg in",
+      direction: "Bank account → wallet",
       description: "Create a funding request for this wallet.",
       action: "Create funding request",
       icon: "download",
@@ -94,7 +95,7 @@ export function WalletPage({
     {
       kind: "redemption",
       title: "Withdraw to bank",
-      direction: "Chain → bank · Peg out",
+      direction: "Wallet → bank account",
       description: "Request a payout to a configured bank account.",
       action: "Request withdrawal",
       icon: "upload",
@@ -102,15 +103,15 @@ export function WalletPage({
     {
       kind: "transfer",
       title: "Send on-chain",
-      direction: "Wallet → wallet",
-      description: "Transfer tokens between approved accounts.",
+      direction: "Wallet → another account",
+      description: "Pay a company here or at another bank.",
       action: "Start transfer",
       icon: "send",
     },
     {
       kind: "receive",
       title: "Receive on-chain",
-      direction: "Wallet → this account",
+      direction: "Another account → wallet",
       description: "Share a bank reference or confidential receiving address.",
       action: "Show receiving details",
       icon: "wallet",
@@ -153,7 +154,7 @@ export function WalletPage({
                 <strong>
                   {human(op.kind)} · {money(op.amount_minor)} Test{op.currency}
                 </strong>
-                <small>{nextStep(op)}</small>
+                <small>{viewerNextAction(op) || nextStep(op)}</small>
               </span>
               <span>
                 Review <Icon name="chevron" />
@@ -214,11 +215,11 @@ export function WalletPage({
         <div className="wallet-bank-guide">
           <strong>Bank ↔ chain</strong>
           <p>
-            <b>Add funds:</b> request → simulated bank credit → separate user
-            and institution approvals → token issuance.
+            <b>Add funds:</b> request → bank confirms the deposit → approvals →
+            tokens issued.
             <br />
-            <b>Withdraw:</b> request → approvals → tokens locked → simulated
-            bank payout → token burn.
+            <b>Withdraw:</b> request → approvals → tokens locked → bank pays out
+            → tokens destroyed.
           </p>
           <Button
             symbol="download"
@@ -819,7 +820,7 @@ export function Receive() {
       <ol className="wallet-flow-list">
         <li>Share this beneficiary reference with the sender.</li>
         <li>
-          The sender chooses <b>Beneficiary at a bank</b> in{" "}
+          The sender chooses <b>A company, by bank reference</b> in{" "}
           <b>Send on-chain</b>, looks up the reference and confirms your
           receiving details.
         </li>

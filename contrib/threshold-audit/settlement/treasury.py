@@ -421,8 +421,11 @@ def serve(config, rpc):
                 self.send_error(403)
                 return
             if self.path == '/info':
+                # A runtime set up for live demos may prefill the passphrase in
+                # its own approval window; no other runtime exposes it.
                 self.respond(200, {'guardian_id': config['guardian_id'], 'coordinator_origins': config['coordinator_origins'],
-                                   'approval_public_keys': config['approval_public_keys']})
+                                   'approval_public_keys': config['approval_public_keys'],
+                                   **({'demo_passphrase': config['approval_passphrase']} if config.get('demo_autofill') else {})})
                 return
             filename = {'/': 'index.html', '/review.js': 'review.js', '/review.css': 'review.css'}.get(self.path)
             if filename is None:

@@ -81,7 +81,7 @@ it("accepts a signed destination only under the pinned bank key and current paym
     "customer@bank-b",
   );
   await userEvent.click(screen.getByTestId("resolve-beneficiary"));
-  await screen.findByText(/Verified routing signature/);
+  await screen.findByText(/Verified by the receiving bank/);
   expect(changed).toHaveBeenLastCalledWith({
     scope: "a:EUR",
     route_id: value.payload.id,
@@ -103,7 +103,7 @@ it("rejects a changed beneficiary name even when the server labels the route ver
   await userEvent.click(screen.getByTestId("resolve-beneficiary"));
   await screen.findByRole("alert");
   expect(
-    screen.queryByText(/Verified routing signature/),
+    screen.queryByText(/Verified by the receiving bank/),
   ).not.toBeInTheDocument();
   expect(changed.mock.calls.some(([v]) => v?.route_id)).toBe(false);
 });

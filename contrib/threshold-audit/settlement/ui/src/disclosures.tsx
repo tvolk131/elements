@@ -753,32 +753,40 @@ function CaseDetail({
         />
         {results && (
           <div className="disclosure-results" data-testid="disclosure-result">
-            <h3>Verified commitment openings</h3>
+            <h3>Revealed payment details</h3>
             {results.length < c.outputs.length && (
               <p className="inline-warning">
                 Only {results.length} of {c.outputs.length} approved outputs
-                currently have a valid recipient recovery quorum. Other outputs
-                remain unavailable.
+                could be opened. The others remain confidential.
               </p>
             )}
             <p>
-              Guardian signatures, decryption proofs and output commitments were
-              checked locally. Chain context is supplied by the demo node.
+              Decrypted in this browser from independent guardian contributions,
+              and checked against the payment recorded on chain. Only the named
+              recipient can do this.
             </p>
             {results.map((r) => (
-              <div key={r.txid + ":" + r.output_index}>
-                <strong>
-                  Output {r.output_index}:{" "}
+              <div
+                key={r.txid + ":" + r.output_index}
+                className="revealed-output"
+              >
+                <span>Amount</span>
+                <strong className="number">
                   {baseUnits(
                     r.amount_base_units,
                     app.data.assets.find((a) => a.asset_id === r.asset_id)
                       ?.currency,
                   )}
                 </strong>
-                <CopyField label="Asset ID" value={r.asset_id} />
-                <span>
-                  {r.verified_guardians} verified guardian contributions
-                </span>
+                <small>
+                  Confirmed by {r.verified_guardians} guardians · Output{" "}
+                  {r.output_index}
+                </small>
+                <details className="wallet-technical">
+                  <summary>Technical details</summary>
+                  <CopyField label="Asset ID" value={r.asset_id} />
+                  <CopyField label="Transaction ID" value={r.txid} />
+                </details>
               </div>
             ))}
             <Button
@@ -798,7 +806,7 @@ function CaseDetail({
                 )
               }
             >
-              Export disclosed details and blinders
+              Export revealed details
             </Button>
           </div>
         )}
