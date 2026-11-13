@@ -351,11 +351,32 @@ class Settlement:
     def approved(self, operation):
         return bool(self.db.execute("SELECT 1 FROM user_approvals WHERE operation_id=?", (operation["id"],)).fetchone())
 
+    def institutions_required(self, operation):
+        """Institutions always co-sign what enters and leaves the system
+        (issuance, payouts, refunds), which the ledger enforces. Payments
+        between customers follow the runtime's policy: "always" (default),
+        "never", or {"above_minor": N} to review only larger payments."""
+        if operation["kind"] != "transfer":
+            return True
+        policy = self.config.get("transfer_institution_approval", "always")
+        if policy == "never":
+            return False
+        if isinstance(policy, dict) and isinstance(policy.get("above_minor"), int):
+            return operation["amount_minor"] > policy["above_minor"]
+        return True
+
+    def _require_institution_approval(self, operation):
+        if not self.institutions_required(operation):
+            raise Problem("this payment does not need institution approval", 409)
+
     def refresh_ready(self, operation):
         if operation["state"] not in {"awaiting_approval", "ready"}:
             return
         try:
-            self.certificate(operation)
+            if self.institutions_required(operation):
+                self.certificate(operation)
+            elif operation["expires_at"] <= int(time.time()):
+                raise ValueError("operation approval expired")
             operation["state"] = "ready" if self.approved(operation) else "awaiting_approval"
         except ValueError:
             operation["state"] = "awaiting_approval"
@@ -485,6 +506,7 @@ class Settlement:
             self.accessible_account(user, operation["account_id"])
             if operation["state"] not in {"awaiting_approval", "ready"}:
                 raise Problem("operation is not awaiting guardian approval", 409)
+            self._require_institution_approval(operation)
             if operation["expires_at"] <= int(time.time()):
                 raise Problem("operation approval expired", 409)
             self._bind_approval(operation)
@@ -550,6 +572,7 @@ class Settlement:
             self.accessible_account(user, operation["account_id"])
             if operation["state"] not in {"awaiting_approval", "ready"} or operation["expires_at"] <= int(time.time()):
                 raise Problem("operation is not awaiting a current institution approval", 409)
+            self._require_institution_approval(operation)
             self._bind_approval(operation)
             return self.public_operation(user, operation)
 
@@ -775,10 +798,14 @@ class Settlement:
             self.accessible_account(user, operation["account_id"])
             if operation["state"] == "ready":
                 self.check_chain_balance(operation['account_id'], operation['currency'])
-                try:
-                    certificate = self.certificate(operation)
-                except ValueError as error:
-                    raise Problem(str(error), 409, "approval_invalid") from error
+                certificate = None
+                if self.institutions_required(operation):
+                    try:
+                        certificate = self.certificate(operation)
+                    except ValueError as error:
+                        raise Problem(str(error), 409, "approval_invalid") from error
+                elif operation["expires_at"] <= int(time.time()):
+                    raise Problem("operation approval expired", 409, "approval_invalid")
                 if not self.approved(operation):
                     raise Problem("second-person approval is missing", 409)
                 if operation["kind"] == "deposit" and not operation["cash_receipt_id"]:
@@ -787,7 +814,9 @@ class Settlement:
                     operation["certificate"], operation["execution_started_at"] = certificate, int(time.time())
                     operation["state"] = "preparing"
                     self.save(operation)
-                    self.evidence(user["id"], "execution_authorized", {"payload_hash": certificate["payload_hash"]}, operation_id)
+                    self.evidence(user["id"], "execution_authorized",
+                                  {"payload_hash": certificate["payload_hash"]} if certificate
+                                  else {"institution_approval": "not required by payment policy"}, operation_id)
             elif operation["state"] not in {"preparing", "chain_pending", "escrow_confirmed", "bank_pending", "bank_unknown", "burn_pending"}:
                 raise Problem("operation is not executable in its current state", 409)
             self._advance(operation)
@@ -938,7 +967,8 @@ class Settlement:
                 "submitters": [identity(candidate) for candidate in active
                     if "execute" in ROLES[candidate["role"]]],
                 "institution_ids": sorted(policy.public_keys),
-                "required_institutions": policy.threshold,
+                "required_institutions": policy.threshold if (operation.get("certificate") is not None
+                                                              or self.institutions_required(operation)) else 0,
                 "approved_institution_ids": sorted({signature["guardian_id"] for signature in self.signatures(operation["id"])})}
 
     def public_operation(self, user, operation):
@@ -950,7 +980,9 @@ class Settlement:
         if operation['kind'] == 'transfer':
             result['destination_address'] = operation['destination']
         result["guardian_approvals"] = len(self.signatures(operation["id"]))
-        result["guardian_threshold"] = self.verifier.threshold
+        # A request executed with a certificate keeps showing its quorum.
+        institutions = operation.get("certificate") is not None or self.institutions_required(operation)
+        result["guardian_threshold"] = self.verifier.threshold if institutions else 0
         result["user_approved"] = self.approved(operation)
         result["approval_workflow"] = self.approval_workflow(operation)
         result["allowed_actions"] = []
@@ -964,7 +996,8 @@ class Settlement:
         if operation["state"] in {"awaiting_approval", "ready"}:
             if "approve" in permissions and user["id"] != operation["maker"] and not result["user_approved"]:
                 result["allowed_actions"].append("approve")
-            if "guardian_approve" in permissions and user.get("institution_id") not in {s["guardian_id"] for s in self.signatures(operation["id"])}:
+            if (institutions and "guardian_approve" in permissions
+                    and user.get("institution_id") not in {s["guardian_id"] for s in self.signatures(operation["id"])}):
                 result["allowed_actions"].append("guardian-approve")
         if "approve" in permissions and operation["state"] in {"awaiting_bank", "awaiting_approval", "ready"}:
             result["allowed_actions"].append("reject")
@@ -1026,6 +1059,7 @@ class Settlement:
                             "operational_threshold": self.verifier.threshold,
                             "operational_guardians": len(self.verifier.public_keys)})
             return {"session": session, "network": network, "assets": self.chain.assets(),
+                    "transfer_institution_approval": self.config.get("transfer_institution_approval", "always"),
                     "federation": self.federation.status(user) if self.federation is not None and "view_bank" in ROLES[user["role"]] and user["tenant"] == self.config.get("bank_tenant", "bank") else None,
                     "accounts": safe_accounts, "balances": balances,
                     "reserves": self.reconcile() if "view_bank" in ROLES[user["role"]] and user["tenant"] == self.config.get("bank_tenant", "bank") else [],

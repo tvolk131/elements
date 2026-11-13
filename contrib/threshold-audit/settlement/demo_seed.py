@@ -100,6 +100,9 @@ def configure(directory, mesh):
     """Turn on demo conveniences. Every change is local to this runtime."""
     config = load_config(directory / 'web.json')
     config['approval_ttl'] = APPROVAL_TTL
+    # The federation runs the ledger and controls what enters and leaves it;
+    # payments between customers need only the customer's own approvals.
+    config['transfer_institution_approval'] = 'never'
     config['demo_sign_in'] = [{'username': u, 'workspace': w, 'label': label} for u, w, label in PERSONAS]
     # Lets the console's demo shortcut sign as the remaining institutions.
     credentials = json.loads((directory / 'credentials.json').read_text())

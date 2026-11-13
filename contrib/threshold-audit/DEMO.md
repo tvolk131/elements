@@ -42,27 +42,29 @@ in as anyone; use it only for a local demo runtime.
 
 On each request, **Switch to …** buttons sign in as the next person who needs
 to act and reopen the same request. Use them instead of the header's
-**Switch user** to keep the story moving. Every request follows the same
-pattern: one institution signs live in its own window, **Add the other
-institutions' approvals** collects the rest, and the second person's
-**Approve and send** finishes it.
+**Switch user** to keep the story moving.
 
-1. **Pay another bank's customer (4 min).** As *Acme · creates payments*,
+The demo runtime uses the payment policy that matches the product: the
+federation runs the ledger and controls what enters and leaves it, so
+payments between customers need only the customer's own approvals. Funding
+and withdrawals still need three institutions.
+
+1. **Pay another bank's customer (2 min).** As *Acme · creates payments*,
    choose **Send on-chain → A company, by bank reference**, enter
    `initech-main@bank-b` and an amount, and click **Look up**: the receiving
-   bank confirms who the reference belongs to. Create the request, then:
-   - **Switch to Institution 1** and sign in its approval window.
-   - **Add the other institutions' approvals** (3 of 3).
-   - **Switch to Acme Approver** → **Review, approve and send**. It settles in
-     a few seconds; optionally switch to *Initech* to show it arrived.
+   bank confirms who the reference belongs to. Create the request, then
+   **Switch to Acme Approver** → **Review, approve and send**. It settles in a
+   few seconds; optionally switch to *Initech* to show it arrived.
 
-   *Point:* you know who you're paying, a second person checks, and
-   independent institutions sign off. The ledger only ever sees one
-   transaction, with the amount and parties hidden.
+   *Point:* you know who you're paying, a second person at the company checks,
+   and it settles in seconds. The ledger sees one transaction with the amount
+   and parties hidden, carrying an encrypted record the guardians can open if
+   needed.
 2. **Money in (3 min).** Switch to *Bank · records bank credits*, open the
    €500,000 request under **Needs your attention** and confirm the deposit.
-   Then the same pattern: Institution 1 signs, add the others, Bank Approver
-   approves and sends. Show Acme's balance.
+   **Switch to Institution 1** and sign in its own approval window, then
+   **Add the other institutions' approvals**. Switch to *Bank Approver* →
+   **Review, approve and send**. Show Acme's balance.
    *Point:* tokens are created only when three independent institutions
    co-sign the issuing transaction, after the bank confirms the money arrived.
 3. **Money out (2 min).** Open the $75,000 withdrawal (Acme, Requests). Acme
@@ -74,8 +76,9 @@ institutions' approvals** collects the rest, and the second person's
    guardians approve it. Switch to *Regulator · opens disclosures*, enter the
    key password and open the case. The amount is decrypted in the regulator's
    browser and checked against the chain.
-   *Point:* payment details are not public, yet a named authority can be given
-   exactly one payment's details with a quorum's approval, and it is all logged.
+   *Point:* this is how the federation intervenes on suspected fraud: payment
+   details are not public, yet a named authority can be shown exactly the
+   payments it needs, with a guardian quorum's approval, and it is all logged.
 5. **Backing (1 min).** Switch to *Bank · reserves and oversight* and open
    **Reserves**: cash held equals tokens in circulation, per currency.
 6. **Optional: who runs it (1 min).** In the same console, **Operators** shows
@@ -84,19 +87,20 @@ institutions' approvals** collects the rest, and the second person's
 
 ## What the ledger enforces
 
-Keep claims accurate if someone asks "what stops the operator from skipping
-that?":
-
 | | Enforced by the Elements ledger | Enforced by the application |
 |---|---|---|
-| **Payments between customers** | The sender's wallet signature, hidden amounts and assets with valid proofs, the mandatory recovery packet for disclosure, and 3 of 5 operators confirming the block | Second-person check and the three institution approvals |
+| **Payments between customers** | The sender's wallet signature, hidden amounts and assets with valid proofs, the mandatory recovery packet for disclosure, and 3 of 5 operators confirming the block | The customer's second-person check; institution approval only if the payment policy asks for it |
 | **Money in and out** (issuing tokens, the withdrawal payout and burn, refunds) | All of the above, **plus** 3 of 5 institutions co-signing the transaction with their own keys; each institution's service checks the approval before signing | Second-person check |
 | **Disclosures** | The encrypted recovery packet on every payment; only 7 of 10 guardians together can open it | Who may request a disclosure and for whom |
 
-So "three independent institutions must sign" is literally true for money
-entering and leaving the system. For payments between customers it is a
-policy the settlement service enforces; making it a ledger rule would mean
-holding customer funds under institution co-signing.
+The payment policy is the runtime setting `transfer_institution_approval`:
+`"always"` (the default outside the demo), `"never"` (the demo), or
+`{"above_minor": N}` to require institution approval only for payments above
+N minor units (for example `{"above_minor": 100000000}` for over €1,000,000).
+
+Intervention today means disclosure. The federation cannot freeze or reverse
+a payment between customers, because those are signed with the customer's
+own key; the simulated bank can freeze issuance and payouts.
 
 The **Add the other institutions' approvals** shortcut is demo-only. It asks
 each remaining institution's own approval service to sign, exactly as its
@@ -109,8 +113,8 @@ window would, so the recorded approvals are real.
   else: the shared ledger shows no amounts or parties. Disclosure is how an
   outside authority gets a specific payment's details.
 - **"Who are the institutions and guardians?"** Independent organizations
-  that co-operate the network. Three of five approve each settlement and
-  co-sign every token issued or destroyed; a separate 7-of-10 quorum controls
-  disclosures.
+  that run the network: three of five confirm every block and co-sign every
+  token issued or destroyed, and a separate 7-of-10 quorum controls
+  disclosures. They don't approve everyday payments between customers.
 - **"Is this real money?"** No. Banks, reserves and payouts are simulated, and
   the legal issuer is undecided.

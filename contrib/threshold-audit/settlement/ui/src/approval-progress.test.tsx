@@ -140,3 +140,23 @@ it("lets the last approver approve and send in one step", async () => {
     action: "approve-send",
   });
 });
+it("leaves out institutions when the payment policy does not need them", async () => {
+  app.user = { id: "acme-approver", name: "Acme Approver" };
+  const base = operation();
+  const op = operation({
+    guardian_threshold: 0,
+    allowed_actions: ["approve"],
+    approval_workflow: { ...base.approval_workflow!, required_institutions: 0 },
+  });
+  render(<ApprovalProgress operation={op} />);
+  expect(screen.queryByText("Institution approvals")).not.toBeInTheDocument();
+  expect(screen.getByText(/step 1 approval also sends/)).toBeVisible();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Review, approve and send" }),
+  );
+  expect(app.setDialog).toHaveBeenCalledWith({
+    type: "review",
+    operation: op,
+    action: "approve-send",
+  });
+});

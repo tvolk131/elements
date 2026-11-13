@@ -354,6 +354,41 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(result["guardian_approvals"], 2)
         self.assertEqual({s["guardian_id"] for s in self.store.signatures(transfer["id"])}, {"guardian-1", "guardian-2"})
 
+    def test_payment_policy_can_drop_institution_approval_for_transfers(self):
+        self.issue("10.00")
+        self.store.config["transfer_institution_approval"] = "never"
+        transfer = self.store.create(self.users["corp-maker"], "transfer", {
+            "account_id": "alpha", "to_account_id": "alpha-2", "currency": "EUR", "amount": "4.00"})
+        public = self.store.operation(self.users["guardian-1"], transfer["id"])
+        self.assertEqual(public["guardian_threshold"], 0)
+        self.assertNotIn("guardian-approve", public["allowed_actions"])
+        with self.assertRaises(Problem):
+            self.store.add_signature(self.users["guardian-1"], transfer["id"])
+        # The second person's approval alone makes it ready; it then settles.
+        self.assertEqual(self.store.approve(self.users["approver"], transfer["id"])["state"], "ready")
+        self.store.execute(self.users["approver"], transfer["id"])
+        self.chain.confirm_all()
+        self.store.poll()
+        self.assertEqual(self.store.operation(self.users["approver"], transfer["id"])["state"], "settled")
+        # Money leaving the system still needs the institution quorum.
+        redemption = self.store.create(self.users["corp-maker"], "redemption", {
+            "account_id": "alpha", "currency": "EUR", "amount": "1.00", "beneficiary_id": "beneficiary-alpha"})
+        self.assertEqual(self.store.approve(self.users["approver"], redemption["id"])["state"], "awaiting_approval")
+        with self.assertRaises(Problem):
+            self.store.execute(self.users["approver"], redemption["id"])
+
+    def test_payment_policy_can_require_institutions_above_an_amount(self):
+        self.issue("10.00")
+        self.store.config["transfer_institution_approval"] = {"above_minor": 300}
+        small = self.store.create(self.users["corp-maker"], "transfer", {
+            "account_id": "alpha", "to_account_id": "alpha-2", "currency": "EUR", "amount": "3.00"})
+        large = self.store.create(self.users["corp-maker"], "transfer", {
+            "account_id": "alpha", "to_account_id": "alpha-2", "currency": "EUR", "amount": "3.01"})
+        self.assertEqual(self.store.approve(self.users["approver"], small["id"])["state"], "ready")
+        self.assertEqual(self.store.approve(self.users["approver"], large["id"])["state"], "awaiting_approval")
+        self.store.add_signature(self.users["guardian-1"], large["id"])
+        self.assertEqual(self.store.add_signature(self.users["guardian-2"], large["id"])["state"], "ready")
+
     def test_idempotent_receipt_and_token_reservations(self):
         operation = self.create_deposit()
         self.credit(operation)

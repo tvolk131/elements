@@ -25,6 +25,7 @@ import {
   viewerNextAction,
   safeFilename,
   settlementHold,
+  transferNeedsInstitutions,
 } from "./domain";
 import { Quorum, Receive } from "./wallet";
 import { ApprovalProgress } from "./approval-progress";
@@ -57,7 +58,7 @@ const REVIEW: Record<
     open: "Review, approve and send",
     title: "Approve and send",
     context:
-      "The institutions have already approved. Your approval is the last one needed, so the request is sent right away and settles in a few seconds.",
+      "Your approval is the last one needed, so the request is sent right away and settles in a few seconds.",
     confirm: "Approve and send",
     done: "Approved and sent. It settles in a few seconds.",
   },
@@ -326,7 +327,7 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
           ? "Turn a bank deposit into tokens in this wallet."
           : kind === "redemption"
             ? "Turn tokens back into money in a bank account."
-            : "Pay another account. Payments need approvals before they are sent."
+            : "Pay another account. A second person approves before it is sent."
       }
       close={() => app.setDialog(null)}
     >
@@ -342,7 +343,12 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
               ? "After the bank confirms the deposit, a second person and three independent institutions approve before tokens are issued."
               : kind === "redemption"
                 ? "Tokens are locked while the bank pays out, then destroyed once the payment is confirmed. A second person and three institutions approve first."
-                : "A second person and three independent institutions approve before the payment is sent."}
+                : transferNeedsInstitutions(
+                      app.data.transfer_institution_approval,
+                      Math.round(Number(amount || 0) * 100),
+                    )
+                  ? "A second person and three independent institutions approve before the payment is sent."
+                  : "A second person at your company approves before the payment is sent."}
           </div>
           <Field
             label={kind === "deposit" ? "Add tokens to" : "From wallet account"}
@@ -634,7 +640,7 @@ function OperationDetail({ id }: { id: string }) {
                     <li key={e.id}>
                       <strong>{human(e.event)}</strong>
                       <span>
-                        {e.actor} · {date(e.created_at, true)}
+                        {e.actor_name || e.actor} · {date(e.created_at, true)}
                       </span>
                     </li>
                   ))}

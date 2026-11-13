@@ -219,6 +219,8 @@ export interface Dashboard {
   activity: Activity[];
   guardians: Institution[];
   network: Network;
+  /** Whether payments between customers need institution approval. */
+  transfer_institution_approval: "always" | "never" | { above_minor: number };
   assets: Asset[];
   reserves: Reserve[];
   /** Only present for bank-tenant users who can view federation status. */

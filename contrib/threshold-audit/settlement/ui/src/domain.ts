@@ -104,6 +104,15 @@ export const bankName = (id?: string) =>
       w.length === 1 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1),
     )
     .join(" ");
+/** Whether a new payment of this amount (minor units) needs institutions. */
+export function transferNeedsInstitutions(
+  policy: Dashboard["transfer_institution_approval"],
+  amountMinor: number,
+) {
+  if (policy === "never") return false;
+  if (typeof policy === "object") return amountMinor > policy.above_minor;
+  return true;
+}
 export const isPending = (op: Operation) =>
   !["settled", "rejected", "failed", "cancelled"].includes(op.state);
 export const isException = (op: Operation) =>
@@ -197,7 +206,9 @@ export function viewerNextAction(op: Operation): string | undefined {
     return "Record the bank deposit so the tokens can be issued.";
   if (actions.includes("approve"))
     return op.guardian_approvals >= op.guardian_threshold
-      ? "The institutions have approved. Your approval is the last one needed: approve and send."
+      ? op.guardian_threshold
+        ? "The institutions have approved. Your approval is the last one needed: approve and send."
+        : "Your approval is the only one needed: approve and send."
       : "Your approval is needed. Check the amount and destination, then approve.";
   if (needsInstitutionApproval(op))
     return "Your institution’s approval is needed. You sign in your institution’s own approval window.";
@@ -241,7 +252,7 @@ export function nextStep(op: Operation): string {
       const reviewers = op.approval_workflow?.user_reviewers
         .map((actor) => actor.name)
         .join(" or ");
-      return `Waiting for ${reviewers || "a bank or corporate payment approver"} to perform the second-person check. Institution payment approvals are also required before submission.`;
+      return `Waiting for ${reviewers || "a bank or corporate payment approver"} to perform the second-person check.${op.guardian_threshold ? " Institution approvals are also required before it is sent." : ""}`;
     }
     const remaining = Math.max(
       0,

@@ -47,6 +47,11 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
   // When institutions have already approved, the second person's approval is
   // the last one, so it can send the request in the same step.
   const lastApproval = approved >= required && app.can("execute");
+  // Payments may not need institutions (see the runtime's payment policy).
+  const institutionsNeeded = required > 0;
+  const personStep = institutionsNeeded ? 2 : 1;
+  const sendStep = personStep + 1;
+  const earlier = institutionsNeeded ? "steps 1 and 2" : "step 1";
   const kind =
     op.kind === "transfer"
       ? "transfer"
@@ -86,83 +91,85 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
         )}
       </p>
       <ol className="payment-approval-steps">
-        <li>
-          <span className="payment-step-number">
-            {approved >= required ? <Icon name="check" /> : "1"}
-          </span>
-          <div>
-            <div className="payment-step-title">
-              <h4>Institution approvals</h4>
-              <Badge status={approved >= required ? "complete" : "pending"}>
-                {approved} of {required} recorded
-              </Badge>
+        {institutionsNeeded && (
+          <li>
+            <span className="payment-step-number">
+              {approved >= required ? <Icon name="check" /> : "1"}
+            </span>
+            <div>
+              <div className="payment-step-title">
+                <h4>Institution approvals</h4>
+                <Badge status={approved >= required ? "complete" : "pending"}>
+                  {approved} of {required} recorded
+                </Badge>
+              </div>
+              <p>
+                {approved >= required ? (
+                  "The required institution approvals are recorded."
+                ) : (
+                  <>
+                    Any <strong>{required}</strong>
+                    {institutionCount ? ` of the ${institutionCount}` : ""}{" "}
+                    independent institutions must also approve this payment,
+                    each in its own approval window.
+                  </>
+                )}
+              </p>
+              {!!policyIds.length && (
+                <details className="payment-institutions">
+                  <summary>Which institutions can approve?</summary>
+                  <ul>
+                    {policyIds.map((id) => {
+                      const institution = app.data.guardians.find(
+                        (g) => (g.institution_id || g.id) === id,
+                      );
+                      return (
+                        <li key={id}>
+                          <span>{institution?.name || id}</span>
+                          {workflow?.approved_institution_ids.includes(id) && (
+                            <span>Approved</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </details>
+              )}
+              {approved > 0 && approved < required && (
+                <DemoInstitutions operation={op.id} />
+              )}
+              {approved === 0 &&
+                !op.allowed_actions.includes("guardian-approve") && (
+                  <DemoNext
+                    usernames={policyIds.filter(
+                      (id) => !workflow?.approved_institution_ids.includes(id),
+                    )}
+                    operation={op.id}
+                    guardian={app.guardian}
+                    current={app.user.id}
+                  />
+                )}
+              {op.allowed_actions.includes("guardian-approve") && (
+                <Button
+                  className="primary small"
+                  data-testid="workflow-institution-approve"
+                  onClick={() =>
+                    app.setDialog({
+                      type: "review",
+                      operation: op,
+                      action: "guardian-approve",
+                    })
+                  }
+                >
+                  Review institution approval
+                </Button>
+              )}
             </div>
-            <p>
-              {approved >= required ? (
-                "The required institution approvals are recorded."
-              ) : (
-                <>
-                  Any <strong>{required}</strong>
-                  {institutionCount ? ` of the ${institutionCount}` : ""}{" "}
-                  independent institutions must also approve this payment, each
-                  in its own approval window.
-                </>
-              )}
-            </p>
-            {!!policyIds.length && (
-              <details className="payment-institutions">
-                <summary>Which institutions can approve?</summary>
-                <ul>
-                  {policyIds.map((id) => {
-                    const institution = app.data.guardians.find(
-                      (g) => (g.institution_id || g.id) === id,
-                    );
-                    return (
-                      <li key={id}>
-                        <span>{institution?.name || id}</span>
-                        {workflow?.approved_institution_ids.includes(id) && (
-                          <span>Approved</span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </details>
-            )}
-            {approved > 0 && approved < required && (
-              <DemoInstitutions operation={op.id} />
-            )}
-            {approved === 0 &&
-              !op.allowed_actions.includes("guardian-approve") && (
-                <DemoNext
-                  usernames={policyIds.filter(
-                    (id) => !workflow?.approved_institution_ids.includes(id),
-                  )}
-                  operation={op.id}
-                  guardian={app.guardian}
-                  current={app.user.id}
-                />
-              )}
-            {op.allowed_actions.includes("guardian-approve") && (
-              <Button
-                className="primary small"
-                data-testid="workflow-institution-approve"
-                onClick={() =>
-                  app.setDialog({
-                    type: "review",
-                    operation: op,
-                    action: "guardian-approve",
-                  })
-                }
-              >
-                Review institution approval
-              </Button>
-            )}
-          </div>
-        </li>
+          </li>
+        )}
         <li>
           <span className="payment-step-number">
-            {op.user_approved ? <Icon name="check" /> : "2"}
+            {op.user_approved ? <Icon name="check" /> : personStep}
           </span>
           <div>
             <div className="payment-step-title">
@@ -234,7 +241,7 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
           </div>
         </li>
         <li>
-          <span className="payment-step-number">3</span>
+          <span className="payment-step-number">{sendStep}</span>
           <div>
             <div className="payment-step-title">
               <h4>Send</h4>
@@ -242,8 +249,8 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                 {ready
                   ? "Ready"
                   : approved >= required && !op.user_approved
-                    ? "Together with step 2"
-                    : "Waiting for steps 1 and 2"}
+                    ? `Together with step ${personStep}`
+                    : `Waiting for ${earlier}`}
               </Badge>
             </div>
             {workflow?.submitters.length === 0 ? (
@@ -253,12 +260,14 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
               </p>
             ) : approved >= required && !op.user_approved ? (
               <p>
-                The institutions have approved, so the step 2 approval also
-                sends the request.
+                {institutionsNeeded
+                  ? "The institutions have approved, so the"
+                  : "The"}{" "}
+                step {personStep} approval also sends the request.
               </p>
             ) : (
               <p>
-                Once steps 1 and 2 are complete,{" "}
+                Once {earlier} {institutionsNeeded ? "are" : "is"} complete,{" "}
                 <Actors
                   actors={workflow?.submitters}
                   fallback="an authorized payment approver"

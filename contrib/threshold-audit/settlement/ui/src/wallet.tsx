@@ -347,7 +347,7 @@ function Balances() {
   );
 }
 export function Quorum({ operation: op }: { operation: Operation }) {
-  if (op.kind === "receipt")
+  if (op.kind === "receipt" || op.guardian_threshold === 0)
     return <span className="small-note">Not required</span>;
   return (
     <div className="quorum">
