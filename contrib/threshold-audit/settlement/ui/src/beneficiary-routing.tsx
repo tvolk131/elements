@@ -7,6 +7,7 @@ import { useApp } from "./context";
 import { api } from "./api";
 import { Badge, Button, CopyField, ErrorNote, Field } from "./components";
 import { canonical, bytes, hex } from "./recipient-crypto";
+import { bankName } from "./domain";
 import type { Currency } from "./types";
 export interface TransferTarget {
   scope: string;
@@ -189,7 +190,7 @@ export function TransferDestination({
               <Badge status="complete">Verified by the receiving bank</Badge>
               <h4>{route.payload.beneficiary_name}</h4>
               <p>
-                Account at {route.payload.bank_id} · Test
+                Account at {bankName(route.payload.bank_id)} · Test
                 {route.payload.currency}
               </p>
               <p className="small-note">

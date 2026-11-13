@@ -78,7 +78,8 @@ it("password-protects a recipient key and rejects another account or password", 
   await expect(
     unlockRecipientKey(key, "recipient", "different-password"),
   ).rejects.toThrow();
-});
+  // Several real 210,000-round PBKDF2 derivations; slow on shared CI.
+}, 20000);
 it("produces the same canonical JSON as Python's json.dumps(ensure_ascii=True)", () => {
   // python3 -c 'json.dumps(v, sort_keys=True, separators=(",", ":"), ensure_ascii=True)'
   expect(

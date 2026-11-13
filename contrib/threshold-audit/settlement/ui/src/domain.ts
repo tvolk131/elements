@@ -89,6 +89,21 @@ export const date = (value?: number | string, full = false) => {
           : {}),
       }).format(d) + (full ? " UTC" : "");
 };
+/** Time of day in UTC, e.g. "18:55 UTC". */
+export const clock = (value: number) =>
+  new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+  }).format(new Date(value * 1000)) + " UTC";
+/** Bank tenant IDs as names: "bank" → "Bank", "bank-b" → "Bank B". */
+export const bankName = (id?: string) =>
+  (id || "bank")
+    .split("-")
+    .map((w) =>
+      w.length === 1 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1),
+    )
+    .join(" ");
 export const isPending = (op: Operation) =>
   !["settled", "rejected", "failed", "cancelled"].includes(op.state);
 export const isException = (op: Operation) =>

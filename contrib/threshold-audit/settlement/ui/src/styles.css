@@ -991,6 +991,9 @@ tbody tr:hover {
 .login-card:has(.demo-sign-in) {
   max-width: 560px;
 }
+.dialog-body .kv + .kv {
+  margin-top: 8px;
+}
 .dialog-body .kv + .small-note {
   margin-top: 12px;
 }

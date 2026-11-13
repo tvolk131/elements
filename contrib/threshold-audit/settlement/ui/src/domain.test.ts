@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  bankName,
   baseUnits,
+  clock,
   csv,
   eligibleDestinations,
   forAccount,
@@ -128,4 +130,9 @@ it("formats on-chain base units for test currencies", () => {
   expect(baseUnits("1275000000000", "EUR")).toBe("12,750.00 TestEUR");
   expect(baseUnits("1", "USD")).toBe("0.00000001 TestUSD");
   expect(baseUnits("5", undefined)).toBe("5 base units");
+});
+it("names banks and times for people", () => {
+  expect(bankName("bank-b")).toBe("Bank B");
+  expect(bankName("bank")).toBe("Bank");
+  expect(clock(Date.UTC(2026, 10, 13, 18, 55) / 1000)).toBe("18:55 UTC");
 });

@@ -19,6 +19,8 @@ import {
   date,
   download,
   forAccount,
+  bankName,
+  clock,
   human,
   isException,
   isPending,
@@ -570,7 +572,9 @@ export function OperationPanel({
                         <span className="cell-primary">
                           {date(op.created_at)}
                         </span>
-                        <span className="cell-secondary">{op.account_id}</span>
+                        <span className="cell-secondary">
+                          {clock(op.created_at)}
+                        </span>
                       </>
                     )}
                   </td>
@@ -845,7 +849,7 @@ export function Receive() {
       <div className="receive-account">
         <span>Receiving account</span>
         <h3>{account.name}</h3>
-        <p>{account.bank_id || account.tenant}</p>
+        <p>{bankName(account.bank_id)}</p>
         <CopyField
           label="Beneficiary reference"
           value={account.payment_reference || account.id}
