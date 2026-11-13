@@ -1,6 +1,6 @@
 // Password-less persona sign-in for runtimes explicitly configured for live
 // demos. The server lists no personas (404) anywhere else, so nothing renders.
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, startSession } from "./api";
 import { Button, ErrorNote, Icon, Modal } from "./components";
@@ -232,6 +232,44 @@ export function DemoNext({
           Switch to {p.name}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Demo only: after one institution has signed live, have the remaining ones
+ * approve through their own approval services in one click.
+ */
+export function DemoInstitutions({ operation }: { operation: string }) {
+  const personas = usePersonas();
+  const queryClient = useQueryClient();
+  const sign = useMutation({
+    mutationFn: () =>
+      api(
+        `/api/demo/operations/${encodeURIComponent(operation)}/institutions`,
+        {},
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["operation"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+  if (!personas.data?.length) return null;
+  return (
+    <div className="demo-next">
+      <button
+        type="button"
+        className="demo-next-button"
+        disabled={sign.isPending}
+        onClick={() => sign.mutate()}
+        data-testid="demo-sign-institutions"
+      >
+        <Icon name="shield" />
+        {sign.isPending
+          ? "Collecting approvals…"
+          : "Add the other institutions’ approvals"}
+      </button>
+      <ErrorNote error={sign.error} />
     </div>
   );
 }

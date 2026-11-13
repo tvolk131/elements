@@ -279,6 +279,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             session = self.session(csrf=True)
             user = session["user"]
+            parts = path.split("/")
+            if len(parts) == 6 and parts[1:3] == ["api", "demo"] and parts[3] == "operations" and parts[5] == "institutions":
+                self.respond(200, store.demo_sign_institutions(user, parts[4]))
+                return
             if path.startswith('/api/disclosures') and store.disclosures is not None:
                 with store.lock:
                     parts = path.strip('/').split('/')

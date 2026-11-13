@@ -101,6 +101,10 @@ def configure(directory, mesh):
     config = load_config(directory / 'web.json')
     config['approval_ttl'] = APPROVAL_TTL
     config['demo_sign_in'] = [{'username': u, 'workspace': w, 'label': label} for u, w, label in PERSONAS]
+    # Lets the console's demo shortcut sign as the remaining institutions.
+    credentials = json.loads((directory / 'credentials.json').read_text())
+    config['demo_institution_passphrases'] = {c['username']: c['institution_approval_passphrase']
+                                              for c in credentials if c.get('institution_approval_passphrase')}
     save_config(directory / 'web.json', config)
     for service in directory.glob('institution-*/service.json'):
         value = load_config(service)

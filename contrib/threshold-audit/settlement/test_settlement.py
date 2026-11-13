@@ -316,6 +316,44 @@ class SettlementTests(unittest.TestCase):
         with self.assertRaises(Problem):
             self.store.demo_login("admin")
 
+    def test_demo_institution_shortcut_signs_through_approval_services(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        curve, secrets_by_guardian = self.curve, self.secrets
+        class Service(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+            def do_POST(self):
+                guardian = self.server.guardian
+                request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if request["passphrase"] != "pass-" + guardian:
+                    self.send_response(403); self.end_headers(); return
+                body = json.dumps(sign_approval(curve, guardian, secrets_by_guardian[guardian], request["operation"])).encode()
+                self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers()
+                self.wfile.write(body)
+        servers = []
+        for guardian in self.secrets:
+            server = ThreadingHTTPServer(("127.0.0.1", 0), Service)
+            server.guardian = guardian
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            servers.append(server)
+        for server in servers:
+            self.addCleanup(server.server_close)
+            self.addCleanup(server.shutdown)
+        self.issue("10.00")
+        transfer = self.store.create(self.users["corp-maker"], "transfer", {
+            "account_id": "alpha", "to_account_id": "alpha-2", "currency": "EUR", "amount": "4.00"})
+        with self.assertRaises(Problem):
+            self.store.demo_sign_institutions(self.users["corp-maker"], transfer["id"])
+        self.store.config.update(
+            demo_sign_in=[{"username": "corp-maker", "label": "maker", "workspace": "wallet"}],
+            demo_institution_passphrases={g: "pass-" + g for g in self.secrets},
+            institution_approval_urls={server.guardian: f"http://127.0.0.1:{server.server_port}/" for server in servers})
+        self.store.add_signature(self.users["guardian-1"], transfer["id"])
+        result = self.store.demo_sign_institutions(self.users["corp-maker"], transfer["id"])
+        # Stops at the quorum of two: one live signature plus one more.
+        self.assertEqual(result["guardian_approvals"], 2)
+        self.assertEqual({s["guardian_id"] for s in self.store.signatures(transfer["id"])}, {"guardian-1", "guardian-2"})
+
     def test_idempotent_receipt_and_token_reservations(self):
         operation = self.create_deposit()
         self.credit(operation)

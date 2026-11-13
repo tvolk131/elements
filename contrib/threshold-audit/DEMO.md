@@ -14,7 +14,8 @@ python3 -m settlement.demo_seed /path/to/runtimes/demo-core --snapshot
 ```
 
 The seed takes several minutes. It creates a fresh chain, turns on demo mode
-(one-click persona sign-in and prefilled institution passphrases), funds the
+(one-click persona sign-in, prefilled institution passphrases and the
+"add the other institutions' approvals" shortcut), funds the
 accounts, records some payment history, and pre-stages:
 
 | Pre-staged case | Where it stands |
@@ -41,24 +42,33 @@ in as anyone; use it only for a local demo runtime.
 
 On each request, **Switch to …** buttons sign in as the next person who needs
 to act and reopen the same request. Use them instead of the header's
-**Switch user** to keep the story moving.
+**Switch user** to keep the story moving. Every request follows the same
+pattern: one institution signs live in its own window, **Add the other
+institutions' approvals** collects the rest, and the second person's
+**Approve and send** finishes it.
 
-1. **Money in (3 min).** Sign in as *Bank · records bank credits*. Open the
+1. **Pay another bank's customer (4 min).** As *Acme · creates payments*,
+   choose **Send on-chain → A company, by bank reference**, enter
+   `initech-main@bank-b` and an amount, and click **Look up**: the receiving
+   bank confirms who the reference belongs to. Create the request, then:
+   - **Switch to Institution 1** and sign in its approval window.
+   - **Add the other institutions' approvals** (3 of 3).
+   - **Switch to Acme Approver** → **Review, approve and send**. It settles in
+     a few seconds; optionally switch to *Initech* to show it arrived.
+
+   *Point:* you know who you're paying, a second person checks, and
+   independent institutions sign off. The ledger only ever sees one
+   transaction, with the amount and parties hidden.
+2. **Money in (3 min).** Switch to *Bank · records bank credits*, open the
    €500,000 request under **Needs your attention** and confirm the deposit.
-   Use the **Switch to** buttons to approve as Bank Approver, sign as three
-   institutions (each signs in its own window), then send. Show Acme's balance.
-   *Point:* tokens exist only after the bank confirms the money arrived and
-   independent institutions agree.
-2. **Pay another bank's customer (4 min).** As *Acme · creates payments*,
-   choose **Send on-chain → A company, by bank reference** and enter
-   `initech-main@bank-b`. The receiving bank confirms who the reference belongs
-   to before anything is sent. Create the payment and walk it through the
-   approval panel: second person, three institutions, send.
-   *Point:* maker-checker controls plus independent sign-off, and you know who
-   you're paying.
-3. **Money out (2 min).** Open the $75,000 withdrawal (Acme, Requests). One
-   institution is still missing: switch to it, sign, then send. The payout and
-   token burn complete on their own.
+   Then the same pattern: Institution 1 signs, add the others, Bank Approver
+   approves and sends. Show Acme's balance.
+   *Point:* tokens are created only when three independent institutions
+   co-sign the issuing transaction, after the bank confirms the money arrived.
+3. **Money out (2 min).** Open the $75,000 withdrawal (Acme, Requests). Acme
+   and two institutions have approved: switch to Institution 3, sign, then
+   switch to the approver and send. The payout and token burn finish on their
+   own.
 4. **Private, but accountable (4 min).** As *Bank compliance*, show the
    Disclosures page: a request names one payment and one recipient, and
    guardians approve it. Switch to *Regulator · opens disclosures*, enter the
@@ -72,6 +82,26 @@ to act and reopen the same request. Use them instead of the header's
    the independent institutions, what each group approves, and how the network
    hands over to new operators without moving to a new ledger.
 
+## What the ledger enforces
+
+Keep claims accurate if someone asks "what stops the operator from skipping
+that?":
+
+| | Enforced by the Elements ledger | Enforced by the application |
+|---|---|---|
+| **Payments between customers** | The sender's wallet signature, hidden amounts and assets with valid proofs, the mandatory recovery packet for disclosure, and 3 of 5 operators confirming the block | Second-person check and the three institution approvals |
+| **Money in and out** (issuing tokens, the withdrawal payout and burn, refunds) | All of the above, **plus** 3 of 5 institutions co-signing the transaction with their own keys; each institution's service checks the approval before signing | Second-person check |
+| **Disclosures** | The encrypted recovery packet on every payment; only 7 of 10 guardians together can open it | Who may request a disclosure and for whom |
+
+So "three independent institutions must sign" is literally true for money
+entering and leaving the system. For payments between customers it is a
+policy the settlement service enforces; making it a ledger rule would mean
+holding customer funds under institution co-signing.
+
+The **Add the other institutions' approvals** shortcut is demo-only. It asks
+each remaining institution's own approval service to sign, exactly as its
+window would, so the recorded approvals are real.
+
 ## Likely questions
 
 - **"The bank can see these amounts. Isn't it confidential?"** Participants see
@@ -79,7 +109,8 @@ to act and reopen the same request. Use them instead of the header's
   else: the shared ledger shows no amounts or parties. Disclosure is how an
   outside authority gets a specific payment's details.
 - **"Who are the institutions and guardians?"** Independent organizations
-  that co-operate the network. Three of five must approve each settlement; a
-  separate quorum controls disclosures.
+  that co-operate the network. Three of five approve each settlement and
+  co-sign every token issued or destroyed; a separate 7-of-10 quorum controls
+  disclosures.
 - **"Is this real money?"** No. Banks, reserves and payouts are simulated, and
   the legal issuer is undecided.

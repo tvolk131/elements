@@ -223,6 +223,38 @@ class Settlement:
                 raise Problem("demo sign-in is not available for this account", 404)
             return self._open_session(row, {"demo_sign_in": True})
 
+    def demo_sign_institutions(self, user, operation_id):
+        """Demo only: have the remaining institutions approve through their own
+        approval services, exactly as their windows would, up to the quorum."""
+        passphrases = self.config.get("demo_institution_passphrases") or {}
+        if not self.config.get("demo_sign_in") or not passphrases:
+            raise Problem("endpoint not found", 404)
+        self.operation(user, operation_id)  # the caller must be able to see it
+        import urllib.request
+        signed = {entry["guardian_id"] for entry in self.signatures(operation_id)}
+        for guardian in sorted(passphrases):
+            if len(signed) >= self.verifier.threshold:
+                break
+            if guardian in signed or guardian not in self.verifier.public_keys:
+                continue
+            with self.lock:
+                row = self.db.execute("SELECT data FROM users WHERE id=?", (guardian,)).fetchone()
+            if not row:
+                continue
+            institution = json.loads(row["data"])
+            request = self.prepare_approval(institution, operation_id)["approval_request"]
+            body = json.dumps({"operation": request, "passphrase": passphrases[guardian]}).encode()
+            url = self.config["institution_approval_urls"][guardian] + "approve"
+            message = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(message, timeout=60) as response:
+                    signature = json.load(response)
+            except OSError as error:
+                raise Problem(f"{guardian} approval service is unavailable", 503) from error
+            self.add_signature(institution, operation_id, signature)
+            signed.add(guardian)
+        return self.operation(user, operation_id)
+
     def session(self, token):
         with self.lock:
             row = self.db.execute("SELECT u.data,s.csrf FROM sessions s JOIN users u ON u.id=s.user_id "

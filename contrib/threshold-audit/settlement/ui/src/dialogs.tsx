@@ -53,6 +53,14 @@ const REVIEW: Record<
     confirm: "Approve",
     done: "Approval recorded.",
   },
+  "approve-send": {
+    open: "Review, approve and send",
+    title: "Approve and send",
+    context:
+      "The institutions have already approved. Your approval is the last one needed, so the request is sent right away and settles in a few seconds.",
+    confirm: "Approve and send",
+    done: "Approved and sent. It settles in a few seconds.",
+  },
   "guardian-approve": {
     open: "Review institution approval",
     title: "Institution approval",
@@ -735,6 +743,12 @@ function ReviewForm({
           from: sourceName(op, app),
           to: destinationName(op, app),
         });
+      if (action === "approve-send") {
+        // Two separate server checks: the approval, then execution.
+        const base = `/api/operations/${encodeURIComponent(op.id)}`;
+        await api(base + "/approve", {});
+        return api(base + "/execute", {});
+      }
       return api(
         `/api/operations/${encodeURIComponent(op.id)}/${action}`,
         reject ? { reason } : {},

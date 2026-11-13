@@ -196,7 +196,9 @@ export function viewerNextAction(op: Operation): string | undefined {
   if (actions.includes("bank-credit"))
     return "Record the bank deposit so the tokens can be issued.";
   if (actions.includes("approve"))
-    return "Your approval is needed. Check the amount and destination, then approve.";
+    return op.guardian_approvals >= op.guardian_threshold
+      ? "The institutions have approved. Your approval is the last one needed: approve and send."
+      : "Your approval is needed. Check the amount and destination, then approve.";
   if (needsInstitutionApproval(op))
     return "Your institution’s approval is needed. You sign in your institution’s own approval window.";
   if (actions.includes("execute"))

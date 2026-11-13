@@ -14,6 +14,7 @@ const app = vi.hoisted(() => ({
   user: { id: "bank-maker", name: "Bank Maker" },
   accountName: () => "Acme · Operating",
   setDialog: vi.fn(),
+  can: (permission: string) => permission === "execute",
   data: {
     guardians: [
       { id: "c1", name: "Institution C1" },
@@ -120,5 +121,22 @@ it("offers a submission review only after the server says it is ready", async ()
     type: "review",
     operation: op,
     action: "execute",
+  });
+});
+it("lets the last approver approve and send in one step", async () => {
+  app.user = { id: "acme-approver", name: "Acme Approver" };
+  const op = operation({
+    user_approved: false,
+    guardian_approvals: 3,
+    allowed_actions: ["approve"],
+  });
+  render(<ApprovalProgress operation={op} />);
+  await userEvent.click(
+    screen.getByRole("button", { name: "Review, approve and send" }),
+  );
+  expect(app.setDialog).toHaveBeenCalledWith({
+    type: "review",
+    operation: op,
+    action: "approve-send",
   });
 });
