@@ -133,6 +133,39 @@ class SettlementTests(unittest.TestCase):
             self.store.create(self.users["corp-maker"], "transfer", {
                 "account_id": "alpha", "to_account_id": "alpha-2", "currency": "EUR", "amount": "3.00"})
 
+    def test_slow_cosigning_does_not_block_other_requests(self):
+        operation = self.create_deposit("10.00")
+        self.credit(operation)
+        self.authorize(operation)
+        started, release = threading.Event(), threading.Event()
+        original = self.chain.prepare
+        def slow(*args):
+            started.set()  # stands in for institutions co-signing over the network
+            self.assertTrue(release.wait(10))
+            return original(*args)
+        self.chain.prepare = slow
+        sender = threading.Thread(target=self.store.execute, args=(self.users["approver"], operation["id"]))
+        sender.start()
+        try:
+            self.assertTrue(started.wait(10))
+            # Other people's screens and the background worker keep working.
+            reader = threading.Thread(target=lambda: (self.store.dashboard({"user": self.users["maker"]}),
+                                                      self.store.operation(self.users["maker"], operation["id"]),
+                                                      self.store.poll()))
+            reader.start()
+            reader.join(5)
+            self.assertFalse(reader.is_alive(), "a slow co-signature blocked other requests")
+            self.assertEqual(self.chain.prepared, [], "the worker advanced a request already being sent")
+            self.assertEqual(self.store.advancing, {operation["id"]})
+        finally:
+            release.set()
+            sender.join(10)
+        self.assertEqual(len(self.chain.prepared), 1)
+        self.assertEqual(self.store.advancing, set())
+        self.chain.confirm_all()
+        self.store.poll()
+        self.assertEqual(self.store._operation(operation["id"])["state"], "settled")
+
     def credit(self, operation):
         return self.store.bank_event(self.users["admin"], {"event_id": "cash:" + operation["id"], "kind": "credit",
                                     "operation_id": operation["id"], "currency": "EUR", "amount": operation["amount"]})

@@ -266,49 +266,59 @@ class ElementsAdapter:
                                 (operation['id'], stage, json.dumps(packet, sort_keys=True)))
             if signed is None:
                 self._reserve(operation, packet)
-                if stage in ('issue', 'burn', 'refund'):
-                    signatures = {}
-                    transaction = tx_from_hex(packet['rawtx'])
-                    witness_script = CScript(bytes.fromhex(self.config['witness_script']))
-                    public_keys = dict(zip(self.config['guardian_order'], list(witness_script)[1:-2]))
-                    previous_input = transaction.vin[packet['input_index']].prevout
-                    previous = tx_from_hex(self.node.getrawtransaction(f'{previous_input.hash:064x}')).vout[previous_input.n]
-                    sighash = SegwitV0SignatureHash(witness_script, transaction, packet['input_index'], SIGHASH_ALL, previous.nValue)
-                    ecdsa = NativeECDSA(self.curve)
-                    signer_ids = ([entry['guardian_id'] for entry in certificate['signatures']]
-                                  if operation['policy_version'] == self.config.get('policy_version', 'sandbox-v1')
-                                  else self.config['guardian_order'])
-                    for guardian in signer_ids:
-                        try:
-                            result = self.institutions.sign_transaction(guardian, operation=operation, certificate=certificate,
-                                payout_receipt=operation.get('payout_receipt'), cancellation_receipt=operation.get('cancellation_receipt'),
-                                rotation_records=self.config.get('rotation_records', []), **packet)
-                            signature = bytes.fromhex(result['signature'])
-                            if result['guardian_id'] != guardian or not ecdsa.verify(public_keys[guardian], sighash, signature):
-                                continue
-                            signatures[guardian] = signature
-                        except (OSError, ValueError, KeyError):
-                            continue
-                        if len(signatures) >= self.config['threshold']:
-                            break
-                    order = self.config['guardian_order']
-                    signatures = [signatures[guardian] for guardian in order if guardian in signatures][:self.config['threshold']]
-                    if len(signatures) != self.config['threshold']:
-                        raise ValueError('federation transaction signing quorum unavailable')
-                    transaction = tx_from_hex(packet['rawtx'])
-                    while len(transaction.wit.vtxinwit) < len(transaction.vin):
-                        transaction.wit.vtxinwit.append(messages.CTxInWitness())
-                    transaction.wit.vtxinwit[packet['input_index']].scriptWitness.stack = [b'', *signatures, bytes.fromhex(self.config['witness_script'])]
-                    signed = transaction.serialize().hex()
-                else:
-                    signed = packet['rawtx']
-                accepted = self.node.testmempoolaccept([signed], 0)[0]
-                if not accepted['allowed']:
-                    raise ValueError('Elements rejected prepared transaction: ' + accepted.get('reject-reason', str(accepted)))
-                self.db.execute('UPDATE prepared SET signed=? WHERE case_id=? AND stage=?', (signed, operation['id'], stage))
-            transaction = tx_from_hex(signed)
-            transaction.rehash()
-            return {'rawtx': signed, 'txid': transaction.hash, 'stage': stage}
+        if signed is None:
+            # Co-signing calls each institution over the network. The packet
+            # and its coins are already fixed above, so other preparations
+            # need not wait for it.
+            signed = self._cosign(operation, stage, certificate, packet) if stage in ('issue', 'burn', 'refund') else packet['rawtx']
+            accepted = self.node.testmempoolaccept([signed], 0)[0]
+            if not accepted['allowed']:
+                raise ValueError('Elements rejected prepared transaction: ' + accepted.get('reject-reason', str(accepted)))
+            with self.lock:
+                # The first signed copy wins if the same case was ever signed twice.
+                self.db.execute('UPDATE prepared SET signed=? WHERE case_id=? AND stage=? AND signed IS NULL',
+                                (signed, operation['id'], stage))
+                signed = self.db.execute('SELECT signed FROM prepared WHERE case_id=? AND stage=?',
+                                         (operation['id'], stage)).fetchone()[0]
+        transaction = tx_from_hex(signed)
+        transaction.rehash()
+        return {'rawtx': signed, 'txid': transaction.hash, 'stage': stage}
+
+    def _cosign(self, operation, stage, certificate, packet):
+        config = self.config
+        signatures = {}
+        transaction = tx_from_hex(packet['rawtx'])
+        witness_script = CScript(bytes.fromhex(config['witness_script']))
+        public_keys = dict(zip(config['guardian_order'], list(witness_script)[1:-2]))
+        previous_input = transaction.vin[packet['input_index']].prevout
+        previous = tx_from_hex(self.node.getrawtransaction(f'{previous_input.hash:064x}')).vout[previous_input.n]
+        sighash = SegwitV0SignatureHash(witness_script, transaction, packet['input_index'], SIGHASH_ALL, previous.nValue)
+        ecdsa = NativeECDSA(self.curve)
+        signer_ids = ([entry['guardian_id'] for entry in certificate['signatures']]
+                      if operation['policy_version'] == config.get('policy_version', 'sandbox-v1')
+                      else config['guardian_order'])
+        for guardian in signer_ids:
+            try:
+                result = self.institutions.sign_transaction(guardian, operation=operation, certificate=certificate,
+                    payout_receipt=operation.get('payout_receipt'), cancellation_receipt=operation.get('cancellation_receipt'),
+                    rotation_records=config.get('rotation_records', []), **packet)
+                signature = bytes.fromhex(result['signature'])
+                if result['guardian_id'] != guardian or not ecdsa.verify(public_keys[guardian], sighash, signature):
+                    continue
+                signatures[guardian] = signature
+            except (OSError, ValueError, KeyError):
+                continue
+            if len(signatures) >= config['threshold']:
+                break
+        order = config['guardian_order']
+        signatures = [signatures[guardian] for guardian in order if guardian in signatures][:config['threshold']]
+        if len(signatures) != config['threshold']:
+            raise ValueError('federation transaction signing quorum unavailable')
+        transaction = tx_from_hex(packet['rawtx'])
+        while len(transaction.wit.vtxinwit) < len(transaction.vin):
+            transaction.wit.vtxinwit.append(messages.CTxInWitness())
+        transaction.wit.vtxinwit[packet['input_index']].scriptWitness.stack = [b'', *signatures, bytes.fromhex(config['witness_script'])]
+        return transaction.serialize().hex()
 
     def broadcast(self, prepared):
         burn_limit = Decimal(0)

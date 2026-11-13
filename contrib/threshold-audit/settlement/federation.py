@@ -85,6 +85,8 @@ class FederationRotation:
         with self.store.lock, self.sandbox.mining_lock:
             if self.held:
                 return self._prepare_or_resume(user)
+            if self.store.advancing:
+                raise Problem('requests are being sent to the chain; try the handover again in a moment', 409)
             operations = [json.loads(row[0]) for row in self.store.db.execute('SELECT data FROM operations')]
             if any(operation['state'] in {'preparing', 'chain_pending', 'burn_pending'} for operation in operations):
                 raise Problem('confirm already prepared transactions before staging the handover', 409)

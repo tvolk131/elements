@@ -36,6 +36,8 @@ ROLES = {
 }
 FINAL = {"settled", "rejected", "failed", "cancelled"}
 PENDING_TOKEN = {"awaiting_approval", "ready", "preparing", "chain_pending"}
+# Authorized requests whose chain or bank steps are still running.
+IN_FLIGHT = {"preparing", "chain_pending", "escrow_confirmed", "bank_pending", "bank_unknown", "burn_pending"}
 
 
 class Problem(ValueError):
@@ -86,6 +88,10 @@ class Settlement:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
         self.lock = threading.RLock()
+        # Requests whose chain/bank work is running. That work talks to
+        # institutions and the node, so it runs outside self.lock; this set
+        # keeps any one request from being advanced twice at once.
+        self.advancing = set()
         self.chain, self.verifier, self.approval_signer = chain, verifier, approval_signer
         self.federation = None
         self.disclosures, self.directory = None, None
@@ -732,9 +738,7 @@ class Settlement:
             raise RuntimeError("durable escrow transaction is missing")
         escrow_status = self.chain.inspect(json.loads(row[0]))
         if escrow_status.get("conflicted") or escrow_status.get("confirmations", 0) < self.min_confirmations:
-            with self.transaction():
-                operation["error"] = "Escrow lacks current chain confirmations; no bank payment was initiated."
-                self.save(operation)
+            self._record_error(operation, "Escrow lacks current chain confirmations; no bank payment was initiated.")
             return
         with self.transaction():
             previous = self.db.execute("SELECT * FROM payments WHERE operation_id=?", (operation["id"],)).fetchone()
@@ -817,10 +821,39 @@ class Settlement:
                     self.evidence(user["id"], "execution_authorized",
                                   {"payload_hash": certificate["payload_hash"]} if certificate
                                   else {"institution_approval": "not required by payment policy"}, operation_id)
-            elif operation["state"] not in {"preparing", "chain_pending", "escrow_confirmed", "bank_pending", "bank_unknown", "burn_pending"}:
+            elif operation["state"] not in IN_FLIGHT:
                 raise Problem("operation is not executable in its current state", 409)
+        self._advance_unlocked(operation_id)
+        return self.operation(user, operation_id)
+
+    def _advance_unlocked(self, operation_id):
+        """Advance one request without blocking the rest of the service.
+
+        Institution co-signing and node calls can take seconds (up to the
+        60-second institution timeout), so they run outside self.lock. Only
+        one thread advances a given request; the others leave it alone.
+        """
+        with self.lock:
+            if operation_id in self.advancing or (self.federation is not None and self.federation.held):
+                return
+            operation = self._operation(operation_id)
+            if operation["state"] not in IN_FLIGHT:
+                return
+            self.advancing.add(operation_id)
+        try:
             self._advance(operation)
-            return self.public_operation(user, self._operation(operation_id))
+        finally:
+            with self.lock:
+                self.advancing.discard(operation_id)
+
+    def _record_error(self, operation, message):
+        """Store a waiting reason on the current row, not a stale copy."""
+        with self.transaction():
+            current = self._operation(operation["id"])
+            changed = current.get("error") != message
+            current["error"] = operation["error"] = message
+            self.save(current)
+            return changed
 
     def _advance(self, operation):
         try:
@@ -847,9 +880,7 @@ class Settlement:
                             self.db.execute("UPDATE outbox SET status='broadcast',attempts=attempts+1 WHERE operation_id=? AND stage=?",
                                             (operation["id"], stage))
                     except Exception as error:
-                        with self.transaction():
-                            operation["error"] = "Broadcast outcome unknown; retry will query and reuse the same transaction: " + str(error)[:240]
-                            self.save(operation)
+                        self._record_error(operation, "Broadcast outcome unknown; retry will query and reuse the same transaction: " + str(error)[:240])
                         return
                     status = self.chain.inspect(prepared)
                 if status.get("confirmations", 0) >= self.min_confirmations:
@@ -861,12 +892,9 @@ class Settlement:
             if operation["state"] == "burn_pending" and operation.get("stage") != "burn":
                 self._prepare(operation, "burn")
         except Exception as error:
-            with self.transaction():
-                changed = operation.get("error") != str(error)[:500]
-                operation["error"] = str(error)[:500]
-                self.save(operation)
-                if changed:
-                    self.evidence("worker", "execution_waiting", {"error": operation["error"]}, operation["id"])
+            message = str(error)[:500]
+            if self._record_error(operation, message):
+                self.evidence("worker", "execution_waiting", {"error": message}, operation["id"])
 
     def _confirmed(self, operation, stage, status):
         with self.transaction():
@@ -904,11 +932,13 @@ class Settlement:
         with self.lock:
             if self.federation is not None and self.federation.held:
                 return
-            rows = list(self.db.execute("SELECT data FROM operations WHERE state IN "
-                                       "('preparing','chain_pending','escrow_confirmed','bank_pending','bank_unknown','burn_pending')"))
-            for row in rows:
-                self._advance(json.loads(row[0]))
-            if self.receipts is not None:
+            placeholders = ",".join("?" * len(IN_FLIGHT))
+            ids = [row[0] for row in self.db.execute(
+                f"SELECT id FROM operations WHERE state IN ({placeholders})", sorted(IN_FLIGHT))]
+        for operation_id in ids:
+            self._advance_unlocked(operation_id)
+        with self.lock:
+            if self.receipts is not None and not (self.federation is not None and self.federation.held):
                 self.receipts.poll()
 
     def reconcile(self):
