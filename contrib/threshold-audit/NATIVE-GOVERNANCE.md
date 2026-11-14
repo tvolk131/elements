@@ -35,10 +35,12 @@ audit_config       CompactSize bytes, exact TAG1, at most 20,334 bytes
 audit_prepared     CompactSize bytes, exact TAP1, at most 69,674 bytes
 audit_assets_version uint32 little endian, zero for the initial registry
 audit_assets       CompactSize count, then count raw 32-byte asset IDs; at most 256
+tx_authorization   CompactSize bytes; empty, or a threshold byte and 1 to 16 BIP340 keys
 ```
 
 The two existing key fields are redundant metadata and must match TAG1's active
-descriptor. All six fields participate in the DynaFed extra root. Compact
+descriptor. All seven fields participate in the DynaFed extra root.
+[TRANSACTION-AUTHORIZATION.md](TRANSACTION-AUTHORIZATION.md) specifies the last. Compact
 current entries keep their existing shape and authenticate the complete omitted
 data through the elided root. On activation, the accepted configuration and
 prepared certificate become part of the full current entry.
@@ -78,8 +80,12 @@ CompactSize(asset_count)
 concatenation of raw 32-byte asset IDs
 ```
 
+Once `tx_authorization` is non-empty, append
+`ser_string("tx-authorization-v1")` and `ser_string(tx_authorization)` after
+any registry encoding.
+
 `native_governance.policy_binding(..., audit_assets=raw_ids,
-audit_assets_version=version)` implements both encodings. IDs must be nonzero,
+audit_assets_version=version, tx_authorization=policy)` implements these encodings. IDs must be nonzero,
 distinct and sorted by raw byte order, which differs from RPC display order.
 Registration is an append-only set operation: the proposed canonical list must
 be a strict superset of the current list and increment the version exactly once.

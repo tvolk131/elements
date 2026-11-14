@@ -45,7 +45,7 @@ def enroll(sandbox, config, adapter_config):
         # Recover a prior send with a lost launcher acknowledgement by checking
         # this dedicated receiving address before creating another fee payment.
         received = [t for t in adapter.wallets[account_id].listtransactions('*', 1000) if t.get('address') == fee['destination'] and t.get('category') == 'receive']
-        fee['txid'] = received[0]['txid'] if received else adapter.sponsor.sendtoaddress(fee['destination'], 1)
+        fee['txid'] = received[0]['txid'] if received else adapter.wallet_send(adapter.sponsor, {fee['destination']: 1})
         save_config(fee_path, fee)
     credentials_path = sandbox.directory / 'credentials.json'
     credentials = json.loads(credentials_path.read_text())

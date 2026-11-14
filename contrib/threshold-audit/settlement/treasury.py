@@ -252,6 +252,39 @@ class Institution:
         return {'guardian_id': self.config['guardian_id'], 'header_hash': block.hash,
                 'signature': self.ecdsa.signature(self.config['block_secret'], ser_uint256(block.sha256)).hex()}
 
+    def authorize_transaction(self, request):
+        """Sign the chain-level authorization every transaction must carry.
+
+        This is the federation's control over what moves on the ledger, so it
+        runs without a person. It sees only public data: the transaction is
+        refused unless every output is the fee, a burn, the treasury, or an
+        address a member bank has registered. Amounts stay hidden from it.
+        """
+        from .authorization import (WINDOW, authorization_digest, decode_policy, needs_registration,
+                                    registration_digest)
+        transaction, expiry = tx_from_hex(request['rawtx']), request['expiry_height']
+        info = self.rpc.getblockchaininfo()
+        policy = bytes.fromhex(info.get('tx_authorization') or '')
+        if not policy:
+            raise ValueError('this chain does not require transaction authorization')
+        secret = int(self.config['approval_secret'], 16)
+        if self.curve.mul(secret)[1:] not in decode_policy(policy)[1]:
+            raise ValueError('institution is not an authorizer under the active chain policy')
+        if type(expiry) is not int or not info['blocks'] < expiry <= info['blocks'] + WINDOW:
+            raise ValueError('authorization must expire within the next %d blocks' % WINDOW)
+        genesis, registrations = self.config['genesis_hash'], request.get('registrations') or {}
+        bank = bytes.fromhex(self.config['bank_public_key'])
+        for output in transaction.vout:
+            script = bytes(output.scriptPubKey)
+            if not needs_registration(script) or script.hex() == self.config['treasury_script']:
+                continue
+            signature = registrations.get(script.hex())
+            if not isinstance(signature, str) or not self.curve.verify_signature(
+                    bank, registration_digest(genesis, script), bytes.fromhex(signature)):
+                raise ValueError('an output pays an address that no member bank has registered')
+        digest = authorization_digest(genesis, policy, transaction, expiry)
+        return {'guardian_id': self.config['guardian_id'], 'signature': self.curve.sign(secret, digest).hex()}
+
     def _bind_signature(self, binding, digest):
         with self.lock, self.db:
             self.db.execute('BEGIN IMMEDIATE')
@@ -452,7 +485,7 @@ def serve(config, rpc):
                         self.respond(403, {'error': 'Institution approval passphrase is required'})
                         return
                     result = institution.approve(request['operation'])
-                elif (self.path == '/' and request.get('method') in {'sign_transaction', 'sign_migration', 'sign_block'}
+                elif (self.path == '/' and request.get('method') in {'sign_transaction', 'sign_migration', 'sign_block', 'authorize_transaction'}
                       and hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + config['token'])):
                     result = getattr(institution, request['method'])(request)
                 else:

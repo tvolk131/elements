@@ -12,6 +12,7 @@ from governance import AuditConfig
 from native_transactions import wallet_openings
 from test_framework import messages
 from test_framework.messages import tx_from_hex
+from .authorization import WINDOW, authorization_digest, decode_policy, encode, needs_registration
 from .treasury import InstitutionClient, NativeECDSA, template_hash
 from test_framework.script import CScript, SegwitV0SignatureHash, SIGHASH_ALL
 
@@ -69,6 +70,9 @@ class ElementsAdapter:
         self.wallets = {account: RPC(url) for account, url in config['wallets'].items()}
         self.curve = Curve(config['library'])
         self.institutions = InstitutionClient(config['institutions'])
+        # Signs a member bank's statement that a destination is a registered
+        # customer address. Installed by whoever holds that bank's key.
+        self.registrar = None
         self.lock = threading.RLock()
         self.db = sqlite3.connect(config['database'], check_same_thread=False, isolation_level=None)
         self.db.execute('PRAGMA journal_mode=WAL')
@@ -120,6 +124,64 @@ class ElementsAdapter:
                 self.config['rotation_records'] = rotation_records
             if escrow_migrations is not None:
                 self.config['escrow_migrations'] = escrow_migrations
+
+    def authorize(self, rawtx):
+        """Attach the federation authorization the chain requires, if it requires one.
+
+        The authorization is not part of the transaction ID, so an expired one
+        is simply replaced. Authorizers are found by the keys the chain names,
+        which during a handover are the incoming institutions'.
+        """
+        info = self.node.getblockchaininfo()
+        policy = bytes.fromhex(info.get('tx_authorization') or '')
+        if not policy:
+            return rawtx
+        transaction = tx_from_hex(rawtx)
+        transaction.wit.vchAuthorization = b''
+        threshold, keys = decode_policy(policy)
+        genesis, expiry = self.node.getblockhash(0), info['blocks'] + WINDOW
+        digest = authorization_digest(genesis, policy, transaction, expiry)
+        registrations = {}
+        if self.registrar is not None:
+            for output in transaction.vout:
+                script = bytes(output.scriptPubKey)
+                if needs_registration(script):
+                    registrations[script.hex()] = self.registrar(script).hex()
+        services = {}
+        for manifest in [*self.config.get('federation_manifests', []), self.config]:
+            for guardian, key in manifest.get('approval_public_keys', {}).items():
+                if guardian in manifest.get('institutions', {}):
+                    services[key] = (guardian, manifest['institutions'][guardian])
+        signatures, refusal = {}, 'no authorizing institution is reachable'
+        unsigned = transaction.serialize().hex()
+        for index, key in enumerate(keys):
+            if key.hex() not in services:
+                continue
+            guardian, service = services[key.hex()]
+            try:
+                result = InstitutionClient({guardian: service}).request(guardian, 'authorize_transaction', rawtx=unsigned,
+                                                                         expiry_height=expiry, registrations=registrations)
+                signature = bytes.fromhex(result['signature'])
+            except (OSError, ValueError, KeyError) as error:
+                refusal = str(error)
+                continue
+            if self.curve.verify_signature(key, digest, signature):
+                signatures[index] = signature
+            if len(signatures) == threshold:
+                break
+        if len(signatures) != threshold:
+            raise ValueError('federation did not authorize this transaction: ' + refusal)
+        transaction.wit.vchAuthorization = encode(expiry, signatures)
+        return transaction.serialize().hex()
+
+    def wallet_send(self, wallet, amounts, asset=None):
+        """Pay from a node wallet with the authorization a plain wallet send would lack."""
+        outputs = [{address: amount, **({'asset': asset} if asset else {})} for address, amount in amounts.items()]
+        funded = wallet.walletcreatefundedpsbt([], outputs, 0, {'fee_rate': 2})['psbt']
+        final = wallet.finalizepsbt(wallet.walletprocesspsbt(funded)['psbt'])
+        if not final.get('complete'):
+            raise ValueError('wallet could not complete this payment')
+        return self.node.sendrawtransaction(self.authorize(final['hex']), 0)
 
     def escrow_locator(self, operation):
         locator = self.config.get('escrow_migrations', {}).get(operation['escrow_txid']) or operation.get('current_escrow')
@@ -271,6 +333,7 @@ class ElementsAdapter:
             # and its coins are already fixed above, so other preparations
             # need not wait for it.
             signed = self._cosign(operation, stage, certificate, packet) if stage in ('issue', 'burn', 'refund') else packet['rawtx']
+            signed = self.authorize(signed)
             accepted = self.node.testmempoolaccept([signed], 0)[0]
             if not accepted['allowed']:
                 raise ValueError('Elements rejected prepared transaction: ' + accepted.get('reject-reason', str(accepted)))
@@ -327,7 +390,8 @@ class ElementsAdapter:
             burn_limit = Decimal(sum(output.nValue.getAmount() for output in transaction.vout
                                      if bytes(output.scriptPubKey) == b'\x6a')) / 100_000_000
         try:
-            txid = self.node.sendrawtransaction(prepared['rawtx'], 0, burn_limit)
+            # A retry may come long after preparation; authorize afresh.
+            txid = self.node.sendrawtransaction(self.authorize(prepared['rawtx']), 0, burn_limit)
         except RPCError as original:
             # Lost response or already-mined transaction: inspect the exact ID,
             # never create a replacement issuance from the same cash receipt.

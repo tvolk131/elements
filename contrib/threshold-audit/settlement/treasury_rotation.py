@@ -285,7 +285,7 @@ class TreasuryRotation:
                     transaction.wit.vtxinwit.append(messages.CTxInWitness())
                 ordered = [signatures[key] for key in source['guardian_order'] if key in signatures][:source['threshold']]
                 transaction.wit.vtxinwit[packet['input_index']].scriptWitness.stack = [b'', *ordered, bytes(witness)]
-                signed = transaction.serialize().hex()
+                signed = adapter.authorize(transaction.serialize().hex())
                 accepted = adapter.node.testmempoolaccept([signed], 0)[0]
                 if not accepted['allowed']:
                     raise ValueError('Elements rejected migration: ' + accepted.get('reject-reason', str(accepted)))

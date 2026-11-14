@@ -155,6 +155,8 @@ class Seeder:
     def authorize(self, operation, checker, institutions=('institution-1', 'institution-2', 'institution-3')):
         if not operation['user_approved']:
             operation = self.call(checker, f"/api/operations/{operation['id']}/approve", {})
+        if not operation['guardian_threshold']:  # the payment policy asks for no institutions
+            return operation
         for institution in institutions:
             operation = self.sign(operation, institution)
         return operation

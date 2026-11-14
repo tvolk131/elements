@@ -55,7 +55,8 @@ class AuditRotation:
     def load(self, rotation_id):
         return parse_json(self._path(rotation_id).read_bytes())
 
-    def _begin(self, rotation_id, mode, signblockscript, witness_limit, activation_height, members=None, threshold=None):
+    def _begin(self, rotation_id, mode, signblockscript, witness_limit, activation_height, members=None, threshold=None,
+               tx_authorization=None):
         script = bytes.fromhex(signblockscript) if isinstance(signblockscript, str) else bytes(signblockscript)
         if len(script) != 34 or script[:2] != b'\x00\x20':
             raise ValueError('rotation pilot requires a P2WSH block signing script')
@@ -69,7 +70,8 @@ class AuditRotation:
                     or (activation_height is not None and record['activation_height'] != activation_height)
                     or record.get('incoming_members') != (None if members is None else list(members))
                     or record.get('incoming_threshold') != threshold
-                    or record['genesis_hash'] != self.node.getblockhash(0)):
+                    or record['genesis_hash'] != self.node.getblockhash(0)
+                    or (tx_authorization is not None and record.get('tx_authorization', '') != tx_authorization)):
                 raise ValueError('audit rotation ID cannot be rebound')
             return record
         height = self.node.getblockcount()
@@ -86,9 +88,13 @@ class AuditRotation:
         if program != b'\x00\x20' + hashlib.sha256(raw_fedpeg).digest():
             raise ValueError('pilot cannot propose this fedpeg program')
         assets = tuple(sorted(bytes.fromhex(asset)[::-1] for asset in info['audit_assets']))
+        # Who may authorize transactions carries over unless this rotation replaces it.
+        if tx_authorization is None:
+            tx_authorization = source_policy.get('tx_authorization', '')
         target_binding = policy_binding(script, witness_limit, program, raw_fedpeg,
                                        [bytes.fromhex(item) for item in source_policy['extension_space']],
-                                       audit_assets=assets, audit_assets_version=info['audit_assets_version'])
+                                       audit_assets=assets, audit_assets_version=info['audit_assets_version'],
+                                       tx_authorization=bytes.fromhex(tx_authorization))
         record = {'id': rotation_id, 'mode': mode, 'phase': 'staging', 'genesis_hash': self.node.getblockhash(0),
                   'source_height': height, 'source_block': self.node.getblockhash(height),
                   'previous_config': previous.to_bytes().hex(), 'previous_hash': previous.binding().hex(),
@@ -97,7 +103,8 @@ class AuditRotation:
                   'activation_height': expected_activation, 'signblockscript': script.hex(),
                   'witness_limit': witness_limit, 'fedpeg_program': program.hex(), 'fedpegscript': raw_fedpeg.hex(),
                   'extension_space': source_policy['extension_space'], 'audit_assets': [asset[::-1].hex() for asset in assets],
-                  'audit_assets_version': info['audit_assets_version'], 'signer_policy': target_binding.hex(),
+                  'audit_assets_version': info['audit_assets_version'], 'tx_authorization': tx_authorization,
+                  'signer_policy': target_binding.hex(),
                   'sessions': {str(key.version): secrets.token_hex(32) for key in previous.keys} if mode == 'handoff' else {},
                   'plans': {}}
         return self._save(record)
@@ -140,8 +147,10 @@ class AuditRotation:
                       target_threshold=config.active_key.committee.threshold)
         return self._save(record)
 
-    def prepare_policy(self, signblockscript, witness_limit=1024, activation_height=None, *, rotation_id='install-a'):
-        record = self._begin(rotation_id, 'policy', signblockscript, witness_limit, activation_height)
+    def prepare_policy(self, signblockscript, witness_limit=1024, activation_height=None, *, rotation_id='install-a',
+                       tx_authorization=None):
+        record = self._begin(rotation_id, 'policy', signblockscript, witness_limit, activation_height,
+                             tx_authorization=tx_authorization)
         if record['phase'] != 'staging':
             self.prepared(record)
             return record
@@ -150,12 +159,13 @@ class AuditRotation:
         return self._finish_preparation(record, config, {})
 
     def prepare_handoff(self, new_members, threshold, signblockscript, witness_limit=1024, activation_height=None,
-                        *, rotation_id='handoff-b'):
+                        *, rotation_id='handoff-b', tx_authorization=None):
         members = tuple(new_members)
         if (not members or tuple(sorted(set(members))) != members or type(threshold) is not int
                 or not 1 <= threshold <= len(members)):
             raise ValueError('invalid incoming audit committee')
-        record = self._begin(rotation_id, 'handoff', signblockscript, witness_limit, activation_height, members, threshold)
+        record = self._begin(rotation_id, 'handoff', signblockscript, witness_limit, activation_height, members, threshold,
+                             tx_authorization=tx_authorization)
         if record['phase'] != 'staging':
             self.prepared(record)
             return record
@@ -187,7 +197,8 @@ class AuditRotation:
                 'fedpegscript': record['fedpegscript'], 'extension_space': record['extension_space'],
                 'audit_pubkey': record['audit_pubkey'], 'audit_version': record['audit_version'],
                 'audit_config': record['audit_config'], 'audit_prepared': record['audit_prepared'],
-                'audit_assets': record['audit_assets'], 'audit_assets_version': record['audit_assets_version']}
+                'audit_assets': record['audit_assets'], 'audit_assets_version': record['audit_assets_version'],
+                **({'tx_authorization': record['tx_authorization']} if record.get('tx_authorization') else {})}
 
     def activate(self, record):
         prepared = self.prepared(record)

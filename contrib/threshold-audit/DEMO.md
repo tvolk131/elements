@@ -94,6 +94,7 @@ a withdrawal waits for a person at the company to release it.
 
 | | Enforced by the Elements ledger | Enforced by the application |
 |---|---|---|
+| **Every transaction** | An unexpired authorization signed by 3 of 5 institutions; their services give it automatically, see only what the chain shows, and require each destination to be a bank-registered address | Nothing further |
 | **Payments between customers** | The sender's wallet signature, hidden amounts and assets with valid proofs, the mandatory recovery packet for disclosure, and 3 of 5 operators confirming the block | The customer's second-person check; institution approval only if the payment policy asks for it |
 | **Money in and out** (issuing tokens, the withdrawal payout and burn, refunds) | All of the above, **plus** 3 of 5 institutions co-signing the transaction with their own keys; each institution's service checks the approval before signing | Funding: the bank's confirmation that the money arrived. Withdrawals: the company's second-person check and release |
 | **Disclosures** | The encrypted recovery packet on every payment; only 7 of 10 guardians together can open it | Who may request a disclosure and for whom |

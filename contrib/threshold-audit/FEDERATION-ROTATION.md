@@ -34,7 +34,10 @@ outstanding redemption escrows can carry across this sandbox transition.
 3. **Activate the native policy.** Outgoing functionaries sign voting blocks.
    Each service independently checks the exact approved proposal and native
    candidate validity. At the boundary, incoming functionaries sign the first
-   block under the new policy. Activate the incoming audit shares.
+   block under the new policy. Activate the incoming audit shares. The same
+   proposal names the incoming institutions as the chain's
+   [transaction authorizers](TRANSACTION-AUTHORIZATION.md), so they authorize
+   the migrations in the next step and everything after.
 4. **Migrate treasury control.** Outgoing institutions independently verify the
    incoming native policy is active before signing migrations. Each authority
    token or tracked escrow moves in full to one incoming output. Confirm each

@@ -15,6 +15,7 @@ from test_framework import messages
 from test_framework.messages import CBlock, COutPoint, CTransaction, CTxIn, CTxOut, CTxOutAsset, DynaFedParamEntry, ser_uint256
 from test_framework.script import CScript, OP_CHECKMULTISIG
 
+from .authorization import WINDOW, authorization_digest, decode_policy, encode, policy_bytes, registration_digest
 from .rotation_approval import RotationVerifier, rotation_digest, sign_rotation
 from .treasury import Institution, NativeECDSA, template_hash
 from .treasury_rotation import current_escrow, packet_summary, validate_packet, validate_policy
@@ -69,6 +70,7 @@ class TreasuryRotationTests(unittest.TestCase):
             native_genesis = 'cc'*32
             native_audit = audit.to_bytes().hex()
             native_block_script = self.target['block_signing_script']
+            native_authorization = ''
             def getbestblockhash(rpc):
                 return f'{1:064x}'
             def getblockcount(rpc):
@@ -77,7 +79,8 @@ class TreasuryRotationTests(unittest.TestCase):
                 assert acceptnonstd is True
                 return None
             def getblockchaininfo(rpc):
-                return {'blocks': rpc.native_height, 'audit_config': rpc.native_audit, 'bestblockhash': rpc.getbestblockhash()}
+                return {'blocks': rpc.native_height, 'audit_config': rpc.native_audit, 'bestblockhash': rpc.getbestblockhash(),
+                        'tx_authorization': rpc.native_authorization}
             def getblockhash(rpc, height):
                 return rpc.native_genesis if height == 0 else f'{height:064x}'
             def getblock(rpc, blockhash):
@@ -198,6 +201,59 @@ class TreasuryRotationTests(unittest.TestCase):
         if target:
             block.m_dynafed_params.m_proposed = DynaFedParamEntry(bytes.fromhex(target['block_signing_script']), 1024, program, b'\x51', [])
         return block
+
+    def authorization_request(self, **changes):
+        """The migration transaction with a bank registration for each paid address."""
+        scripts = [bytes(output.scriptPubKey) for output in self.transaction.vout if bytes(output.scriptPubKey)]
+        registrations = {script.hex(): self.curve.sign(999, registration_digest('cc' * 32, script)).hex() for script in scripts}
+        return dict({'rawtx': self.transaction.serialize().hex(), 'expiry_height': self.rpc.native_height + WINDOW,
+                     'registrations': registrations}, **changes)
+
+    def test_authorization_covers_exact_transaction_until_expiry(self):
+        policy = policy_bytes(self.source['approval_public_keys'], self.source['guardian_order'], 2)
+        self.assertEqual(decode_policy(policy), (2, [self.curve.mul(key)[1:] for key in (111, 112, 113)]))
+        self.rpc.native_authorization = policy.hex()
+        signer = Institution(self.config, self.rpc)
+        request = self.authorization_request()
+        signature = bytes.fromhex(signer.authorize_transaction(request)['signature'])
+        digest = authorization_digest('cc' * 32, policy, self.transaction, request['expiry_height'])
+        self.assertTrue(self.curve.verify_signature(self.curve.mul(111)[1:], digest, signature))
+        changed = CTransaction(self.transaction)
+        changed.nLockTime += 1
+        for other in (authorization_digest('cc' * 32, policy, changed, request['expiry_height']),
+                      authorization_digest('cc' * 32, policy, self.transaction, request['expiry_height'] + 1),
+                      authorization_digest('dd' * 32, policy, self.transaction, request['expiry_height']),
+                      authorization_digest('cc' * 32, b'\x01' + policy[1:], self.transaction, request['expiry_height'])):
+            self.assertFalse(self.curve.verify_signature(self.curve.mul(111)[1:], other, signature))
+        self.assertEqual(encode(7, {2: b'b' * 64, 0: b'a' * 64}), b'\x07\0\0\0' + b'\0' + b'a' * 64 + b'\x02' + b'b' * 64)
+        signer.db.close(); signer.curve.close()
+
+    def test_authorization_refuses_unregistered_destinations_and_long_windows(self):
+        policy = policy_bytes(self.source['approval_public_keys'], self.source['guardian_order'], 2)
+        signer = Institution(self.config, self.rpc)
+        with self.assertRaisesRegex(ValueError, 'does not require'):
+            signer.authorize_transaction(self.authorization_request())
+        self.rpc.native_authorization = policy.hex()
+        with self.assertRaisesRegex(ValueError, 'no member bank has registered'):
+            signer.authorize_transaction(self.authorization_request(registrations={}))
+        forged = {script: self.curve.sign(998, registration_digest('cc' * 32, bytes.fromhex(script))).hex()
+                  for script in self.authorization_request()['registrations']}
+        with self.assertRaisesRegex(ValueError, 'no member bank has registered'):
+            signer.authorize_transaction(self.authorization_request(registrations=forged))
+        for expiry in (self.rpc.native_height, self.rpc.native_height + WINDOW + 1, '20'):
+            with self.assertRaisesRegex(ValueError, 'must expire within'):
+                signer.authorize_transaction(self.authorization_request(expiry_height=expiry))
+        # The treasury and fee need no registration; any other address does.
+        own = dict(self.config, treasury_script=self.target['treasury_script'])
+        treasury_only = Institution(dict(own, database=str(Path(self.temp.name) / 'own.sqlite')), self.rpc)
+        registrations = self.authorization_request()['registrations']
+        registrations.pop(self.target['treasury_script'])
+        treasury_only.authorize_transaction(self.authorization_request(registrations=registrations))
+        self.rpc.native_authorization = policy_bytes(self.target['approval_public_keys'], self.target['guardian_order'], 2).hex()
+        with self.assertRaisesRegex(ValueError, 'not an authorizer'):
+            signer.authorize_transaction(self.authorization_request())
+        for closing in (signer, treasury_only):
+            closing.db.close(); closing.curve.close()
 
     def test_block_signing_uses_separate_key_and_refuses_height_conflict(self):
         source = self.block_policy(self.source, (41, 42, 43))

@@ -18,7 +18,8 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from curve import Curve, random_scalar
 from guardian_service import atomic_write
 from .disclosure_recipient import open_bundle
-from .elements_adapter import RPC
+from .authorization import registration_digest
+from .elements_adapter import ElementsAdapter, RPC
 from .runtime import load_config
 from .smoke import Pilot
 from sealed_delivery import canonical
@@ -27,6 +28,9 @@ from sealed_delivery import canonical
 def run(directory):
     directory=Path(directory); pilot=Pilot(directory)
     adapter=load_config(directory/'adapter.json');curve=Curve(adapter['library']);node=RPC(adapter['rpc_url'])
+    # Wallets outside the outbox still need the federation's authorization to send.
+    chain=ElementsAdapter(adapter);bank=int(load_config(directory/'simulated-bank.json')['signing_secret'],16);genesis=node.getblockhash(0)
+    chain.registrar=lambda script:curve.sign(bank,registration_digest(genesis,script))
     evidence=directory/'capability-smoke';evidence.mkdir(mode=0o700,exist_ok=True)
     state_path=evidence/'state.json';state=json.loads(state_path.read_text()) if state_path.exists() else {}
     def save():atomic_write(state_path,state)
@@ -62,12 +66,12 @@ def run(directory):
             state['external_address']=external.getnewaddress('capability-test','blech32');save()
         if 'external_fee_txid' not in state:
             fee_address=external.getnewaddress('capability-fees','bech32')
-            state['external_fee_txid']=RPC(adapter['sponsor_rpc_url']).sendtoaddress(fee_address,1);save()
+            state['external_fee_txid']=chain.wallet_send(chain.sponsor,{fee_address:1});save()
         outside_funding=settle('external_funding','acme-maker',{'account_id':'acme-main','currency':'EUR','amount':'0.02','address':state['external_address']})
         if 'external_receipt_txid' not in state:
             receiver=pilot.call('initech-maker','/api/receive-address',{'account_id':'initech-main','currency':'EUR'})['address']
             asset=next(a['asset_id'] for a in pilot.call('initech-maker','/api/dashboard')['assets'] if a['currency']=='EUR')
-            state['external_receipt_txid']=external.sendtoaddress(receiver,Decimal('0.01'),'','',False,False,1,'UNSET',False,asset);save()
+            state['external_receipt_txid']=chain.wallet_send(external,{receiver:Decimal('0.01')},asset);save()
         deadline=time.monotonic()+90
         while time.monotonic()<deadline:
             received=next((op for op in pilot.call('initech-maker','/api/dashboard')['operations'] if op['kind']=='receipt' and op['txid']==state['external_receipt_txid']),None)

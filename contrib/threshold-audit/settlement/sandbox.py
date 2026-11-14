@@ -34,6 +34,7 @@ from .federation_audit import AuditRotation
 from .federation_blocks import BlockFederation, BOOTSTRAP_SCRIPT
 from .federation import FederationRotation
 from .treasury_rotation import public_policy
+from .authorization import policy_bytes, registration_digest
 from .runtime import OwnedProcesses, load_config, read_ready_line, save_config
 from test_framework.script import CScript, OP_CHECKMULTISIG
 
@@ -273,6 +274,10 @@ class Sandbox:
     def _serve(self, adapter_config, config, bank_secret, port):
         curve = Curve(self.library)
         adapter = self.adapter = ElementsAdapter(adapter_config)
+        # The simulated bank vouches for every address this service pays. A real
+        # bank would hold this key itself and register only its own customers.
+        genesis = self.node.getblockhash(0)
+        adapter.registrar = lambda script: curve.sign(bank_secret, registration_digest(genesis, script))
         public_keys = adapter_config.get('approval_public_keys')
         if public_keys is None:
             # Backward-compatible fixture metadata upgrade uses a public
@@ -298,7 +303,10 @@ class Sandbox:
                 record = self.audit.load('install-a')
             else:
                 self.blocks.align()
-                record = self.audit.prepare_policy(adapter_config['block_signing_script'], rotation_id='install-a')
+                # From this activation on the institutions sign every block
+                # and must authorize every transaction.
+                record = self.audit.prepare_policy(adapter_config['block_signing_script'], rotation_id='install-a',
+                    tx_authorization=policy_bytes(public_keys, adapter_config['guardian_order'], adapter_config['threshold']).hex())
             while node.getblockcount() < record['activation_height'] - 1:
                 self.blocks.mine(proposal=self.audit.proposal(record))
             self.blocks.mine()

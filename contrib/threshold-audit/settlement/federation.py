@@ -9,6 +9,7 @@ import time
 from governance import AuditConfig
 from guardian_service import atomic_write
 from .approval import ApprovalVerifier
+from .authorization import policy_bytes
 from .rotation_approval import RotationVerifier
 from .store import Problem, FINAL
 from .treasury_rotation import TreasuryRotation, packet_summary, public_policy
@@ -125,7 +126,7 @@ class FederationRotation:
                 sponsor = self.adapter.sponsor
                 # Fee funding is public policy-asset bookkeeping. Explicit
                 # fanout avoids the wallet's conservative per-CT-output limit.
-                txid = sponsor.sendmany('', {sponsor.getnewaddress('', 'bech32'): '0.05' for _ in range(count)})
+                txid = self.adapter.wallet_send(sponsor, {sponsor.getnewaddress('', 'bech32'): '0.05' for _ in range(count)})
                 self.state['fee_fanout'] = txid
                 self._save()
                 self.sandbox.blocks.mine()
@@ -139,8 +140,11 @@ class FederationRotation:
             config = AuditConfig.from_bytes(bytes.fromhex(self.sandbox.node.getblockchaininfo()['audit_config']), self.store.verifier.curve)
             current_ids = [member for member, _ in config.identities]
             new_members = list(range(max(current_ids) + 1, max(current_ids) + 16))
+            # The incoming institutions also become the transaction authorizers.
             audit = self.sandbox.audit.prepare_handoff(new_members, 11, target['block_signing_script'],
-                                                       rotation_id=self.state['id'])
+                                                       rotation_id=self.state['id'],
+                                                       tx_authorization=policy_bytes(target['approval_public_keys'], target['guardian_order'],
+                                                                                     target['threshold']).hex())
             self.state['audit'] = audit
             self.adapter.config['audit_pool_members'] = sorted(set(audit['outgoing_members']) | set(audit['target_members']))
             self.sandbox.persist_adapter()
