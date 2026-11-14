@@ -8,6 +8,7 @@ import { api } from "./api";
 import { Badge, Button, CopyField, ErrorNote, Field } from "./components";
 import { canonical, bytes, hex } from "./recipient-crypto";
 import { bankName } from "./domain";
+import { usePersonas } from "./demo";
 import type { Currency } from "./types";
 export interface TransferTarget {
   scope: string;
@@ -107,6 +108,16 @@ export function TransferDestination({
       )
         return;
       onChange({ scope, address: result.address });
+    },
+  });
+  const demo = !!usePersonas().data?.length;
+  // Demo only: an address in a wallet no member bank manages or registered.
+  const outside = useMutation({
+    mutationFn: () => api<{ address: string }>("/api/demo/outside-address", {}),
+    onSuccess: (result) => {
+      setAddress(result.address);
+      onChange(null);
+      validate.reset();
     },
   });
   const changeMode = (value: string) => {
@@ -224,14 +235,27 @@ export function TransferDestination({
               data-testid="destination-address"
             />
           </Field>
-          <Button
-            type="button"
-            disabled={validate.isPending || address.trim().length < 30}
-            onClick={() => validate.mutate(address)}
-            data-testid="validate-destination"
-          >
-            {validate.isPending ? "Checking address…" : "Check address"}
-          </Button>
+          <div className="address-actions">
+            <Button
+              type="button"
+              disabled={validate.isPending || address.trim().length < 30}
+              onClick={() => validate.mutate(address)}
+              data-testid="validate-destination"
+            >
+              {validate.isPending ? "Checking address…" : "Check address"}
+            </Button>
+            {demo && (
+              <Button
+                type="button"
+                className="link-button"
+                disabled={outside.isPending}
+                onClick={() => outside.mutate()}
+                data-testid="outside-address"
+              >
+                Demo: use an address no bank has registered
+              </Button>
+            )}
+          </div>
           {validate.isSuccess && validate.variables === address && (
             <p>
               <Badge status="ready">Valid confidential address</Badge>{" "}
@@ -240,7 +264,7 @@ export function TransferDestination({
           )}
         </>
       )}
-      <ErrorNote error={resolve.error || validate.error} />
+      <ErrorNote error={resolve.error || validate.error || outside.error} />
     </section>
   );
 }

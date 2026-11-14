@@ -17,6 +17,7 @@ import threading
 import time
 
 from .approval import approval_digest, approval_payload, canonical, reference_hash
+from .authorization import AuthorizationRefused
 from .bank import sign_cancellation_receipt, sign_credit_receipt, sign_payout_receipt
 
 
@@ -96,6 +97,8 @@ class Settlement:
         self.federation = None
         self.disclosures, self.directory = None, None
         self.receipts = None
+        # Set by the sandbox: what the chain recorded, and demo-only controls.
+        self.ledger_view, self.demo_runtime = None, None
         self.bank_signing_secret = bank_signing_secret
         self.min_confirmations = self.config.get("min_confirmations", 1)
         if type(self.min_confirmations) is not int or self.min_confirmations < 1:
@@ -260,6 +263,70 @@ class Settlement:
             self.add_signature(institution, operation_id, signature)
             signed.add(guardian)
         return self.operation(user, operation_id)
+
+    def ledger(self, user):
+        """Recent transactions as the ledger recorded them, beside what this
+        bank knows about the ones that are its own customers' requests."""
+        self.require(user, "view_bank")
+        if self.ledger_view is None:
+            raise Problem("the ledger view is not available in this runtime", 503)
+        view = self.ledger_view.recent()
+        known = {}
+        with self.lock:
+            accounts = {row[0]: json.loads(row[1]) for row in self.db.execute("SELECT id,data FROM accounts")}
+            for row in self.db.execute("SELECT data FROM operations"):
+                operation = json.loads(row[0])
+                account = accounts.get(operation["account_id"])
+                if account is None or not self.can_view(user, account):
+                    continue
+                destination = accounts.get(operation.get("to_account_id") or "", {}).get("name")
+                for stage in ("issue", "transfer", "escrow", "burn", "refund"):
+                    if operation.get(stage + "_txid"):
+                        known[operation[stage + "_txid"]] = {
+                            "operation_id": operation["id"], "kind": operation["kind"], "stage": stage,
+                            "amount": money(operation["amount_minor"]), "currency": operation["currency"],
+                            "from": account.get("name", account["id"]),
+                            "to": destination or operation.get("destination_name")}
+        for item in view["transactions"]:
+            item["known"] = known.get(item["txid"])
+        return view
+
+    def unauthorized_attempt(self, user):
+        self.require(user, "view_bank")
+        if self.ledger_view is None:
+            raise Problem("the ledger view is not available in this runtime", 503)
+        result = self.ledger_view.unauthorized_attempt()
+        with self.transaction():
+            self.evidence(user["id"], "unauthorized_transaction_refused" if not result["without"]["accepted"]
+                          else "unauthorized_transaction_accepted", {"txid": result["txid"]})
+        return result
+
+    def _demo(self):
+        if not self.config.get("demo_sign_in") or self.demo_runtime is None:
+            raise Problem("endpoint not found", 404)
+        return self.demo_runtime
+
+    def demo_institutions(self, user, guardian=None, online=None):
+        """Demo only: list, stop or restart the institutions' services."""
+        runtime = self._demo()
+        self.require(user, "view_bank")
+        if guardian is None:
+            return {"institutions": runtime.institution_status()}
+        if type(online) is not bool:
+            raise Problem("online must be true or false")
+        try:
+            status = runtime.set_institution_online(guardian, online)
+        except ValueError as error:
+            raise Problem(str(error)) from error
+        with self.transaction():
+            self.evidence(user["id"], "demo_institution_" + ("online" if online else "offline"), {"institution": guardian})
+        return {"institutions": status}
+
+    def demo_outside_address(self, user):
+        """Demo only: an address no member bank has registered."""
+        runtime = self._demo()
+        self.require(user, "create_transfer")
+        return {"address": runtime.outside_address()}
 
     def session(self, token):
         with self.lock:
@@ -924,10 +991,28 @@ class Settlement:
             # definitive bank event is required before any burn or cancellation.
             if operation["state"] == "burn_pending" and operation.get("stage") != "burn":
                 self._prepare(operation, "burn")
+        except AuthorizationRefused as error:
+            if operation["kind"] == "transfer" and operation["state"] == "preparing":
+                self._decline(operation, "transfer", str(error)[:500])
+            elif self._record_error(operation, str(error)[:500]):
+                self.evidence("worker", "execution_waiting", {"error": str(error)[:500]}, operation["id"])
         except Exception as error:
             message = str(error)[:500]
             if self._record_error(operation, message):
                 self.evidence("worker", "execution_waiting", {"error": message}, operation["id"])
+
+    def _decline(self, operation, stage, reason):
+        """The institutions refused a payment before anything reached the chain:
+        close it and give the customer back the coins it had reserved."""
+        self.chain.abandon(operation, stage)
+        with self.transaction():
+            current = self._operation(operation["id"])
+            if current["state"] != "preparing":
+                return
+            current.update(state="rejected", declined_by="institutions", error=reason)
+            operation.update(current)
+            self.save(current)
+            self.evidence("federation", "operation_declined", {"reason": reason}, operation["id"])
 
     def _confirmed(self, operation, stage, status):
         with self.transaction():
@@ -1109,6 +1194,7 @@ class Settlement:
             operation_ids = {operation["id"] for operation in operations}
             names = {row["id"]: json.loads(row["data"]).get("name", row["id"]) for row in self.db.execute("SELECT id,data FROM users")}
             names.setdefault("settlement", "Automatic, once approvals were complete")
+            names.setdefault("federation", "The institutions, automatically")
             for row in self.db.execute("SELECT * FROM evidence ORDER BY seq DESC LIMIT 300"):
                 if row["operation_id"] in operation_ids or (row["operation_id"] is None and "view_bank" in ROLES[user["role"]]):
                     activity.append({"id": row["seq"], "created_at": row["created"], "operation_id": row["operation_id"],

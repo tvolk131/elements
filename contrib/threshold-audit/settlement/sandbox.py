@@ -133,6 +133,7 @@ class Sandbox:
         self.mining_lock = threading.RLock()
         self.institution_processes = {}
         self.institution_endpoints = {}
+        self.institution_lock = threading.Lock()
         self.closed = False
         self.mesh = None
 
@@ -274,10 +275,20 @@ class Sandbox:
     def _serve(self, adapter_config, config, bank_secret, port):
         curve = Curve(self.library)
         adapter = self.adapter = ElementsAdapter(adapter_config)
-        # The simulated bank vouches for every address this service pays. A real
-        # bank would hold this key itself and register only its own customers.
+        # The simulated bank vouches only for addresses in wallets it runs: its
+        # customers' and the network's own. A real bank would hold this key
+        # itself, outside the coordinator.
         genesis = self.node.getblockhash(0)
-        adapter.registrar = lambda script: curve.sign(bank_secret, registration_digest(genesis, script))
+        def registrar(script):
+            address = self.node.decodescript(script.hex()).get('address')
+            if address is None:
+                return None
+            for wallet in (adapter.sponsor, *adapter.wallets.values()):
+                info = wallet.getaddressinfo(address)
+                if info.get('ismine') or info.get('iswatchonly'):
+                    return curve.sign(bank_secret, registration_digest(genesis, script))
+            return None
+        adapter.registrar = registrar
         public_keys = adapter_config.get('approval_public_keys')
         if public_keys is None:
             # Backward-compatible fixture metadata upgrade uses a public
@@ -320,6 +331,9 @@ class Sandbox:
                        config=config, approval_signer=None,
                        bank_signing_secret=bank_secret)
         self.store.federation = FederationRotation(self, self.store)
+        self.store.demo_runtime = self
+        from .ledger import LedgerView
+        self.store.ledger_view = LedgerView(adapter)
         from .capability_demo import enroll
         enroll(self, config, adapter_config)
         self.server = create_server(self.store, port=port)
@@ -434,7 +448,7 @@ class Sandbox:
     def persist_adapter(self):
         save_config(self.directory / 'adapter.json', self.adapter.config)
 
-    def _launch_institution(self, guardian, port):
+    def _launch_institution(self, guardian, port, service_port=None):
         process = self.institution_processes.get(guardian)
         if process is not None and process.poll() is None:
             return self.institution_endpoints[guardian]
@@ -442,7 +456,8 @@ class Sandbox:
         service = load_config(path)
         service['coordinator_origins'] = [f'http://127.0.0.1:{port}', f'http://localhost:{port}']
         save_config(path, service)
-        process = self.processes.spawn([sys.executable, '-u', '-m', 'settlement.treasury', str(path)],
+        process = self.processes.spawn([sys.executable, '-u', '-m', 'settlement.treasury', str(path),
+                                        *([str(service_port)] if service_port else [])],
                                        path.parent / 'stderr.log', readiness=True)
         self.institution_processes[guardian] = process
         try:
@@ -541,6 +556,42 @@ class Sandbox:
         manifests.append(manifest)
         self.persist_adapter()
         return {'policy': policy, 'institutions': services}
+
+    def institution_status(self):
+        """Demo: whether each current institution's service is running."""
+        return [{'id': guardian, 'online': guardian in self.institution_processes
+                 and self.institution_processes[guardian].poll() is None}
+                for guardian in self.adapter.config['guardian_order']]
+
+    def set_institution_online(self, guardian, online):
+        """Demo: stop or restart one institution's whole service, as if it went
+        offline. It keeps its address, so nothing that calls it changes."""
+        if guardian not in self.adapter.config['guardian_order']:
+            raise ValueError('not a current institution')
+        with self.institution_lock:
+            return self._set_institution_online(guardian, online)
+
+    def _set_institution_online(self, guardian, online):
+        process = self.institution_processes.get(guardian)
+        running = process is not None and process.poll() is None
+        if online and not running:
+            from urllib.parse import urlsplit
+            endpoint = self.institution_endpoints[guardian]
+            self._launch_institution(guardian, self.server.server_port, urlsplit(endpoint['url']).port)
+            if self.institution_endpoints[guardian]['url'] != endpoint['url']:
+                raise RuntimeError('institution restarted at a different address')
+        elif not online and running:
+            self.processes.stop(process, timeout=5)
+        return self.institution_status()
+
+    def outside_address(self):
+        """Demo: an address in a wallet no bank manages, so none has registered it."""
+        if 'outside' not in self.node.listwallets():
+            if 'outside' in {item['name'] for item in self.node.listwalletdir()['wallets']}:
+                self.node.loadwallet('outside')
+            else:
+                self.node.createwallet('outside', False, False, '', False, False)
+        return RPC(self.adapter.config['rpc_url'] + '/wallet/outside').getnewaddress('', 'blech32')
 
     def retire_institutions(self, guardians):
         for guardian in guardians:

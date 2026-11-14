@@ -21,6 +21,14 @@ MAX_AUTHORIZERS = 16
 WINDOW = 20
 
 
+class AuthorizationRefused(ValueError):
+    """Enough institutions declined that no quorum can authorize this transaction."""
+
+
+class AuthorizationUnavailable(ValueError):
+    """Too few institutions answered; the same transaction can be retried."""
+
+
 def policy_bytes(public_keys, order, threshold):
     keys = [bytes.fromhex(public_keys[guardian]) for guardian in order]
     if (not 1 <= len(keys) <= MAX_AUTHORIZERS or type(threshold) is not int or not 1 <= threshold <= len(keys)

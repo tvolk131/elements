@@ -30,6 +30,7 @@ import {
   viewerNextAction,
   requestSummary,
   short,
+  waitingForInstitutions,
 } from "./domain";
 import { NetworkCard, RotationNotice } from "./guardian";
 import type { Activity, Currency, Operation } from "./types";
@@ -560,7 +561,9 @@ export function OperationPanel({
                     )}
                     {op.error && isPending(op) && (
                       <span className="cell-secondary warning-text">
-                        Review required
+                        {waitingForInstitutions(op)
+                          ? "Waiting for the institutions"
+                          : "Review required"}
                       </span>
                     )}
                   </td>

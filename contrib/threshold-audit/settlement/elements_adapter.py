@@ -12,8 +12,9 @@ from governance import AuditConfig
 from native_transactions import wallet_openings
 from test_framework import messages
 from test_framework.messages import tx_from_hex
-from .authorization import WINDOW, authorization_digest, decode_policy, encode, needs_registration
-from .treasury import InstitutionClient, NativeECDSA, template_hash
+from .authorization import (WINDOW, AuthorizationRefused, AuthorizationUnavailable, authorization_digest,
+                            decode_policy, encode, needs_registration)
+from .treasury import InstitutionClient, InstitutionRefused, NativeECDSA, template_hash
 from test_framework.script import CScript, SegwitV0SignatureHash, SIGHASH_ALL
 
 
@@ -145,34 +146,73 @@ class ElementsAdapter:
         if self.registrar is not None:
             for output in transaction.vout:
                 script = bytes(output.scriptPubKey)
-                if needs_registration(script):
-                    registrations[script.hex()] = self.registrar(script).hex()
-        services = {}
-        for manifest in [*self.config.get('federation_manifests', []), self.config]:
-            for guardian, key in manifest.get('approval_public_keys', {}).items():
-                if guardian in manifest.get('institutions', {}):
-                    services[key] = (guardian, manifest['institutions'][guardian])
-        signatures, refusal = {}, 'no authorizing institution is reachable'
+                if needs_registration(script) and script.hex() not in registrations:
+                    # The bank vouches only for addresses it knows; others go
+                    # without, and the institutions decide.
+                    registration = self.registrar(script)
+                    if registration is not None:
+                        registrations[script.hex()] = registration.hex()
+        services = self.authorizer_services()
+        signatures, refusals, unreachable = {}, {}, 0
         unsigned = transaction.serialize().hex()
         for index, key in enumerate(keys):
             if key.hex() not in services:
+                unreachable += 1
                 continue
             guardian, service = services[key.hex()]
             try:
                 result = InstitutionClient({guardian: service}).request(guardian, 'authorize_transaction', rawtx=unsigned,
                                                                          expiry_height=expiry, registrations=registrations)
                 signature = bytes.fromhex(result['signature'])
-            except (OSError, ValueError, KeyError) as error:
-                refusal = str(error)
+            except InstitutionRefused as error:
+                refusals[guardian] = str(error)
+                continue
+            except (OSError, ValueError, KeyError):
+                unreachable += 1
                 continue
             if self.curve.verify_signature(key, digest, signature):
                 signatures[index] = signature
+            else:
+                refusals[guardian] = 'returned an invalid authorization'
             if len(signatures) == threshold:
                 break
         if len(signatures) != threshold:
-            raise ValueError('federation did not authorize this transaction: ' + refusal)
+            if len(refusals) > len(keys) - threshold:
+                reasons = list(refusals.values())
+                reason = max(set(reasons), key=reasons.count)
+                raise AuthorizationRefused(f'{len(refusals)} of {len(keys)} institutions refused to authorize this '
+                                           f'transaction: {reason}')
+            raise AuthorizationUnavailable(f'Waiting for the institutions to authorize this transaction: '
+                                           f'{len(keys) - unreachable} of {len(keys)} reachable, {threshold} needed')
         transaction.wit.vchAuthorization = encode(expiry, signatures)
         return transaction.serialize().hex()
+
+    def authorizer_services(self):
+        """Institution services by authorization key, across current and incoming groups."""
+        services = {}
+        for manifest in [*self.config.get('federation_manifests', []), self.config]:
+            for guardian, key in manifest.get('approval_public_keys', {}).items():
+                if guardian in manifest.get('institutions', {}):
+                    services[key] = (guardian, manifest['institutions'][guardian])
+        return services
+
+    def abandon(self, operation, stage):
+        """Forget a never-signed transaction and give its coins back to the wallet."""
+        with self.lock:
+            row = self.db.execute('SELECT packet,signed FROM prepared WHERE case_id=? AND stage=?',
+                                  (operation['id'], stage)).fetchone()
+            if row is None:
+                return
+            if row[1] is not None:
+                raise ValueError('a signed transaction cannot be abandoned')
+            packet = json.loads(row[0])
+            wallet = self.sponsor if packet['stage'] in ('issue', 'burn', 'refund', 'migration') else self.wallets[operation['account_id']]
+            locked = {(coin['txid'], coin['vout']) for coin in wallet.listlockunspent()}
+            inputs = [{'txid': f'{inp.prevout.hash:064x}', 'vout': inp.prevout.n} for inp in tx_from_hex(packet['rawtx']).vin
+                      if (f'{inp.prevout.hash:064x}', inp.prevout.n) in locked]
+            if inputs:
+                wallet.lockunspent(True, inputs)
+            self.db.execute('DELETE FROM prepared WHERE case_id=? AND stage=?', (operation['id'], stage))
 
     def wallet_send(self, wallet, amounts, asset=None):
         """Pay from a node wallet with the authorization a plain wallet send would lack."""

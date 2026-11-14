@@ -255,6 +255,76 @@ class TreasuryRotationTests(unittest.TestCase):
         for closing in (signer, treasury_only):
             closing.db.close(); closing.curve.close()
 
+    def test_institution_client_keeps_the_reason_for_a_refusal(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        import threading
+        from .treasury import InstitutionClient, InstitutionRefused
+        class Service(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                status, body = ((400, b'{"error":"an output pays an address that no member bank has registered"}')
+                                if self.path == '/' else (502, b'<html>bad gateway</html>'))
+                self.send_response(status)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Service)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        base = f'http://127.0.0.1:{server.server_port}/'
+        client = InstitutionClient({'a1': {'url': base, 'token': 't'}, 'a2': {'url': base + 'proxy', 'token': 't'}})
+        with self.assertRaisesRegex(InstitutionRefused, 'no member bank has registered'):
+            client.request('a1', 'authorize_transaction')
+        # A broken gateway is not the institution saying no.
+        with self.assertRaises(OSError):
+            client.request('a2', 'authorize_transaction')
+
+    def test_coordinator_tells_a_refusal_from_too_few_institutions(self):
+        from .authorization import AuthorizationRefused, AuthorizationUnavailable
+        from .elements_adapter import ElementsAdapter
+        from .treasury import InstitutionClient, InstitutionRefused
+        policy = policy_bytes(self.source['approval_public_keys'], self.source['guardian_order'], 2)
+        secrets = dict(zip(self.source['guardian_order'], (111, 112, 113)))
+        class Node:
+            def getblockchaininfo(self):
+                return {'tx_authorization': policy.hex(), 'blocks': 100}
+            def getblockhash(self, height):
+                return 'cc' * 32
+        adapter = object.__new__(ElementsAdapter)
+        adapter.curve, adapter.node, adapter.registrar = self.curve, Node(), lambda script: None
+        adapter.config = {'approval_public_keys': self.source['approval_public_keys'],
+                          'institutions': {guardian: {'url': 'http://unused/', 'token': 't'} for guardian in secrets}}
+        behaviour, registrations = {}, []
+        def request(client, guardian, method, **values):
+            registrations.append(values['registrations'])
+            if behaviour[guardian] == 'refuse':
+                raise InstitutionRefused('an output pays an address that no member bank has registered')
+            if behaviour[guardian] == 'down':
+                raise ConnectionRefusedError('institution is offline')
+            transaction = messages.tx_from_hex(values['rawtx'])
+            digest = authorization_digest('cc' * 32, policy, transaction, values['expiry_height'])
+            return {'signature': self.curve.sign(secrets[guardian], digest).hex()}
+        raw = self.transaction.serialize().hex()
+        with patch.object(InstitutionClient, 'request', request):
+            # Unregistered addresses get no registration; the institutions decide.
+            behaviour.update(a1='refuse', a2='refuse', a3='ok')
+            with self.assertRaisesRegex(AuthorizationRefused, '2 of 3 institutions refused.*no member bank'):
+                adapter.authorize(raw)
+            self.assertEqual(registrations[0], {})
+            behaviour.update(a1='down', a2='down', a3='ok')
+            with self.assertRaisesRegex(AuthorizationUnavailable, '1 of 3 reachable, 2 needed'):
+                adapter.authorize(raw)
+            # One refusal alone cannot block a quorum the others can still reach.
+            behaviour.update(a1='refuse', a2='down', a3='ok')
+            with self.assertRaises(AuthorizationUnavailable):
+                adapter.authorize(raw)
+            behaviour.update(a1='down', a2='ok', a3='ok')
+            authorized = messages.tx_from_hex(adapter.authorize(raw)).wit.vchAuthorization
+            self.assertEqual([authorized[4], authorized[69]], [1, 2])
+
     def test_block_signing_uses_separate_key_and_refuses_height_conflict(self):
         source = self.block_policy(self.source, (41, 42, 43))
         config = dict(self.config, **source, block_secret=f'{41:064x}')

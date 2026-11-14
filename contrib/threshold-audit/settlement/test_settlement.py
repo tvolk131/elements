@@ -133,6 +133,83 @@ class SettlementTests(unittest.TestCase):
             self.store.create(self.users["corp-maker"], "transfer", {
                 "account_id": "alpha", "to_account_id": "alpha-2", "currency": "EUR", "amount": "3.00"})
 
+    def test_payment_the_institutions_refuse_is_declined_and_released(self):
+        from settlement.authorization import AuthorizationRefused
+        self.issue("10.00")
+        transfer = self.store.create(self.users["corp-maker"], "transfer", {
+            "account_id": "alpha", "to_account_id": "alpha-2", "currency": "EUR", "amount": "8.00"})
+        self.authorize(transfer)
+        abandoned = []
+        def refused(operation, stage, certificate):
+            raise AuthorizationRefused("5 of 5 institutions refused to authorize this transaction: "
+                                       "an output pays an address that no member bank has registered")
+        self.chain.prepare = refused
+        self.chain.abandon = lambda operation, stage: abandoned.append((operation["id"], stage))
+        result = self.store.execute(self.users["approver"], transfer["id"])
+        self.assertEqual((result["state"], result["declined_by"]), ("rejected", "institutions"))
+        self.assertIn("no member bank has registered", result["error"])
+        self.assertEqual(abandoned, [(transfer["id"], "transfer")])
+        self.assertEqual(self.store.available_balance("alpha", "EUR"), 1000)
+        events = [row["event"] for row in self.store.db.execute(
+            "SELECT event FROM evidence WHERE operation_id=?", (transfer["id"],))]
+        self.assertIn("operation_declined", events)
+        # Closed for good: the worker does not pick it up again.
+        self.store.poll()
+        self.assertEqual(abandoned, [(transfer["id"], "transfer")])
+
+    def test_institution_switches_exist_only_in_demo_runtimes(self):
+        class Runtime:
+            online = {"institution-1": True, "institution-2": True}
+            def institution_status(self):
+                return [{"id": g, "online": v} for g, v in self.online.items()]
+            def set_institution_online(self, guardian, online):
+                if guardian not in self.online:
+                    raise ValueError("not a current institution")
+                self.online[guardian] = online
+                return self.institution_status()
+            def outside_address(self):
+                return "outside-address"
+        self.store.demo_runtime = Runtime()
+        for call in (lambda: self.store.demo_institutions(self.users["admin"]),
+                     lambda: self.store.demo_outside_address(self.users["corp-maker"])):
+            with self.assertRaises(Problem) as raised:
+                call()
+            self.assertEqual(raised.exception.status, 404)
+        self.store.config["demo_sign_in"] = [{"username": "admin", "label": "Bank admin", "workspace": "guardian"}]
+        with self.assertRaises(Problem) as raised:
+            self.store.demo_institutions(self.users["corp-maker"])
+        self.assertEqual(raised.exception.status, 403)
+        result = self.store.demo_institutions(self.users["admin"], "institution-2", False)
+        self.assertEqual(result["institutions"][1], {"id": "institution-2", "online": False})
+        for bad in (("institution-9", False), ("institution-1", "no")):
+            with self.assertRaises(Problem):
+                self.store.demo_institutions(self.users["admin"], *bad)
+        self.assertEqual(self.store.demo_outside_address(self.users["corp-maker"]), {"address": "outside-address"})
+        events = [row["event"] for row in self.store.db.execute("SELECT event FROM evidence")]
+        self.assertEqual(events.count("demo_institution_offline"), 1)
+
+    def test_payment_waits_while_too_few_institutions_answer(self):
+        from settlement.authorization import AuthorizationUnavailable
+        self.issue("10.00")
+        transfer = self.store.create(self.users["corp-maker"], "transfer", {
+            "account_id": "alpha", "to_account_id": "alpha-2", "currency": "EUR", "amount": "8.00"})
+        self.authorize(transfer)
+        working = self.chain.prepare
+        def unavailable(*_):
+            raise AuthorizationUnavailable("Waiting for the institutions to authorize this transaction: "
+                                           "2 of 5 reachable, 3 needed")
+        self.chain.prepare = unavailable
+        result = self.store.execute(self.users["approver"], transfer["id"])
+        self.assertEqual(result["state"], "preparing")
+        self.assertIn("2 of 5 reachable", result["error"])
+        self.assertEqual(self.store.available_balance("alpha", "EUR"), 200)
+        # A third institution comes back: the same request continues on its own.
+        self.chain.prepare = working
+        self.store.poll()
+        self.chain.confirm_all()
+        self.store.poll()
+        self.assertEqual(self.store._operation(transfer["id"])["state"], "settled")
+
     def test_slow_cosigning_does_not_block_other_requests(self):
         operation = self.create_deposit("10.00")
         self.credit(operation)

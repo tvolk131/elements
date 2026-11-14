@@ -89,6 +89,8 @@ export interface Operation {
   guardian_threshold: number;
   allowed_actions: string[];
   error?: string;
+  /** "institutions" when their services refused to authorize it on the ledger. */
+  declined_by?: string;
   txid?: string;
   stage?: string;
   destination_hash?: string;
@@ -240,6 +242,7 @@ export type Page =
   | "approvals"
   | "reserves"
   | "network"
+  | "ledger"
   | "federation";
 export type DialogState =
   | { type: "create"; kind: Exclude<Kind, "refund" | "receipt"> }

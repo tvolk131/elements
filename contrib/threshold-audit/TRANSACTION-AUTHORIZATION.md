@@ -79,16 +79,41 @@ Each institution's service signs automatically. It refuses unless
 - every output is the fee, a burn, its treasury, or an address carrying a
   member bank's signed registration.
 
-In the sandbox the coordinator holds the simulated bank's key and registers
-every address it pays, so the registration check does not yet constrain the
-coordinator. A real bank would hold that key and register only its customers.
+The simulated bank registers only addresses held in wallets it runs: its
+customers' wallets and the network's own (the sponsor wallet and the
+treasuries it watches). A payment to any other address goes without a
+registration, and the institutions refuse it. The bank's key still sits in
+the coordinator process, so a coordinator that chose to could register an
+outside address itself; a real bank would hold that key in its own service.
 
 `ElementsAdapter.authorize` collects the quorum and is applied to every
-transaction the coordinator sends, including retries.
+transaction the coordinator sends, including retries. It tells two failures
+apart:
+
+- **Refused** (`AuthorizationRefused`): so many institutions answered no that
+  the rest cannot reach the threshold. A customer payment that is refused
+  before anything reached the chain is closed as rejected with
+  `declined_by: "institutions"`, and its coins are released.
+- **Unavailable** (`AuthorizationUnavailable`): too few institutions
+  answered. The request waits ("2 of 5 reachable, 3 needed") and the worker
+  retries the same transaction until enough are back.
+
+The guardian console's **Ledger** page reads recent blocks from the node and
+shows, per transaction, what the chain recorded (hidden amounts, sealed
+recovery records, token issuance or burns), which institutions authorized it
+and until which block, and which institutions confirmed its block. The
+service checks every signature it shows against the institutions' keys. Its
+**Send without the institutions** button has a bank wallet sign a valid
+payment to itself and offers it to the node with and without an
+authorization; only the refused copy is broadcast, and the node refuses it.
 
 ## Tests
 
 - `test/functional/feature_threshold_audit_authorization.py`: two nodes,
   mempool and block validation, expiry, re-keying, restart.
 - `settlement/test_treasury_rotation.py`: what an institution will and will
-  not authorize.
+  not authorize, and how the coordinator tells a refusal from too few
+  institutions.
+- `settlement/test_settlement.py`: a refused payment is declined and
+  released; a payment waits while too few institutions answer.
+- `settlement/ui/src/ledger.test.tsx`: the Ledger page.

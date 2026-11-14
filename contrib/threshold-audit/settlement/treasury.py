@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 import sqlite3
 import threading
+import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
@@ -395,6 +396,10 @@ class Institution:
                 'template_hash': digest}
 
 
+class InstitutionRefused(ValueError):
+    """An institution service answered and declined the request."""
+
+
 class InstitutionClient:
     def __init__(self, services):
         self.services = services
@@ -404,10 +409,20 @@ class InstitutionClient:
         data = canonical({'method': method, **values})
         request = urllib.request.Request(config['url'], data=data, headers={
             'Content-Type': 'application/json', 'Authorization': 'Bearer ' + config['token']})
-        with urllib.request.urlopen(request, timeout=60) as response:
-            result = json.load(response)
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                result = json.load(response)
+        except urllib.error.HTTPError as error:
+            # The institution answered and said no: keep its reason.
+            with error:
+                try:
+                    result = json.load(error)
+                except ValueError:
+                    raise error from None
+            if not isinstance(result, dict) or 'error' not in result:
+                raise
         if 'error' in result:
-            raise ValueError(result['error'])
+            raise InstitutionRefused(str(result['error']))
         return result
 
     def approve(self, guardian_id, operation, passphrase):
@@ -507,4 +522,7 @@ if __name__ == '__main__':
     import sys
     from .elements_adapter import RPC
     config = json.loads(Path(sys.argv[1]).read_text())
+    if len(sys.argv) > 2:
+        # A restarted service keeps its address, so nothing that calls it changes.
+        config['port'] = int(sys.argv[2])
     serve(config, RPC(config['rpc_url']))

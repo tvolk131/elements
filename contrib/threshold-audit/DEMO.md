@@ -1,6 +1,6 @@
 # Live demo runbook
 
-A 15-minute walkthrough of the institutional settlement sandbox for a product
+A 20-minute walkthrough of the institutional settlement sandbox for a product
 or leadership audience. Everything runs locally; bank money is simulated.
 
 ## One-time setup
@@ -90,6 +90,31 @@ a withdrawal waits for a person at the company to release it.
    the independent institutions, what each group approves, and how the network
    hands over to new operators without moving to a new ledger.
 
+7. **The ledger's own rule (4 min).** As *Bank · reserves and oversight*,
+   open **Ledger**. Each recent transaction shows what the ledger recorded
+   (amounts hidden, sealed recovery records) beside what only the bank knows,
+   and which three institutions authorized it and confirmed its block.
+   - Click **Send without the institutions**: a bank wallet signs a valid
+     payment, the ledger refuses it, and the same payment with the
+     institutions' authorization would be accepted.
+   - Switch two institutions off and make a payment as Acme (any destination).
+     It settles in a few seconds; back on **Ledger** it shows the other three
+     signing. Switch a third off: the next payment waits ("2 of 5 reachable,
+     3 needed") and the block height stops. Switch one back on and the waiting
+     payment settles by itself. Turn them all back on.
+   - As Acme, **Send on-chain → A wallet address**, click **Demo: use an
+     address no bank has registered**, check it, and send. After
+     **Review, approve and send** it closes as **Declined by the
+     institutions**, and the balance is unchanged.
+
+   *Point:* the federation's control is a rule of the ledger. Every node
+   enforces it, no bank or operator can go around it, two institutions can be
+   down without stopping payments, and the institutions refuse payments to
+   addresses no member bank stands behind, without seeing amounts.
+
+   *Caveat if asked:* the simulated bank's registration key runs inside the
+   coordinator; in production each bank holds its own.
+
 ## What the ledger enforces
 
 | | Enforced by the Elements ledger | Enforced by the application |
@@ -130,5 +155,9 @@ window would, so the recorded approvals are real.
   that run the network: three of five confirm every block and co-sign every
   token issued or destroyed, and a separate 7-of-10 quorum controls
   disclosures. They don't approve everyday payments between customers.
+- **"What if an institution goes down, or refuses?"** Any two can be offline
+  and everything continues. With three down nothing moves, by design, and it
+  resumes on its own when one returns. A refusal by enough of them closes the
+  payment; nobody can push it through.
 - **"Is this real money?"** No. Banks, reserves and payouts are simulated, and
   the legal issuer is undecided.

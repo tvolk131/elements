@@ -15,6 +15,7 @@ import {
   NetworkPage,
   ReservesPage,
 } from "./guardian";
+import { LedgerPage } from "./ledger";
 import { Shell } from "./shell";
 import { ActivityPage, RecipientsPage, WalletPage } from "./wallet";
 
@@ -112,6 +113,7 @@ const pageRoute = createRoute({
       if (page === "network") return <NetworkPage />;
       if (page === "federation" && app.can("view_bank"))
         return <FederationPage />;
+      if (page === "ledger" && app.can("view_bank")) return <LedgerPage />;
       if (page === "overview" || page === "approvals")
         return <GuardianOverview approvals={page === "approvals"} />;
     } else {

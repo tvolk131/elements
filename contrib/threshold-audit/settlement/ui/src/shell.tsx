@@ -32,7 +32,10 @@ export function Shell() {
         ]
       : []; // e.g. a regulator: no accounts, only disclosures and activity
   if (app.guardian && app.can("view_bank"))
-    items.push(["federation", "Operators", "refresh"]);
+    items.push(
+      ["federation", "Operators", "refresh"],
+      ["ledger", "Ledger", "document"],
+    );
   if (
     app.can("request_disclosure") ||
     app.can("receive_disclosure") ||

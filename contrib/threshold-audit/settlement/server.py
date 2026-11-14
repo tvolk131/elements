@@ -238,6 +238,10 @@ class Handler(BaseHTTPRequestHandler):
                 session = self.session()
                 if path == "/api/dashboard":
                     self.respond(200, store.dashboard(session))
+                elif path == "/api/ledger":
+                    self.respond(200, store.ledger(session["user"]))
+                elif path == "/api/demo/institutions":
+                    self.respond(200, store.demo_institutions(session["user"]))
                 elif path.startswith("/api/operations/") and len(path.split("/")) == 4:
                     self.respond(200, store.operation(session["user"], path.rsplit("/", 1)[1]))
                 elif path == '/api/disclosures' and store.disclosures is not None:
@@ -282,6 +286,15 @@ class Handler(BaseHTTPRequestHandler):
             parts = path.split("/")
             if len(parts) == 6 and parts[1:3] == ["api", "demo"] and parts[3] == "operations" and parts[5] == "institutions":
                 self.respond(200, store.demo_sign_institutions(user, parts[4]))
+                return
+            if len(parts) == 5 and parts[1:4] == ["api", "demo", "institutions"]:
+                self.respond(200, store.demo_institutions(user, parts[4], body.get("online")))
+                return
+            if path == "/api/demo/outside-address":
+                self.respond(200, store.demo_outside_address(user))
+                return
+            if path == "/api/ledger/unauthorized-attempt":
+                self.respond(200, store.unauthorized_attempt(user))
                 return
             if path.startswith('/api/disclosures') and store.disclosures is not None:
                 with store.lock:

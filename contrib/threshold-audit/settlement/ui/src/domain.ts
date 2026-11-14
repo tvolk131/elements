@@ -31,6 +31,11 @@ export const human = (value?: string): string =>
     user_approved: "Second-person approval",
     institution_approved: "Institution approval",
     operation_rejected: "Request rejected",
+    operation_declined: "Declined by the institutions",
+    unauthorized_transaction_refused:
+      "Ledger refused a transaction without authorization",
+    demo_institution_offline: "Demo: institution switched off",
+    demo_institution_online: "Demo: institution switched on",
     execution_authorized: "Submitted for settlement",
     issuance_template_bound: "Token issuance prepared",
     credit_receipt_sealed: "Bank deposit confirmed",
@@ -166,7 +171,11 @@ export const needsAction = (op: Operation) =>
     ].includes(a),
   ) &&
   !(SETTLING.includes(op.state) && !op.error);
+export const waitingForInstitutions = (op: Operation) =>
+  !!op.error?.startsWith("Waiting for the institutions");
 export function requestSummary(op: Operation): string {
+  if (op.declined_by === "institutions") return "Declined by the institutions";
+  if (waitingForInstitutions(op)) return "Waiting for the institutions";
   if (op.state === "awaiting_approval")
     return !op.user_approved
       ? "Waiting for separate user approval"
