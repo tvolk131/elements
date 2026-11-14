@@ -838,17 +838,20 @@ class CTxOutWitness:
 
 
 class CTxWitness:
-    __slots__ = ("vtxinwit", "vtxoutwit")
+    __slots__ = ("vtxinwit", "vtxoutwit", "vchAuthorization")
 
     def __init__(self):
         self.vtxinwit = []
         self.vtxoutwit = []
+        self.vchAuthorization = b''
 
     def deserialize(self, f):
         for i in range(len(self.vtxinwit)):
             self.vtxinwit[i].deserialize(f)
         for i in range(len(self.vtxoutwit)):
             self.vtxoutwit[i].deserialize(f)
+        if THRESHOLD_AUDIT:
+            self.vchAuthorization = deser_string(f)
 
     def serialize(self):
         r = b""
@@ -859,6 +862,8 @@ class CTxWitness:
             r += x.serialize()
         for x in self.vtxoutwit:
             r += x.serialize()
+        if THRESHOLD_AUDIT:
+            r += ser_string(self.vchAuthorization)
         return r
 
     def __repr__(self):
@@ -873,7 +878,7 @@ class CTxWitness:
         for x in self.vtxoutwit:
             if not x.is_null():
                 return False
-        return True
+        return not THRESHOLD_AUDIT or len(self.vchAuthorization) == 0
 
 
 class CTransaction:
@@ -993,6 +998,8 @@ class CTransaction:
         outwitroot = calcfastmerkleroot(leaves)
 
         # returns bitcoin hash print style string
+        if THRESHOLD_AUDIT:
+            return calcfastmerkleroot([inwitroot, outwitroot, hash256(ser_string(self.wit.vchAuthorization))[::-1].hex()])
         return calcfastmerkleroot([inwitroot, outwitroot])
 
     def is_valid(self):
@@ -1057,13 +1064,13 @@ class CProof:
             % (self.challenge, self.solution)
 
 class DynaFedParamEntry:
-    __slots__ = ("m_serialize_type", "m_signblockscript", "m_signblock_witness_limit", "m_fedpeg_program", "m_fedpegscript", "m_extension_space", "m_elided_root", "m_audit_pubkey", "m_audit_version", "m_audit_config", "m_audit_prepared", "m_audit_assets", "m_audit_assets_version")
+    __slots__ = ("m_serialize_type", "m_signblockscript", "m_signblock_witness_limit", "m_fedpeg_program", "m_fedpegscript", "m_extension_space", "m_elided_root", "m_audit_pubkey", "m_audit_version", "m_audit_config", "m_audit_prepared", "m_audit_assets", "m_audit_assets_version", "m_tx_authorization")
 
     # Constructor args will define serialization type:
     # null = 0
     # signblock-related fields = 1, required for m_current on non-epoch-starts
     # all fields = 2, required for epoch starts
-    def __init__(self, m_signblockscript=b"", m_signblock_witness_limit=0, m_fedpeg_program=b"", m_fedpegscript=b"", m_extension_space=None, m_elided_root=0, m_audit_pubkey=b"", m_audit_version=0, m_audit_config=b"", m_audit_prepared=b"", m_audit_assets=None, m_audit_assets_version=0):
+    def __init__(self, m_signblockscript=b"", m_signblock_witness_limit=0, m_fedpeg_program=b"", m_fedpegscript=b"", m_extension_space=None, m_elided_root=0, m_audit_pubkey=b"", m_audit_version=0, m_audit_config=b"", m_audit_prepared=b"", m_audit_assets=None, m_audit_assets_version=0, m_tx_authorization=b""):
         if m_extension_space is None:
             m_extension_space = []
         self.m_signblockscript = m_signblockscript
@@ -1077,9 +1084,10 @@ class DynaFedParamEntry:
         self.m_audit_prepared = m_audit_prepared
         self.m_audit_assets = [] if m_audit_assets is None else m_audit_assets
         self.m_audit_assets_version = m_audit_assets_version
+        self.m_tx_authorization = m_tx_authorization
         if self.is_null():
             self.m_serialize_type = 0
-        elif m_fedpegscript==b"" and m_fedpeg_program==b"" and m_extension_space == [] and m_audit_pubkey == b"" and m_audit_version == 0 and m_audit_config == b"" and m_audit_prepared == b"" and not self.m_audit_assets and m_audit_assets_version == 0:
+        elif m_fedpegscript==b"" and m_fedpeg_program==b"" and m_extension_space == [] and m_audit_pubkey == b"" and m_audit_version == 0 and m_audit_config == b"" and m_audit_prepared == b"" and not self.m_audit_assets and m_audit_assets_version == 0 and m_tx_authorization == b"":
             self.m_serialize_type = 1
             # We also set the "extra root" in this case
             self.m_elided_root = m_elided_root
@@ -1100,11 +1108,12 @@ class DynaFedParamEntry:
         self.m_audit_prepared = b""
         self.m_audit_assets = []
         self.m_audit_assets_version = 0
+        self.m_tx_authorization = b""
 
     def is_null(self):
         return self.m_signblockscript == b"" and self.m_signblock_witness_limit == 0 and \
                 self.m_fedpeg_program == b"" and self.m_fedpegscript == b"" and \
-                self.m_extension_space == [] and self.m_audit_pubkey == b"" and self.m_audit_version == 0 and self.m_audit_config == b"" and self.m_audit_prepared == b"" and not self.m_audit_assets and self.m_audit_assets_version == 0
+                self.m_extension_space == [] and self.m_audit_pubkey == b"" and self.m_audit_version == 0 and self.m_audit_config == b"" and self.m_audit_prepared == b"" and not self.m_audit_assets and self.m_audit_assets_version == 0 and self.m_tx_authorization == b""
 
     def serialize(self):
         r = b""
@@ -1126,6 +1135,7 @@ class DynaFedParamEntry:
                 r += ser_string(self.m_audit_prepared)
                 r += struct.pack("<I", self.m_audit_assets_version)
                 r += ser_uint256_vector(self.m_audit_assets)
+                r += ser_string(self.m_tx_authorization)
         elif self.m_serialize_type > 2:
             raise Exception("Invalid serialization type for DynaFedParamEntry")
         return r
@@ -1137,6 +1147,7 @@ class DynaFedParamEntry:
         self.m_audit_prepared = b""
         self.m_audit_assets = []
         self.m_audit_assets_version = 0
+        self.m_tx_authorization = b""
         self.m_serialize_type = struct.unpack("B", f.read(1))[0]
         if self.m_serialize_type == 1:
             self.m_signblockscript = deser_string(f)
@@ -1155,6 +1166,7 @@ class DynaFedParamEntry:
                 self.m_audit_prepared = deser_string(f)
                 self.m_audit_assets_version = struct.unpack("<I", f.read(4))[0]
                 self.m_audit_assets = deser_uint256_vector(f)
+                self.m_tx_authorization = deser_string(f)
 
     def __repr__(self):
         return "DynaFedParamEntry(m_signblockscript=%s m_fedpegscript=%s m_extension_space=%s)" \

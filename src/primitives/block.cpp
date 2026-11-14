@@ -109,6 +109,7 @@ uint256 DynaFedParamEntry::CalculateExtraRoot() const
         extra_leaves.push_back((HashWriter{} << m_audit_prepared).GetHash());
         extra_leaves.push_back((HashWriter{} << m_audit_assets_version).GetHash());
         extra_leaves.push_back((HashWriter{} << m_audit_assets).GetHash());
+        extra_leaves.push_back((HashWriter{} << m_tx_authorization).GetHash());
     }
     return ComputeFastMerkleRoot(extra_leaves);
 }

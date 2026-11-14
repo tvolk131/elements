@@ -6,6 +6,8 @@
 
 #include <consensus/params.h>
 #include <consensus/validation.h>
+#include <crypto/common.h>
+#include <crypto/sha256.h>
 #include <hash.h>
 #include <primitives/transaction.h>
 #include <threshold_audit.h>
@@ -148,6 +150,88 @@ bool CheckTransaction(const CTransaction& tx, const Consensus::Params& consensus
         std::lock_guard lock{cache_mutex};
         if (valid_cache.size() >= 128) valid_cache.clear();
         valid_cache.emplace(cache_key, true);
+    }
+    return true;
+}
+
+bool DecodeAuthorizationPolicy(std::span<const unsigned char> policy, unsigned& threshold,
+                               std::vector<XOnlyPubKey>& keys)
+{
+    keys.clear();
+    if (policy.size() < 33 || policy.size() > MAX_AUTHORIZATION_POLICY_BYTES || (policy.size() - 1) % 32 != 0) return false;
+    const size_t count = (policy.size() - 1) / 32;
+    threshold = policy[0];
+    if (threshold < 1 || threshold > count) return false;
+    for (size_t index = 0; index < count; ++index) {
+        const XOnlyPubKey key{Span<const unsigned char>{policy.data() + 1 + 32 * index, 32}};
+        if (!key.IsFullyValid() || std::find(keys.begin(), keys.end(), key) != keys.end()) return false;
+        keys.push_back(key);
+    }
+    return true;
+}
+
+uint256 AuthorizationDigest(const uint256& genesis, std::span<const unsigned char> policy,
+                            const uint256& template_hash, uint32_t expiry_height)
+{
+    static constexpr unsigned char domain[] = "Elements/tx-authorization/v1";
+    unsigned char policy_hash[32];
+    CSHA256().Write(policy.data(), policy.size()).Finalize(policy_hash);
+    unsigned char expiry[4];
+    WriteBE32(expiry, expiry_height);
+    uint256 digest;
+    CSHA256().Write(domain, sizeof(domain) - 1).Write(genesis.begin(), 32).Write(policy_hash, 32)
+             .Write(template_hash.begin(), 32).Write(expiry, 4).Finalize(digest.begin());
+    return digest;
+}
+
+std::optional<uint32_t> AuthorizationExpiry(const CTransaction& tx)
+{
+    const auto& bytes = tx.witness.vchAuthorization;
+    if (bytes.size() < 4 + 65 || (bytes.size() - 4) % 65 != 0) return std::nullopt;
+    return ReadLE32(bytes.data());
+}
+
+bool CheckAuthorization(const CTransaction& tx, const Consensus::Params& consensus,
+                        const std::vector<unsigned char>& policy, uint32_t height,
+                        TxValidationState& state)
+{
+    // The authorization is witness data that depends on the height and on the
+    // policy in force, and anyone relaying a transaction can strip or alter it.
+    // None of these failures therefore says the relaying peer misbehaved, so
+    // none uses TX_CONSENSUS. A block that fails here is still invalid.
+    const auto& bytes = tx.witness.vchAuthorization;
+    if (policy.empty() || tx.IsCoinBase()) {
+        if (bytes.empty()) return true;
+        return state.Invalid(TxValidationResult::TX_WITNESS_MUTATED, "bad-tx-authorization-unexpected");
+    }
+    if (bytes.empty()) {
+        return state.Invalid(TxValidationResult::TX_WITNESS_STRIPPED, "bad-tx-authorization-missing");
+    }
+    unsigned threshold;
+    std::vector<XOnlyPubKey> keys;
+    if (!DecodeAuthorizationPolicy(policy, threshold, keys)) {
+        // Unreachable for a policy accepted by header validation.
+        return state.Invalid(TxValidationResult::TX_WITNESS_MUTATED, "bad-tx-authorization-policy");
+    }
+    const auto expiry = AuthorizationExpiry(tx);
+    if (!expiry || bytes.size() != 4 + 65 * static_cast<size_t>(threshold)) {
+        return state.Invalid(TxValidationResult::TX_WITNESS_MUTATED, "bad-tx-authorization-malformed");
+    }
+    if (*expiry < height) {
+        return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-tx-authorization-expired");
+    }
+    const uint256 digest = AuthorizationDigest(consensus.hashGenesisBlock, policy, TransactionTemplateHash(tx), *expiry);
+    int previous{-1};
+    for (unsigned n = 0; n < threshold; ++n) {
+        const unsigned char* entry = bytes.data() + 4 + 65 * n;
+        const int index = entry[0];
+        if (index <= previous || static_cast<size_t>(index) >= keys.size()) {
+            return state.Invalid(TxValidationResult::TX_WITNESS_MUTATED, "bad-tx-authorization-malformed");
+        }
+        previous = index;
+        if (!keys[index].VerifySchnorr(digest, Span<const unsigned char>{entry + 1, 64})) {
+            return state.Invalid(TxValidationResult::TX_WITNESS_MUTATED, "bad-tx-authorization-signature");
+        }
     }
     return true;
 }

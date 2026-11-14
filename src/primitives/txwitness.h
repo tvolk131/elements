@@ -11,6 +11,8 @@
 /** Chain-wide experimental serialization gate, fixed during parameter selection. */
 extern bool g_threshold_audit_enabled;
 static constexpr size_t MAX_THRESHOLD_AUDIT_PROOF_SIZE = 80000;
+/** Expiry height plus at most sixteen indexed BIP340 signatures. */
+static constexpr size_t MAX_TX_AUTHORIZATION_SIZE = 4 + 16 * 65;
 
 /** Bound allocations before reading experimental proof/key byte vectors. */
 template <size_t MaxSize>
@@ -112,6 +114,9 @@ public:
     /** In case vtxinwit is missing, all entries are treated as if they were empty CTxInWitnesses */
     std::vector<CTxInWitness> vtxinwit;
     std::vector<CTxOutWitness> vtxoutwit;
+    /** Federation authorization of the whole transaction. Serialized only on
+     * experimental audit chains; empty where the chain does not require one. */
+    std::vector<unsigned char> vchAuthorization;
 
     CTxWitness() = default;
 
@@ -122,6 +127,9 @@ public:
         }
         for (size_t n = 0; n < vtxoutwit.size(); n++) {
             s << vtxoutwit[n];
+        }
+        if (g_threshold_audit_enabled) {
+            ThresholdAuditBytesFormatter<MAX_TX_AUTHORIZATION_SIZE>{}.Ser(s, vchAuthorization);
         }
         if (IsNull()) {
             /* It's illegal to encode a witness when all vtxinwit and vtxoutwit entries are empty. */
@@ -137,6 +145,11 @@ public:
         for (size_t n = 0; n < vtxoutwit.size(); n++) {
             s >> vtxoutwit[n];
         }
+        if (g_threshold_audit_enabled) {
+            ThresholdAuditBytesFormatter<MAX_TX_AUTHORIZATION_SIZE>{}.Unser(s, vchAuthorization);
+        } else {
+            vchAuthorization.clear();
+        }
         if (IsNull()) {
             /* It's illegal to encode a witness when all vtxinwit and vtxoutwit entries are empty. */
             throw std::ios_base::failure("Superfluous witness record");
@@ -145,7 +158,7 @@ public:
 
     bool IsEmpty() const
     {
-        return vtxinwit.empty() && vtxoutwit.empty();
+        return vtxinwit.empty() && vtxoutwit.empty() && vchAuthorization.empty();
     }
 
     bool IsNull() const
@@ -160,13 +173,14 @@ public:
                 return false;
             }
         }
-        return true;
+        return vchAuthorization.empty();
     }
 
     void SetNull()
     {
         vtxinwit.clear();
         vtxoutwit.clear();
+        vchAuthorization.clear();
     }
 
 private:

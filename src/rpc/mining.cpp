@@ -19,6 +19,7 @@
 #include <deploymentstatus.h>
 #include <dynafed.h>
 #include <threshold_audit_governance.h>
+#include <threshold_audit_validation.h>
 #include <interfaces/mining.h>
 #include <key_io.h>
 #include <net.h>
@@ -1172,6 +1173,7 @@ static RPCHelpMan getnewblockhex()
                             {"audit_config", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "Complete TAG1 audit governance configuration. Required for every proposal on audit custom chains."},
                             {"audit_prepared", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "TAP1 prepared transition with a signed ready quorum for every retained key. Required on audit custom chains."},
                             {"audit_assets_version", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "Asset registry version, starting at zero; defaults to current. Increment exactly once when appending assets."},
+                            {"tx_authorization", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "Transaction-authorization policy: one threshold byte followed by 32-byte BIP340 keys. Defaults to current; cannot be cleared once set. Audit custom chains only."},
                             {"audit_assets", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "Complete append-only recovery asset registry, sorted by raw asset-ID bytes; defaults to current.", {{"", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "Asset ID in RPC display hex"}}},
                         },
                     },
@@ -1237,6 +1239,16 @@ static RPCHelpMan getnewblockhex()
             const auto current_audit = WITH_LOCK(::cs_main, return ComputeNextBlockFullCurrentParameters(chainman.ActiveChain().Tip(), chainman.GetConsensus()));
             proposed.m_audit_assets = current_audit.m_audit_assets;
             proposed.m_audit_assets_version = current_audit.m_audit_assets_version;
+            proposed.m_tx_authorization = current_audit.m_tx_authorization;
+            if (prop.exists("tx_authorization")) {
+                const std::string policy_hex = prop["tx_authorization"].get_str();
+                unsigned threshold;
+                std::vector<XOnlyPubKey> keys;
+                if (!IsHex(policy_hex) || !threshold_audit::DecodeAuthorizationPolicy(ParseHex(policy_hex), threshold, keys)) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "tx_authorization must be a threshold byte followed by 1 to 16 distinct valid 32-byte keys");
+                }
+                proposed.m_tx_authorization = ParseHex(policy_hex);
+            }
             if (prop.exists("audit_assets_version")) {
                 const int64_t version = prop["audit_assets_version"].getInt<int64_t>();
                 if (version < 0 || version > std::numeric_limits<uint32_t>::max()) throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_assets_version must be a uint32");
@@ -1292,7 +1304,7 @@ static RPCHelpMan getnewblockhex()
                 }
                 if (static_cast<uint32_t>(version) != proposed.m_audit_version) throw JSONRPCError(RPC_INVALID_PARAMETER, "audit_version does not match audit_config");
             }
-        } else if (prop.exists("audit_pubkey") || prop.exists("audit_version") || prop.exists("audit_config") || prop.exists("audit_prepared") || prop.exists("audit_assets") || prop.exists("audit_assets_version")) {
+        } else if (prop.exists("tx_authorization") || prop.exists("audit_pubkey") || prop.exists("audit_version") || prop.exists("audit_config") || prop.exists("audit_prepared") || prop.exists("audit_assets") || prop.exists("audit_assets_version")) {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Audit proposal fields require an experimental threshold-audit chain");
         }
         // All proposals are full serializations

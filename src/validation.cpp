@@ -365,6 +365,7 @@ void Chainstate::MaybeUpdateMempoolForReorg(
         if (m_chainman.GetConsensus().threshold_audit) {
             const auto audit = ComputeNextBlockFullCurrentParameters(m_chain.Tip(), m_chainman.GetConsensus());
             TxValidationState audit_state;
+            if (!threshold_audit::CheckAuthorization(tx, m_chainman.GetConsensus(), audit.m_tx_authorization, m_chain.Height() + 1, audit_state)) return true;
             if (!threshold_audit::CheckTransaction(tx, m_chainman.GetConsensus(), audit.GetAuditPolicy(), audit_state)) return true;
         }
 
@@ -1108,6 +1109,8 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     CAmountMap fee_map;
     if (m_active_chainstate.m_chainman.GetConsensus().threshold_audit) {
         const auto audit = ComputeNextBlockFullCurrentParameters(m_active_chainstate.m_chain.Tip(), m_active_chainstate.m_chainman.GetConsensus());
+        // Cheap quorum check first: unauthorized transactions never reach proof verification.
+        if (!threshold_audit::CheckAuthorization(tx, m_active_chainstate.m_chainman.GetConsensus(), audit.m_tx_authorization, m_active_chainstate.m_chain.Height() + 1, state)) return false;
         if (!threshold_audit::CheckTransaction(tx, m_active_chainstate.m_chainman.GetConsensus(), audit.GetAuditPolicy(), state)) return false;
     }
     if (!Consensus::CheckTxInputs(tx, state, m_view, m_active_chainstate.m_chain.Height() + 1, fee_map, setPeginsSpent, nullptr, true, true, fedpegscripts)) {
@@ -3053,7 +3056,8 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
                 return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-block-audit-output-limit");
             }
             TxValidationState audit_state;
-            if (!threshold_audit::CheckTransaction(*transaction, m_chainman.GetConsensus(), audit.GetAuditPolicy(), audit_state)) {
+            if (!threshold_audit::CheckAuthorization(*transaction, m_chainman.GetConsensus(), audit.m_tx_authorization, pindex->nHeight, audit_state) ||
+                !threshold_audit::CheckTransaction(*transaction, m_chainman.GetConsensus(), audit.GetAuditPolicy(), audit_state)) {
                 return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, audit_state.GetRejectReason(), audit_state.GetDebugMessage());
             }
         }
@@ -3782,6 +3786,18 @@ bool Chainstate::ConnectTip(BlockValidationState& state, CBlockIndex* pindexNew,
                 if (threshold_audit::ConfidentialOutputCount(entry.GetTx()) != 0) stale.push_back(entry.GetSharedTx());
             }
             for (const auto& transaction : stale) m_mempool->removeRecursive(*transaction, MemPoolRemovalReason::REORG);
+        }
+        // Authorizations bind one policy and expire by height. Drop entries the
+        // next block could no longer include; signatures were checked on entry.
+        if (!audit.m_tx_authorization.empty() || !connected_audit.m_tx_authorization.empty()) {
+            const bool rekeyed = audit.m_tx_authorization != connected_audit.m_tx_authorization;
+            const uint32_t next_height = static_cast<uint32_t>(pindexNew->nHeight) + 1;
+            std::vector<CTransactionRef> stale;
+            for (const auto& entry : m_mempool->mapTx) {
+                const auto expiry = threshold_audit::AuthorizationExpiry(entry.GetTx());
+                if (rekeyed || !expiry || *expiry < next_height) stale.push_back(entry.GetSharedTx());
+            }
+            for (const auto& transaction : stale) m_mempool->removeRecursive(*transaction, MemPoolRemovalReason::EXPIRY);
         }
     }
 
@@ -4794,6 +4810,14 @@ static bool ContextualCheckDynaFedHeader(const CBlockHeader& block, BlockValidat
             std::string governance_error;
             if (!threshold_audit::governance::ValidateProposal(chain_id, current, proposed, activation, &governance_error)) {
                 return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "invalid-audit-governance", governance_error);
+            }
+            // Transaction authorization can be introduced or re-keyed by a
+            // proposal, but never switched off again.
+            unsigned authorization_threshold;
+            std::vector<XOnlyPubKey> authorization_keys;
+            if (proposed.m_tx_authorization.empty() ? !current.m_tx_authorization.empty() :
+                !threshold_audit::DecodeAuthorizationPolicy(proposed.m_tx_authorization, authorization_threshold, authorization_keys)) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "invalid-tx-authorization-policy");
             }
         }
 

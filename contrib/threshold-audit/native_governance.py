@@ -17,7 +17,7 @@ MAX_PREPARED_BYTES = 4 + 32 + 4 + 2 + MAX_KEYS * MAX_MEMBERS * 136
 
 
 def policy_binding(signblockscript, max_block_witness, fedpeg_program, fedpegscript, extension_space,
-                   audit_assets=(), audit_assets_version=0):
+                   audit_assets=(), audit_assets_version=0, tx_authorization=b''):
     """Native PolicyBinding, including registered asset sets after genesis.
 
     Asset IDs are raw 32-byte values, not RPC display hex. Version zero is
@@ -37,6 +37,9 @@ def policy_binding(signblockscript, max_block_witness, fedpeg_program, fedpegscr
             raise ValueError('audit assets must be bounded, nonzero, sorted and distinct')
         encoded += (ser_string(b'threshold-audit-assets-v1') + struct.pack('<I', audit_assets_version)
                     + ser_compact_size(len(assets)) + b''.join(assets))
+    if tx_authorization:
+        # Bound only once set, as in the node, so earlier bindings are unchanged.
+        encoded += ser_string(b'tx-authorization-v1') + ser_string(tx_authorization)
     return hash256(encoded)
 
 

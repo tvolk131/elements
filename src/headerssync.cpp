@@ -30,11 +30,12 @@ constexpr size_t REDOWNLOAD_BUFFER_SIZE{14827}; // 14827/624 = ~23.8 commitments
 // bounded by REDOWNLOAD_BUFFER_SIZE headers per peer. sizeof alone does not
 // bound the owned variable-sized payloads; audit chains additionally enforce
 // MAX_AUDIT_HEADER_MEMORY_USAGE below, including the presync cached header.
-// Two DynaFed entries retain bounded audit-key/configuration/certificate and
-// registry vectors. This raises the 64-bit in-object size to 704 bytes (about 10 MiB
+// Two DynaFed entries retain bounded audit-key/configuration/certificate,
+// registry and transaction-authorization vectors. This raises the 64-bit
+// in-object size to 752 bytes (about 11 MiB
 // per full redownload buffer, before dynamic payload allocations).
 // Keep an explicit ceiling rather than silently dropping the new header fields.
-static_assert(sizeof(CompressedHeader) <= 704);
+static_assert(sizeof(CompressedHeader) <= 752);
 
 namespace {
 
@@ -58,6 +59,7 @@ size_t EntryMemoryUsage(const DynaFedParamEntry& entry)
     AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_audit_config));
     AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_audit_prepared));
     AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_audit_assets));
+    AddMemoryUsage(usage, memusage::DynamicUsage(entry.m_tx_authorization));
     return usage;
 }
 
@@ -92,6 +94,7 @@ void ClearHeaderPayload(CBlockHeader& header)
         ClearShrink(entry->m_audit_config);
         ClearShrink(entry->m_audit_prepared);
         ClearShrink(entry->m_audit_assets);
+        ClearShrink(entry->m_tx_authorization);
     }
     ClearShrink(header.m_signblock_witness.stack);
     header.m_dynafed_params.SetNull();

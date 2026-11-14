@@ -6,7 +6,10 @@
 #define BITCOIN_THRESHOLD_AUDIT_VALIDATION_H
 
 #include <cstddef>
+#include <cstdint>
+#include <span>
 #include <optional>
+#include <pubkey.h>
 #include <string>
 #include <threshold_audit.h>
 #include <vector>
@@ -47,6 +50,29 @@ bool AttachTransactionProofs(CMutableTransaction& tx, const Consensus::Params& c
  */
 bool CheckTransaction(const CTransaction& tx, const Consensus::Params& consensus,
                       const Policy& audit_policy, TxValidationState& state);
+
+/** Decode a DynaFed transaction-authorization policy: one threshold byte and
+ * between one and sixteen distinct, valid 32-byte BIP340 keys. */
+bool DecodeAuthorizationPolicy(std::span<const unsigned char> policy, unsigned& threshold,
+                               std::vector<XOnlyPubKey>& keys);
+
+/** What each authorizer signs. Binds the chain, the exact policy in force, the
+ * transaction template (every input and output, no witnesses) and the last
+ * block height at which the transaction may confirm. */
+uint256 AuthorizationDigest(const uint256& genesis, std::span<const unsigned char> policy,
+                            const uint256& template_hash, uint32_t expiry_height);
+
+/** Last height at which the authorization allows confirmation, if it parses. */
+std::optional<uint32_t> AuthorizationExpiry(const CTransaction& tx);
+
+/** Require a quorum authorization on every non-coinbase transaction while the
+ * candidate block's policy is set, and none while it is empty. The witness
+ * holds a little-endian expiry height followed by exactly `threshold` pairs of
+ * key index and BIP340 signature, in increasing index order. Consensus-critical
+ * independently of script checks and assumevalid. */
+bool CheckAuthorization(const CTransaction& tx, const Consensus::Params& consensus,
+                        const std::vector<unsigned char>& policy, uint32_t height,
+                        TxValidationState& state);
 
 } // namespace threshold_audit
 #endif // BITCOIN_THRESHOLD_AUDIT_VALIDATION_H

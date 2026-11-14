@@ -372,6 +372,11 @@ Hash PolicyBinding(const DynaFedParamEntry& entry)
     if (entry.m_audit_assets_version != 0) {
         writer << std::string{"threshold-audit-assets-v1"} << entry.m_audit_assets_version << entry.m_audit_assets;
     }
+    // Bound only once set, so chains that never require transaction
+    // authorization keep their existing configuration bindings.
+    if (!entry.m_tx_authorization.empty()) {
+        writer << std::string{"tx-authorization-v1"} << entry.m_tx_authorization;
+    }
     return RawHash(writer.GetHash());
 }
 

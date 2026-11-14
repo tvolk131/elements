@@ -80,6 +80,9 @@ public:
     std::vector<unsigned char> m_audit_prepared{};
     std::vector<CAsset> m_audit_assets{};
     uint32_t m_audit_assets_version{0};
+    /** Empty, or a threshold byte followed by 32-byte BIP340 keys. When set,
+     * every non-coinbase transaction needs an unexpired quorum authorization. */
+    std::vector<unsigned char> m_tx_authorization{};
 
     threshold_audit::Policy GetAuditPolicy() const { return {m_audit_pubkey, m_audit_assets, m_audit_assets_version}; }
     uint256 m_elided_root{}; // non-zero only when m_serialize_type == 1
@@ -116,6 +119,7 @@ public:
                     s << m_audit_assets_version;
                     if (m_audit_assets.size() > threshold_audit::governance::MAX_ASSETS) throw std::ios_base::failure("oversized audit asset registry");
                     s << m_audit_assets;
+                    ThresholdAuditBytesFormatter<threshold_audit::MAX_AUTHORIZATION_POLICY_BYTES>{}.Ser(s, m_tx_authorization);
                 }
                 break;
             default:
@@ -131,6 +135,7 @@ public:
         m_audit_prepared.clear();
         m_audit_assets.clear();
         m_audit_assets_version = 0;
+        m_tx_authorization.clear();
         s >> m_serialize_type;
         switch(m_serialize_type) {
             case 0:
@@ -157,6 +162,7 @@ public:
                     if (assets_size > threshold_audit::governance::MAX_ASSETS) throw std::ios_base::failure("oversized audit asset registry");
                     m_audit_assets.resize(assets_size);
                     for (auto& asset : m_audit_assets) s >> asset;
+                    ThresholdAuditBytesFormatter<threshold_audit::MAX_AUTHORIZATION_POLICY_BYTES>{}.Unser(s, m_tx_authorization);
                 }
                 break;
             default:
@@ -178,7 +184,8 @@ public:
             m_extension_space.empty() &&
             m_audit_pubkey.empty() && m_audit_version == 0 &&
             m_audit_config.empty() && m_audit_prepared.empty() &&
-            m_audit_assets.empty() && m_audit_assets_version == 0;
+            m_audit_assets.empty() && m_audit_assets_version == 0 &&
+            m_tx_authorization.empty();
 
     }
 
@@ -196,6 +203,7 @@ public:
         m_audit_prepared.clear();
         m_audit_assets.clear();
         m_audit_assets_version = 0;
+        m_tx_authorization.clear();
     }
 
     bool operator==(const DynaFedParamEntry &other) const
@@ -209,7 +217,8 @@ public:
             m_audit_pubkey == other.m_audit_pubkey &&
             m_audit_version == other.m_audit_version &&
             m_audit_config == other.m_audit_config && m_audit_prepared == other.m_audit_prepared &&
-            m_audit_assets == other.m_audit_assets && m_audit_assets_version == other.m_audit_assets_version;
+            m_audit_assets == other.m_audit_assets && m_audit_assets_version == other.m_audit_assets_version &&
+            m_tx_authorization == other.m_tx_authorization;
     }
     bool operator!=(const DynaFedParamEntry &other) const
     {

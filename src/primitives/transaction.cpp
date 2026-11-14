@@ -126,6 +126,9 @@ uint256 CTransaction::GetWitnessOnlyHash() const
     /* Combined */
     leaves.push_back(hashIn);
     leaves.push_back(hashOut);
+    if (g_threshold_audit_enabled) {
+        leaves.push_back((HashWriter{} << witness.vchAuthorization).GetHash());
+    }
     return ComputeFastMerkleRoot(leaves);
 }
 

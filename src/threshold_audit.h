@@ -15,6 +15,9 @@
 
 namespace threshold_audit {
 
+/** Sixteen authorizers at most: one threshold byte and 32-byte BIP340 keys. */
+inline constexpr size_t MAX_AUTHORIZATION_POLICY_BYTES{1 + 16 * 32};
+
 /** One atomic next-block policy snapshot. Historical verification selects the
  * snapshot effective at the output's creation block, never today's registry. */
 struct Policy {

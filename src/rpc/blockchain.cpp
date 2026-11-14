@@ -156,6 +156,7 @@ UniValue paramEntryToJSON(const DynaFedParamEntry& entry)
         result.pushKV("extension_space", result_extension);
         if (g_threshold_audit_enabled) {
             result.pushKV("audit_pubkey", HexStr(entry.m_audit_pubkey));
+            result.pushKV("tx_authorization", HexStr(entry.m_tx_authorization));
             result.pushKV("audit_version", static_cast<uint64_t>(entry.m_audit_version));
             result.pushKV("audit_config", HexStr(entry.m_audit_config));
             result.pushKV("audit_prepared", HexStr(entry.m_audit_prepared));
@@ -1486,6 +1487,7 @@ RPCHelpMan getblockchaininfo()
                 {RPCResult::Type::NUM, "epoch_age", /*optional=*/true, "number of blocks into a dynamic federation epoch chain tip is. This number is between 0 to epoch_length-1"},
                 {RPCResult::Type::BOOL, "threshold_audit", /*optional=*/true, "Whether experimental mandatory confidential-output recovery is active"},
                 {RPCResult::Type::STR_HEX, "audit_pubkey", /*optional=*/true, "Experimental audit public key enforced on the next block"},
+                {RPCResult::Type::STR_HEX, "tx_authorization", /*optional=*/true, "Transaction-authorization policy enforced on the next block; empty when not required"},
                 {RPCResult::Type::NUM, "audit_version", /*optional=*/true, "Experimental audit-key version enforced on the next block"},
                 {RPCResult::Type::STR_HEX, "audit_config", /*optional=*/true, "Complete TAG1 audit governance configuration for the next block"},
                 {RPCResult::Type::STR_HEX, "audit_config_hash", /*optional=*/true, "Raw digest bytes of the complete audit configuration; no uint256 display reversal"},
@@ -1564,6 +1566,7 @@ RPCHelpMan getblockchaininfo()
             if (chainparams.GetConsensus().threshold_audit) {
                 obj.pushKV("threshold_audit", true);
                 obj.pushKV("audit_pubkey", HexStr(entry.m_audit_pubkey));
+                obj.pushKV("tx_authorization", HexStr(entry.m_tx_authorization));
                 obj.pushKV("audit_version", static_cast<uint64_t>(entry.m_audit_version));
                 obj.pushKV("audit_config", HexStr(entry.m_audit_config));
                 obj.pushKV("audit_config_hash", HexStr(threshold_audit::governance::ConfigBinding(entry.m_audit_config)));
