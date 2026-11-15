@@ -189,3 +189,27 @@ it("displays an observed outside receipt as a credit without missing application
   expect(screen.queryByText("0 / 3")).not.toBeInTheDocument();
   client.clear();
 });
+it("says a customer payment needs no sign-off but is still checked", async () => {
+  const { Quorum } = await import("./wallet");
+  const payment = {
+    id: "p",
+    kind: "transfer" as const,
+    state: "preparing",
+    account_id: "a",
+    currency: "EUR" as const,
+    amount_minor: 1,
+    created_at: 1,
+    user_approved: true,
+    guardian_approvals: 0,
+    guardian_threshold: 0,
+    allowed_actions: [],
+  };
+  const { rerender } = render(<Quorum operation={payment} />);
+  expect(screen.getByText("No sign-off; checked automatically")).toBeVisible();
+  rerender(
+    <Quorum
+      operation={{ ...payment, state: "rejected", declined_by: "institutions" }}
+    />,
+  );
+  expect(screen.getByText("Declined automatically")).toBeVisible();
+});

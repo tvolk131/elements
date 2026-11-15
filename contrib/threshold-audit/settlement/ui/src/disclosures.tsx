@@ -41,6 +41,7 @@ interface DisclosureCase {
   authority: string;
   reason: string;
   requester_id: string;
+  requester_name?: string | null;
   recipient: Recipient;
   created_at: number;
   expires_at: number;
@@ -587,7 +588,7 @@ function CaseDetail({
         <dl className="disclosure-facts">
           <div>
             <dt>Requester</dt>
-            <dd>{c.requester_id}</dd>
+            <dd>{c.requester_name || c.requester_id}</dd>
           </div>
           <div>
             <dt>Recipient</dt>

@@ -435,6 +435,12 @@ const ROLE_COPY = [
     "network",
   ],
   [
+    "authorization",
+    "Authorize every transaction",
+    "Check each transaction before the ledger accepts it, and refuse payments to addresses no member bank has registered.",
+    "lock",
+  ],
+  [
     "audit",
     "Approve disclosures",
     "Let a named authority see a specific past payment.",
@@ -474,6 +480,7 @@ function OperatorGroup({
       <div className="operator-roles">
         {ROLE_COPY.map(([key, title, detail, symbol]) => {
           const policy = value[key];
+          if (!policy) return null;
           return (
             <div className="federation-domain" key={key}>
               <div className="federation-domain-title">

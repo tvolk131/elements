@@ -73,6 +73,7 @@ class CapabilitiesTests(unittest.TestCase):
             *[{'id':f'g{i}','username':f'g{i}','role':'auditguardian','tenant':'federation','audit_member':i} for i in (1,2,3)]
         ]}
         for user in self.users.values(): user.update(name=user['id'],password='fixture-password')
+        self.users['compliance-a']['name']='Bank A Compliance'
         accounts=[{'id':'a','name':'A Customer','tenant':'a','bank_tenant':'bank','addresses':{'EUR':'conf-a'}},
                   {'id':'b','name':'B Customer','tenant':'b','bank_tenant':'bank-b','addresses':{'EUR':'conf-b'}}]
         self.store=Settlement(Path(self.temp.name)/'store.sqlite',self.chain,ApprovalVerifier(self.curve,keys,2),config={'accounts':accounts,'users':list(self.users.values())})
@@ -138,6 +139,9 @@ class CapabilitiesTests(unittest.TestCase):
             with self.assertRaises(Problem):restored.approve(self.users['g1'],second['id'])
     def test_request_delivery_mode_and_recipient_are_bound(self):
         case=self.create();output=self.disclosures.load(case['id'])['outputs'][0]
+        # People see the requester's name; the signed manifest keeps the ID.
+        self.assertEqual((case['requester_id'],case['requester_name']),('compliance-a','Bank A Compliance'))
+        self.assertNotIn('requester_name',self.disclosures.load(case['id'])['manifest'])
         _,request=disclosure_from(output)
         legacy=Request(request.policy_binding,request.statement_binding,request.packet_binding,request.case_reference,request.recipient_key,request.expires_at)
         self.assertNotEqual(request.binding(),legacy.binding())

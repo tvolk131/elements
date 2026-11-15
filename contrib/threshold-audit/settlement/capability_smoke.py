@@ -55,19 +55,34 @@ def run(directory):
             pilot.call('initech-maker','/api/beneficiaries/validate-address',{'address':address})
             body={'account_id':'initech-main','currency':'EUR','amount':'0.01','address':address}
         returned=settle('address_transfer','initech-maker',body,'bank-b-approver')
-        # Exercise receiving a real supported asset from outside the application
-        # outbox. Funding this fixture wallet is itself an approved app payment.
-        external_name='capability-external-wallet'
-        if external_name not in {item['name'] for item in node.listwalletdir()['wallets']}:
-            node.createwallet(external_name,False,False,'',False,False)
-        if external_name not in node.listwallets():node.loadwallet(external_name)
-        external=RPC(adapter['rpc_url']+'/wallet/'+external_name)
+        # A payment to a wallet no member bank has registered: the institutions
+        # must refuse it, and the customer's reserved coins come back.
+        stranger_name='capability-external-wallet'
+        if stranger_name not in {item['name'] for item in node.listwalletdir()['wallets']}:
+            node.createwallet(stranger_name,False,False,'',False,False)
+        if stranger_name not in node.listwallets():node.loadwallet(stranger_name)
         if 'external_address' not in state:
-            state['external_address']=external.getnewaddress('capability-test','blech32');save()
+            state['external_address']=RPC(adapter['rpc_url']+'/wallet/'+stranger_name).getnewaddress('capability-test','blech32');save()
+        if 'unregistered_payment' not in state:
+            op=pilot.call('acme-maker','/api/transfers',{'account_id':'acme-main','currency':'EUR','amount':'0.02','address':state['external_address']})
+            state['unregistered_payment']=op['id'];save()
+        declined=pilot.call('bank-approver','/api/operations/'+state['unregistered_payment'])
+        if declined['state']=='awaiting_approval':declined=pilot.approve(declined,'bank-approver')
+        declined=pilot.wait(declined,('rejected',))
+        assert declined['declined_by']=='institutions' and not declined.get('txid'),declined
+        assert 'no member bank has registered' in declined['error'],declined
+        # Receiving a real supported asset from outside the application: a
+        # customer of another member bank, whose addresses that bank has
+        # registered. Funding it is itself an approved app payment.
+        from .sandbox import OTHER_MEMBER_BANK_WALLET
+        if OTHER_MEMBER_BANK_WALLET not in node.listwallets():node.loadwallet(OTHER_MEMBER_BANK_WALLET)
+        external=RPC(adapter['rpc_url']+'/wallet/'+OTHER_MEMBER_BANK_WALLET)
+        if 'other_bank_address' not in state:
+            state['other_bank_address']=external.getnewaddress('capability-test','blech32');save()
         if 'external_fee_txid' not in state:
             fee_address=external.getnewaddress('capability-fees','bech32')
             state['external_fee_txid']=chain.wallet_send(chain.sponsor,{fee_address:1});save()
-        outside_funding=settle('external_funding','acme-maker',{'account_id':'acme-main','currency':'EUR','amount':'0.02','address':state['external_address']})
+        outside_funding=settle('external_funding','acme-maker',{'account_id':'acme-main','currency':'EUR','amount':'0.02','address':state['other_bank_address']})
         if 'external_receipt_txid' not in state:
             receiver=pilot.call('initech-maker','/api/receive-address',{'account_id':'initech-main','currency':'EUR'})['address']
             asset=next(a['asset_id'] for a in pilot.call('initech-maker','/api/dashboard')['assets'] if a['currency']=='EUR')
@@ -135,6 +150,7 @@ def run(directory):
         reserve=pilot.call('bank-compliance','/api/dashboard')['reserves']
         assert all(r['cash_reconciles'] and r['liabilities_reconcile'] and r['supply_reconciles'] for r in reserve)
         result={'status':'passed','genesis_hash':node.getblockhash(0),'transfers':[{'id':op['id'],'txid':op['txid'],'state':op['state']} for op in (transfer,returned,outside_funding)],
+                'unregistered_payment':{'id':declined['id'],'state':declined['state'],'declined_by':declined['declined_by']},
                 'external_receipt':{'txid':received['txid'],'credited_minor':received['amount_minor']},
                 'disclosure':{'id':case['id'],'threshold':case['threshold'],'approved':len(case['approved_members']),'chain_verified':True},
                 'historical_disclosure':historical_result,'bank_b_balance_reconciles':True,'reserves_reconcile':True,

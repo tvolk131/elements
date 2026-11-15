@@ -337,6 +337,7 @@ class FederationRotation:
                 # The native signing/audit policy activates before treasury
                 # migration. Report each layer's actual owner during overlap.
                 result['current']['block_signing'] = incoming['block_signing']
+                result['current']['authorization'] = incoming['authorization']
                 if self.held:
                     result['current']['label'] = 'Handover in progress'
                     result['current']['detail'] = 'Incoming block/audit policy is active; settlement treasury changes after confirmed migrations.'
@@ -371,4 +372,7 @@ class FederationRotation:
         return {'label': 'Federation ' + chr(64 + epoch), 'epoch': epoch, 'policy_version': policy['policy_version'],
                 'audit': {'threshold': audit_threshold, 'count': len(audit_members), 'members': audit_members},
                 'treasury': {'threshold': policy['threshold'], 'count': len(policy['guardian_order']), 'members': policy['guardian_order'], 'script': policy['treasury_script']},
-                'block_signing': {'threshold': policy['threshold'], 'count': len(policy['guardian_order']), 'members': policy['guardian_order'], 'script': policy.get('block_signing_script')}}
+                'block_signing': {'threshold': policy['threshold'], 'count': len(policy['guardian_order']), 'members': policy['guardian_order'], 'script': policy.get('block_signing_script')},
+                # The chain rule activated with block signing: these institutions
+                # must authorize every transaction, not only treasury ones.
+                'authorization': {'threshold': policy['threshold'], 'count': len(policy['guardian_order']), 'members': policy['guardian_order']}}

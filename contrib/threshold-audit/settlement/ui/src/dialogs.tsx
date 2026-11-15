@@ -550,7 +550,9 @@ function OperationDetail({ id }: { id: string }) {
             <div className="detail-amount number">
               {money(op.amount_minor)} <span>Test{op.currency}</span>
             </div>
-            <Badge status={op.state} />
+            <Badge status={op.state}>
+              {op.declined_by === "institutions" ? "Declined" : undefined}
+            </Badge>
             {["awaiting_approval", "ready"].includes(op.state) ? (
               op.incoming ? (
                 <div className="wallet-request-next">

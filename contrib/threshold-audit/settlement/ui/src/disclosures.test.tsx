@@ -67,6 +67,7 @@ beforeEach(() => {
             authority: "Bank A Compliance",
             reason: "Investigate this payment",
             requester_id: "compliance",
+            requester_name: "Bank Compliance",
             recipient: {
               id: "recipient",
               name: "Auditor",
@@ -102,6 +103,8 @@ afterEach(() => client?.clear());
 it("requires explicit guardian consent before signing and never releases automatically", async () => {
   setup();
   await screen.findByRole("heading", { name: "Bank A Compliance" });
+  expect(screen.getByText("Bank Compliance")).toBeVisible();
+  expect(screen.queryByText("compliance")).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Approve recipient access" }),
   ).toBeDisabled();

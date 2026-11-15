@@ -40,6 +40,11 @@ from test_framework.script import CScript, OP_CHECKMULTISIG
 
 
 ROOT = Path(__file__).resolve().parents[3]
+# A customer wallet at another member bank on the network. The app does not
+# run it, but its bank has registered its addresses, so tests can receive
+# payments from outside the app. The sandbox's one simulated bank key stands
+# in for that bank's.
+OTHER_MEMBER_BANK_WALLET = 'other-member-bank'
 
 
 def private_json(path, value):
@@ -279,11 +284,12 @@ class Sandbox:
         # customers' and the network's own. A real bank would hold this key
         # itself, outside the coordinator.
         genesis = self.node.getblockhash(0)
+        other_bank = self._wallet(adapter_config['rpc_url'], OTHER_MEMBER_BANK_WALLET)
         def registrar(script):
             address = self.node.decodescript(script.hex()).get('address')
             if address is None:
                 return None
-            for wallet in (adapter.sponsor, *adapter.wallets.values()):
+            for wallet in (adapter.sponsor, *adapter.wallets.values(), other_bank):
                 info = wallet.getaddressinfo(address)
                 if info.get('ismine') or info.get('iswatchonly'):
                     return curve.sign(bank_secret, registration_digest(genesis, script))
@@ -584,14 +590,17 @@ class Sandbox:
             self.processes.stop(process, timeout=5)
         return self.institution_status()
 
+    def _wallet(self, rpc_url, name):
+        if name not in self.node.listwallets():
+            if name in {item['name'] for item in self.node.listwalletdir()['wallets']}:
+                self.node.loadwallet(name)
+            else:
+                self.node.createwallet(name, False, False, '', False, False)
+        return RPC(rpc_url + '/wallet/' + name)
+
     def outside_address(self):
         """Demo: an address in a wallet no bank manages, so none has registered it."""
-        if 'outside' not in self.node.listwallets():
-            if 'outside' in {item['name'] for item in self.node.listwalletdir()['wallets']}:
-                self.node.loadwallet('outside')
-            else:
-                self.node.createwallet('outside', False, False, '', False, False)
-        return RPC(self.adapter.config['rpc_url'] + '/wallet/outside').getnewaddress('', 'blech32')
+        return self._wallet(self.adapter.config['rpc_url'], 'outside').getnewaddress('', 'blech32')
 
     def retire_institutions(self, guardians):
         for guardian in guardians:

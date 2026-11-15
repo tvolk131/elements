@@ -210,7 +210,10 @@ class Disclosures:
             actions.append('cancel')
         if user['id'] == case['manifest']['recipient']['id'] and any(o['sealed_partials'] for o in case['outputs']):
             actions.append('download')
+        requester = self.db.execute('SELECT data FROM users WHERE id=?', (case['manifest']['requester_id'],)).fetchone()
         return {'id': case['id'], **{k: v for k, v in case['manifest'].items() if k != 'targets'},
+                # Display only; the signed manifest keeps the account ID.
+                'requester_name': json.loads(requester[0]).get('name') if requester else None,
                 'manifest_hash': case['manifest_hash'], 'state': state, 'threshold': case['threshold'],
                 'approved_members': sorted(int(m) for m in approved), 'declined_members': case['declined'],
                 'guardian_count': len(case['outputs'][0]['committee']['members']),

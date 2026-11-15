@@ -228,6 +228,13 @@ class TreasuryRotationTests(unittest.TestCase):
         self.assertEqual(encode(7, {2: b'b' * 64, 0: b'a' * 64}), b'\x07\0\0\0' + b'\0' + b'a' * 64 + b'\x02' + b'b' * 64)
         signer.db.close(); signer.curve.close()
 
+    def test_operators_page_lists_who_authorizes_every_transaction(self):
+        from .federation import FederationRotation
+        policy = {'policy_version': 'sandbox-v1', 'threshold': 3, 'guardian_order': [f'institution-{i}' for i in range(1, 6)],
+                  'treasury_script': '00', 'block_signing_script': '51'}
+        described = FederationRotation._describe(policy, list(range(1, 16)), 11)
+        self.assertEqual(described['authorization'], {'threshold': 3, 'count': 5, 'members': policy['guardian_order']})
+
     def test_authorization_refuses_unregistered_destinations_and_long_windows(self):
         policy = policy_bytes(self.source['approval_public_keys'], self.source['guardian_order'], 2)
         signer = Institution(self.config, self.rpc)

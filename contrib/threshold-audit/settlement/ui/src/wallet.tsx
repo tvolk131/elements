@@ -348,8 +348,17 @@ function Balances() {
   );
 }
 export function Quorum({ operation: op }: { operation: Operation }) {
-  if (op.kind === "receipt" || op.guardian_threshold === 0)
+  if (op.kind === "receipt")
     return <span className="small-note">Not required</span>;
+  if (op.guardian_threshold === 0)
+    // No one signs off, but the institutions still check every transaction.
+    return (
+      <span className="small-note">
+        {op.declined_by === "institutions"
+          ? "Declined automatically"
+          : "No sign-off; checked automatically"}
+      </span>
+    );
   return (
     <div className="quorum">
       <span className="quorum-track">

@@ -10,6 +10,7 @@ const policy = (label: string): FederationPolicy => ({
   audit: { threshold: 7, count: 10, members: ["1", "2"] },
   block_signing: { threshold: 3, count: 5, members: ["institution-1"] },
   treasury: { threshold: 3, count: 5, members: ["institution-1"] },
+  authorization: { threshold: 3, count: 5, members: ["institution-1"] },
 });
 const federation: Federation = {
   id: "v1",
@@ -42,6 +43,7 @@ it("explains the current operators in plain terms when no handover runs", () => 
   render(<FederationPage />);
   expect(screen.getByText("Approve settlements")).toBeVisible();
   expect(screen.getByText("Approve disclosures")).toBeVisible();
+  expect(screen.getByText("Authorize every transaction")).toBeVisible();
   expect(screen.getByText("7 of 10")).toBeVisible();
   expect(screen.getByText("No handover is in progress.")).toBeVisible();
   expect(screen.getByTestId("rotation-prepare")).toBeVisible();

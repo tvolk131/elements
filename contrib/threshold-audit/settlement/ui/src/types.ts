@@ -164,6 +164,8 @@ export interface FederationPolicy {
   audit: Membership;
   block_signing: Membership;
   treasury: Membership;
+  /** Must authorize every transaction; absent from older servers. */
+  authorization?: Membership;
 }
 export interface RotationStep {
   id: string;
