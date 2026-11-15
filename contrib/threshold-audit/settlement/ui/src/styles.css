@@ -3397,13 +3397,24 @@ td,
 .ledger-controls > .panel + .panel {
   margin-top: 0;
 }
+/* Panel bodies are unpadded; line the card contents up with the header. */
+.ledger-controls > .panel {
+  padding-bottom: 20px;
+}
+.ledger-controls > .panel > :not(.panel-header) {
+  margin-left: 21px;
+  margin-right: 21px;
+}
 .institution-switches {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 10px;
+}
+.institution-switches strong {
+  white-space: nowrap;
 }
 .institution-switches li {
   display: flex;

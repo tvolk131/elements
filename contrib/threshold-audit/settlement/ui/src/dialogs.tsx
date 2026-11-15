@@ -22,8 +22,10 @@ import {
   human,
   money,
   nextStep,
+  retryable,
   viewerNextAction,
   safeFilename,
+  waitingForInstitutions,
   settlementHold,
   transferNeedsInstitutions,
 } from "./domain";
@@ -591,7 +593,7 @@ function OperationDetail({ id }: { id: string }) {
                 <strong>{bankStatus(op)}</strong>
               </div>
             </div>
-            {op.error && (
+            {op.error && !waitingForInstitutions(op) && (
               <div className="inline-warning" role="alert">
                 {op.error}
               </div>
@@ -698,7 +700,7 @@ function OperationDetail({ id }: { id: string }) {
               (action) =>
                 action !== "execute" ||
                 !SETTLING.includes(op.state) ||
-                !!op.error,
+                retryable(op),
             )
             // While approvals are open, ApprovalProgress shows these actions.
             .filter(

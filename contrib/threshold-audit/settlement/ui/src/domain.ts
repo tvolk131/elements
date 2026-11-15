@@ -170,9 +170,13 @@ export const needsAction = (op: Operation) =>
       "cancel",
     ].includes(a),
   ) &&
-  !(SETTLING.includes(op.state) && !op.error);
+  !(SETTLING.includes(op.state) && !retryable(op));
 export const waitingForInstitutions = (op: Operation) =>
   !!op.error?.startsWith("Waiting for the institutions");
+/** A settling request whose recorded error a person can retry. Waiting for
+ * the institutions is not one: it continues on its own when they are back. */
+export const retryable = (op: Operation) =>
+  !!op.error && !waitingForInstitutions(op);
 export function requestSummary(op: Operation): string {
   if (op.declined_by === "institutions") return "Declined by the institutions";
   if (waitingForInstitutions(op)) return "Waiting for the institutions";
@@ -210,7 +214,7 @@ export const SETTLING = [
 export function viewerNextAction(op: Operation): string | undefined {
   const actions = op.allowed_actions;
   // "Execute" is offered while settling only as a retry after an error.
-  if (SETTLING.includes(op.state) && !op.error) return undefined;
+  if (SETTLING.includes(op.state) && !retryable(op)) return undefined;
   if (actions.includes("bank-credit"))
     return op.issues_automatically
       ? "Confirm the bank deposit arrived. That is the bank’s approval; tokens are issued once three institutions approve."
@@ -254,6 +258,12 @@ export function eligibleDestinations(
       );
 }
 export function nextStep(op: Operation): string {
+  if (waitingForInstitutions(op)) {
+    const counts = op.error?.split(": ")[1];
+    return `Waiting for the institutions to authorize it${counts ? ` (${counts})` : ""}. It goes through on its own as soon as enough of them are back; nobody needs to do anything.`;
+  }
+  if (op.declined_by === "institutions")
+    return "The institutions declined this payment, so nothing was sent and the reserved funds were released.";
   if (op.state === "bank_unknown")
     return "The bank payout outcome is unknown. Tokens remain locked; a bank operator must reconcile the result before a payout or refund can be completed.";
   if (op.error && isPending(op))

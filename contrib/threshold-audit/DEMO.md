@@ -70,10 +70,11 @@ a withdrawal waits for a person at the company to release it.
    co-sign the issuing transaction, after the bank confirms the money arrived.
    Nobody presses a final Send: the institutions' co-signature is the moment
    money is created.
-3. **Money out (2 min).** Open the $75,000 withdrawal (Acme, Requests). Acme
-   and two institutions have approved: switch to Institution 3, sign, then
-   switch to the approver and send. The payout and token burn finish on their
-   own.
+3. **Money out (2 min).** As *Acme · approves payments*, open the $75,000
+   withdrawal under **Requests**. Acme and two institutions have approved:
+   click **Add the other institutions' approvals** for the third (step 2
+   already showed one signing live), then **Review and send**. The payout and
+   token burn finish on their own.
    *Point:* unlike funding, money leaving the bank waits for a person at the
    company to release it, so they control the timing and can still stop it.
 4. **Private, but accountable (4 min).** As *Bank compliance*, show the

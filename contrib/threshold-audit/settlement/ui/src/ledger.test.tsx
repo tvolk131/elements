@@ -3,7 +3,12 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LedgerPage } from "./ledger";
-import { requestSummary } from "./domain";
+import {
+  needsAction,
+  nextStep,
+  requestSummary,
+  viewerNextAction,
+} from "./domain";
 import type { Operation } from "./types";
 
 const app = vi.hoisted(() => ({ setDialog: vi.fn() }));
@@ -77,7 +82,7 @@ const LEDGER = {
         operation_id: "op-1",
         kind: "transfer",
         stage: "transfer",
-        amount: "12,750.00",
+        amount_minor: 1275000,
         currency: "EUR",
         from: "Acme · Operating",
         to: "Initech · Operating",
@@ -89,7 +94,7 @@ const LEDGER = {
       time: 1794696000,
       inputs: 1,
       outputs: 2,
-      hidden_amounts: 0,
+      hidden_amounts: 1,
       recovery_packets: 0,
       issues_tokens: false,
       burns_tokens: false,
@@ -154,6 +159,7 @@ it("shows what the ledger recorded beside what only the bank knows", async () =>
   );
   expect(app.setDialog).toHaveBeenCalledWith({ type: "operation", id: "op-1" });
   const second = within(rows[1]);
+  expect(second.getByText(/1 of 2 amounts hidden/)).toBeVisible();
   expect(second.getByText("No authorization")).toBeVisible();
   expect(second.getByText("Before the rule was turned on")).toBeVisible();
   expect(second.getByText(/Not one of this bank’s requests/)).toBeVisible();
@@ -231,4 +237,27 @@ it("summarizes declined and waiting requests in plain words", () => {
     ),
   ).toBe("Waiting for the institutions");
   expect(requestSummary(op({ state: "rejected" }))).toBe("Closed · rejected");
+});
+
+it("tells people a waiting payment needs nothing from them", () => {
+  const waiting = {
+    state: "preparing",
+    error:
+      "Waiting for the institutions to authorize this transaction: 2 of 5 reachable, 3 needed",
+    allowed_actions: ["execute"],
+  } as unknown as Operation;
+  expect(needsAction(waiting)).toBe(false);
+  expect(viewerNextAction(waiting)).toBeUndefined();
+  expect(nextStep(waiting)).toBe(
+    "Waiting for the institutions to authorize it (2 of 5 reachable, 3 needed). It goes through on its own as soon as enough of them are back; nobody needs to do anything.",
+  );
+  // Any other recorded error is still a retry for an operator.
+  const stuck = { ...waiting, error: "node unreachable" } as Operation;
+  expect(needsAction(stuck)).toBe(true);
+  const declined = {
+    state: "rejected",
+    declined_by: "institutions",
+    allowed_actions: [],
+  } as unknown as Operation;
+  expect(nextStep(declined)).toMatch(/^The institutions declined this payment/);
 });

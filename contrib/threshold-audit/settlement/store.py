@@ -284,7 +284,7 @@ class Settlement:
                     if operation.get(stage + "_txid"):
                         known[operation[stage + "_txid"]] = {
                             "operation_id": operation["id"], "kind": operation["kind"], "stage": stage,
-                            "amount": money(operation["amount_minor"]), "currency": operation["currency"],
+                            "amount_minor": operation["amount_minor"], "currency": operation["currency"],
                             "from": account.get("name", account["id"]),
                             "to": destination or operation.get("destination_name")}
         for item in view["transactions"]:

@@ -13,7 +13,7 @@ import {
   Icon,
   Panel,
 } from "./components";
-import { date, human, short } from "./domain";
+import { date, human, money, short } from "./domain";
 import { memberName } from "./guardian";
 import { usePersonas } from "./demo";
 
@@ -40,7 +40,7 @@ interface LedgerTransaction {
     operation_id: string;
     kind: string;
     stage: string;
-    amount: string;
+    amount_minor: number;
     currency: string;
     from: string;
     to?: string;
@@ -99,7 +99,7 @@ function signedBy(list: string[]) {
 function whatItWas(item: LedgerTransaction) {
   const k = item.known;
   if (!k) return null;
-  const amount = `${k.amount} Test${k.currency}`;
+  const amount = `${money(k.amount_minor)} Test${k.currency}`;
   switch (k.stage) {
     case "transfer":
       return `Payment · ${amount} · ${k.from} → ${k.to || "a wallet address"}`;
@@ -363,7 +363,9 @@ export function LedgerPage() {
                         <span className="cell-primary">
                           {t.outputs} {t.outputs === 1 ? "output" : "outputs"} ·{" "}
                           {t.hidden_amounts
-                            ? `${t.hidden_amounts === t.outputs ? "all" : t.hidden_amounts} amounts hidden`
+                            ? t.hidden_amounts === t.outputs
+                              ? "all amounts hidden"
+                              : `${t.hidden_amounts} of ${t.outputs} amounts hidden`
                             : "amounts visible"}
                         </span>
                         <span className="cell-secondary">
