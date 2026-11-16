@@ -2,6 +2,8 @@
 
 A 20-minute walkthrough of the institutional settlement sandbox for a product
 or leadership audience. Everything runs locally; bank money is simulated.
+Before presenting, read [CLAIMS.md](CLAIMS.md): what is real, what is
+simulated, and what is not built.
 
 ## One-time setup
 
@@ -113,15 +115,17 @@ a withdrawal waits for a person at the company to release it.
    down without stopping payments, and the institutions refuse payments to
    addresses no member bank stands behind, without seeing amounts.
 
-   *Caveat if asked:* the simulated bank's registration key runs inside the
-   coordinator; in production each bank holds its own.
+   *Caveats if asked:* this sandbox runs a single node, and one operator runs
+   every institution's service on one machine, so "every node" is one node
+   today. The simulated bank's registration key runs inside the coordinator;
+   in production each bank holds its own.
 
 ## What the ledger enforces
 
 | | Enforced by the Elements ledger | Enforced by the application |
 |---|---|---|
-| **Every transaction** | An unexpired authorization signed by 3 of 5 institutions; their services give it automatically, see only what the chain shows, and require each destination to be a bank-registered address | Nothing further |
-| **Payments between customers** | The sender's wallet signature, hidden amounts and assets with valid proofs, the mandatory recovery packet for disclosure, and 3 of 5 operators confirming the block | The customer's second-person check; institution approval only if the payment policy asks for it |
+| **Every transaction** | An authorization signed by 3 of 5 institutions and usable for at most 20 blocks; their services give it automatically, see only what the chain shows, and require each destination to be a bank-registered address | Nothing further |
+| **Payments between customers** | The sender's wallet signature (the wallet is held in the node and signed by the application, not by the customer), hidden amounts and assets with valid proofs, the mandatory recovery packet for disclosure, and 3 of 5 operators confirming the block | The customer's second-person check; institution approval only if the payment policy asks for it |
 | **Money in and out** (issuing tokens, the withdrawal payout and burn, refunds) | All of the above, **plus** 3 of 5 institutions co-signing the transaction with their own keys; each institution's service checks the approval before signing | Funding: the bank's confirmation that the money arrived. Withdrawals: the company's second-person check and release |
 | **Disclosures** | The encrypted recovery packet on every payment; only 7 of 10 guardians together can open it | Who may request a disclosure and for whom |
 
@@ -138,9 +142,12 @@ created the request, a second bank person must still approve. If issuing
 cannot start (for example, the wallet does not reconcile), the request shows
 why and an approver can issue it by hand.
 
-Intervention today means disclosure. The federation cannot freeze or reverse
-a payment between customers, because those are signed with the customer's
-own key; the simulated bank can freeze issuance and payouts.
+Intervention today means disclosure. Freezing is not built yet, though the
+ledger already provides the lever: every transaction needs the institutions'
+authorization, so refusing to authorize spends of particular funds would stop
+them, and an authorization already given expires within 20 blocks. Nothing
+reverses a payment that has confirmed. The simulated bank can hold issuance
+and payouts.
 
 The **Add the other institutions' approvals** shortcut is demo-only. It asks
 each remaining institution's own approval service to sign, exactly as its
@@ -153,9 +160,11 @@ window would, so the recorded approvals are real.
   else: the shared ledger shows no amounts or parties. Disclosure is how an
   outside authority gets a specific payment's details.
 - **"Who are the institutions and guardians?"** Independent organizations
-  that run the network: three of five confirm every block and co-sign every
-  token issued or destroyed, and a separate 7-of-10 quorum controls
-  disclosures. They don't approve everyday payments between customers.
+  that run the network: three of five confirm every block, authorize every
+  transaction and co-sign every token issued or destroyed, and a separate
+  7-of-10 quorum controls disclosures. Everyday payments are authorized
+  automatically; nobody at an institution reviews them by hand. In the
+  sandbox all of them are simulated on one machine.
 - **"What if an institution goes down, or refuses?"** Any two can be offline
   and everything continues. With three down nothing moves, by design, and it
   resumes on its own when one returns. A refusal by enough of them closes the
