@@ -25,6 +25,14 @@ namespace threshold_audit {
 /** Experimental public-data CPU budget, additional to normal block weight. */
 inline constexpr size_t MAX_OUTPUTS_PER_BLOCK{16};
 
+/** Number of consecutive block heights in which one transaction authorization
+ * can be used: a transaction at height h needs h <= expiry < h + this value.
+ * Without a ceiling an authorizer quorum could hand out effectively permanent
+ * authorizations, and refusing to sign (a freeze) would never take effect on
+ * transactions it had already authorized. Matches the settlement signers'
+ * WINDOW, which signs expiry = tip + 20 for inclusion from tip + 1. */
+inline constexpr uint32_t MAX_AUTHORIZATION_LIFETIME{20};
+
 /** Double-SHA256 of nonwitness transaction serialization, with every scriptSig
  * cleared. This permits signing after recovery proof construction and excludes
  * recovery witnesses, avoiding a circular hash. All outputs/nonces, prevouts,
@@ -66,7 +74,8 @@ uint256 AuthorizationDigest(const uint256& genesis, std::span<const unsigned cha
 std::optional<uint32_t> AuthorizationExpiry(const CTransaction& tx);
 
 /** Require a quorum authorization on every non-coinbase transaction while the
- * candidate block's policy is set, and none while it is empty. The witness
+ * candidate block's policy is set, and none while it is empty. The expiry must
+ * fall within MAX_AUTHORIZATION_LIFETIME heights of `height`. The witness
  * holds a little-endian expiry height followed by exactly `threshold` pairs of
  * key index and BIP340 signature, in increasing index order. Consensus-critical
  * independently of script checks and assumevalid. */

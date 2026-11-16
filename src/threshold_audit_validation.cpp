@@ -220,6 +220,11 @@ bool CheckAuthorization(const CTransaction& tx, const Consensus::Params& consens
     if (*expiry < height) {
         return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-tx-authorization-expired");
     }
+    if (*expiry - height >= MAX_AUTHORIZATION_LIFETIME) {
+        // Becomes usable once the chain is close enough to the expiry, so this
+        // is premature rather than invalid forever.
+        return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-tx-authorization-lifetime");
+    }
     const uint256 digest = AuthorizationDigest(consensus.hashGenesisBlock, policy, TransactionTemplateHash(tx), *expiry);
     int previous{-1};
     for (unsigned n = 0; n < threshold; ++n) {

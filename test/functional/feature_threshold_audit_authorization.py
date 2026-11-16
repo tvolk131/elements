@@ -22,7 +22,7 @@ from test_framework.util import assert_equal, assert_raises_rpc_error
 from curve import random_scalar
 from governance import PreparedTransition, Transition, make_readiness
 from native_governance import policy_binding, prepared_to_bytes
-from settlement.authorization import authorization_digest, decode_policy, encode
+from settlement.authorization import MAX_LIFETIME as LIFETIME, authorization_digest, decode_policy, encode
 
 
 class TransactionAuthorizationTest(ThresholdAuditTest):
@@ -118,10 +118,21 @@ class TransactionAuthorizationTest(ThresholdAuditTest):
         swapped.wit.vchAuthorization = body[:4] + body[69:134] + body[4:69]
         self.assert_rejected_by_nodes_and_blocks(swapped, 'bad-tx-authorization-malformed')
         extended = self.authorize(plain, secrets, policy, expiry=height + 5)
-        extended.wit.vchAuthorization = (height + 500).to_bytes(4, 'little') + extended.wit.vchAuthorization[4:]
+        extended.wit.vchAuthorization = (height + 6).to_bytes(4, 'little') + extended.wit.vchAuthorization[4:]
         self.assert_rejected_by_nodes_and_blocks(extended, 'bad-tx-authorization-signature')
         self.assert_rejected_by_nodes_and_blocks(self.authorize(plain, secrets, policy, expiry=height),
                                                  'bad-tx-authorization-expired')
+
+        self.log.info('Consensus caps how long an authorization stays usable, whatever the quorum signs')
+        # The next block is height + 1, so expiry height + LIFETIME is the last
+        # usable one and one more is refused as premature, not invalid forever.
+        self.assert_accepted(self.authorize(plain, secrets, policy, expiry=height + LIFETIME))
+        distant = self.authorize(plain, secrets, policy, expiry=height + LIFETIME + 1)
+        self.assert_rejected_by_nodes_and_blocks(distant, 'bad-tx-authorization-lifetime')
+        self.assert_rejected_by_nodes_and_blocks(self.authorize(plain, secrets, policy, expiry=0xffffffff),
+                                                 'bad-tx-authorization-lifetime')
+        self.mine_proposal()
+        self.assert_accepted(distant)
         other, _, _ = self.build_transaction(audit_key)
         borrowed = copy.deepcopy(other)
         borrowed.wit.vchAuthorization = self.authorize(plain, secrets, policy).wit.vchAuthorization
@@ -177,10 +188,12 @@ class TransactionAuthorizationTest(ThresholdAuditTest):
         entry.m_tx_authorization = b''
         block.rehash()
         assert_equal(sender.submitblock(self.sign_block(block.serialize().hex())), 'invalid-tx-authorization-policy')
-        pending = self.authorize(waiting, secrets, policy, expiry=sender.getblockcount() + 100)
+        # Prepare first: it mines to the epoch start, and the pending
+        # authorization must outlive the boundary to show re-keying kills it.
+        prepared = self.prepare_authorization(successor)
+        pending = self.authorize(waiting, secrets, policy, expiry=sender.getblockcount() + LIFETIME)
         pending_id = sender.sendrawtransaction(pending.serialize().hex(), 0)
         self.sync_mempools()
-        prepared = self.prepare_authorization(successor)
         proposal = dict(self.proposal(prepared, self.initial_signblock), tx_authorization=successor.hex())
         while sender.getblockcount() < prepared.transition.activation_height - 1:
             raw = sender.getnewblockhex(1_000_000, proposal)

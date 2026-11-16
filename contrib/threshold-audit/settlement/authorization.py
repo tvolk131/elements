@@ -17,8 +17,12 @@ from test_framework.messages import hash256
 DOMAIN = b'Elements/tx-authorization/v1'
 REGISTRATION_DOMAIN = b'Elements/address-registration/v1'
 MAX_AUTHORIZERS = 16
-# Blocks an authorization stays usable. Institutions refuse a longer window.
-WINDOW = 20
+# Consensus ceiling: a transaction at height h needs h <= expiry < h + this.
+# Mirrors MAX_AUTHORIZATION_LIFETIME in src/threshold_audit_validation.h.
+MAX_LIFETIME = 20
+# Institutions sign expiry = tip + WINDOW for inclusion from tip + 1 and refuse
+# anything longer, so a signed authorization never exceeds the ceiling.
+WINDOW = MAX_LIFETIME
 
 
 class AuthorizationRefused(ValueError):
