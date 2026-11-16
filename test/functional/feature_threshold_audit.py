@@ -25,7 +25,7 @@ from test_framework.key import ECKey
 from test_framework.messages import CBlock, DynaFedParamEntry, deser_compact_size, from_hex, ser_uint256, tx_from_hex
 from test_framework.psbt import PSBTMap
 from test_framework.script_util import key_to_p2wpkh_script
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BitcoinTestFramework, SkipTest
 from test_framework.util import assert_equal, assert_raises_rpc_error
 
 PROTOTYPE = Path(__file__).resolve().parents[2] / 'contrib' / 'threshold-audit'
@@ -56,6 +56,12 @@ class ThresholdAuditTest(BitcoinTestFramework):
         messages.THRESHOLD_AUDIT = True
         library = os.environ.get('THRESHOLD_AUDIT_SECP256K1', '/tmp/elements-audit-secp/lib/libsecp256k1.so')
         self.library = library
+        # The Python prototype needs a secp256k1-zkp build with the audit
+        # modules. Without one, skip rather than fail inside the constructor,
+        # so test_runner.py can list these tests on machines that lack it.
+        self.missing_library = not Path(library).is_file()
+        if self.missing_library:
+            return
         self.curve = Curve(library)
         initial_script = b'\x00\x20' + hashlib.sha256(b'\x51').digest()
         initial_policy = policy_binding(initial_script, 108, initial_script, b'\x51', [b''])
@@ -106,6 +112,8 @@ class ThresholdAuditTest(BitcoinTestFramework):
         self.add_wallet_options(parser)
 
     def skip_test_if_missing_module(self):
+        if self.missing_library:
+            raise SkipTest('secp256k1-zkp audit library not found; set THRESHOLD_AUDIT_SECP256K1')
         self.skip_if_no_wallet()
 
     def build_transaction(self, audit_key):

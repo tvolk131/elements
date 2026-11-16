@@ -121,6 +121,11 @@ BASE_SCRIPTS = [
     'wallet_elements_regression_1259.py --legacy-wallet',
     'wallet_elements_21million.py --legacy-wallet',
     'wallet_elements_dust_relay.py --legacy-wallet',
+    # Threshold audit research rules; each skips without THRESHOLD_AUDIT_SECP256K1.
+    'feature_threshold_audit.py --descriptors',
+    'feature_threshold_audit_assets.py --descriptors',
+    'feature_threshold_audit_authorization.py --descriptors',
+    'feature_threshold_audit_guardians.py --descriptors',
     # Longest test should go first, to favor running tests in parallel
     # vv Tests less than 5m vv
     'feature_taproot.py',

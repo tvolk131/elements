@@ -121,7 +121,9 @@ class GuardianNativeTest(ThresholdAuditTest):
     def shutdown(self):
         # Guardians start before the Elements genesis configuration exists.
         # Close them even if framework setup fails before run_test is entered.
-        self.cluster.close()
+        # A skipped run (no audit library) never started a cluster.
+        if hasattr(self, 'cluster'):
+            self.cluster.close()
         return super().shutdown()
 
     def exercise_guardians(self):
