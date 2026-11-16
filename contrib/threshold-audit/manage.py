@@ -19,11 +19,16 @@ from export_review import ROOT
 from verify import OwnedProcess, process_identity, runtime_snapshot, signal_identity
 
 sys.path.insert(0, str(ROOT / 'test' / 'functional'))
-from settlement.runtime import load_config, save_config
+from settlement.runtime import load_config, save_config, state_directory
 
 
 KIND = 'elements-threshold-audit-demo'
-DEFAULT_REGISTRY = Path('/tmp') / f'elements-audit-demo-{os.getuid()}.json'
+# Earlier selections lived in /tmp; read one there until a new select replaces it.
+LEGACY_REGISTRY = Path('/tmp') / f'elements-audit-demo-{os.getuid()}.json'
+
+
+def default_registry():
+    return state_directory() / 'selected-demo.json'
 
 
 def validate_runtime(directory):
@@ -47,9 +52,9 @@ def validate_runtime(directory):
     return directory, ready, config
 
 
-def select_runtime(directory, registry=DEFAULT_REGISTRY):
+def select_runtime(directory, registry=None):
     directory, _, _ = validate_runtime(directory)
-    registry = Path(registry)
+    registry = Path(registry) if registry is not None else default_registry()
     if registry.exists() or registry.is_symlink():
         if load_config(registry).get('kind') != KIND:
             raise ValueError('refusing to replace an unrelated registry file')
@@ -57,7 +62,11 @@ def select_runtime(directory, registry=DEFAULT_REGISTRY):
     return directory
 
 
-def selected_runtime(registry=DEFAULT_REGISTRY):
+def selected_runtime(registry=None):
+    if registry is None:
+        registry = default_registry()
+        if not registry.exists() and LEGACY_REGISTRY.exists():
+            registry = LEGACY_REGISTRY
     value = load_config(registry)
     if value.get('kind') != KIND:
         raise ValueError('unknown demo registry')
@@ -199,7 +208,7 @@ def start(directory, timeout=120):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--registry', type=Path, default=DEFAULT_REGISTRY)
+    parser.add_argument('--registry', type=Path, help='selection file (default ~/.local/state/elements-audit/selected-demo.json)')
     parser.add_argument('--runtime', type=Path, help='control this runtime instead of the selected demo')
     parser.add_argument('--timeout', type=float, default=120, help='startup/stop deadline in seconds')
     parser.add_argument('action', choices=('select', 'status', 'start', 'stop'))

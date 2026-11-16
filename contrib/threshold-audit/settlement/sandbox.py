@@ -2,7 +2,8 @@
 
 Usage from repository root:
  PYTHONPATH=contrib/threshold-audit:test/functional python3 -m settlement.sandbox
-Runtime secrets and chain data live in a newly created private /tmp directory.
+Without --directory, runtime secrets and chain data live in a new private
+directory under ~/.local/state/elements-audit/runtimes (XDG_STATE_HOME).
 """
 
 import argparse
@@ -35,7 +36,7 @@ from .federation_blocks import BlockFederation, BOOTSTRAP_SCRIPT
 from .federation import FederationRotation
 from .treasury_rotation import public_policy
 from .authorization import policy_bytes, registration_digest
-from .runtime import OwnedProcesses, load_config, read_ready_line, save_config
+from .runtime import OwnedProcesses, load_config, read_ready_line, save_config, state_directory
 from test_framework.script import CScript, OP_CHECKMULTISIG
 
 
@@ -659,7 +660,10 @@ def main():
         parser.error('--resume and --directory are mutually exclusive')
     if not options.resume and options.directory and Path(options.directory).exists() and any(Path(options.directory).iterdir()):
         parser.error('use a new empty directory; existing chain or reserve state is never overwritten')
-    directory = options.resume or options.directory or tempfile.mkdtemp(prefix='elements-institutional-')
+    if not (options.resume or options.directory):
+        runtimes = state_directory() / 'runtimes'
+        runtimes.mkdir(mode=0o700, exist_ok=True)
+    directory = options.resume or options.directory or tempfile.mkdtemp(prefix='elements-institutional-', dir=runtimes)
     sandbox = Sandbox(directory, options.daemon, options.library)
     def stop(*_):
         sandbox.stop.set()

@@ -19,6 +19,18 @@ SCHEMA_VERSION = 1
 MAX_STARTUP_BYTES = 65536
 
 
+def state_directory():
+    """Persistent private home for new runtimes and the demo selection.
+
+    Runtimes hold the chain, wallet keys and guardian shares. /tmp is cleared
+    at boot (and aged out by systemd-tmpfiles), so it is no place for them.
+    Honors XDG_STATE_HOME; defaults to ~/.local/state/elements-audit.
+    """
+    base = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local' / 'state') / 'elements-audit'
+    base.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return base
+
+
 def load_config(path):
     path = Path(path)
     info = path.lstat()

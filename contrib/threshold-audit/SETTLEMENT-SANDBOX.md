@@ -27,7 +27,10 @@ python3 contrib/threshold-audit/manage.py status
 python3 contrib/threshold-audit/manage.py stop
 ```
 
-The selection is a private pointer at `/tmp/elements-audit-demo-<uid>.json`.
+The selection is a private pointer at
+`~/.local/state/elements-audit/selected-demo.json` (under `$XDG_STATE_HOME`
+when set). A selection made before that default existed, at
+`/tmp/elements-audit-demo-<uid>.json`, is still read until the next `select`.
 Leave the selected demo stopped while idle and start it on demand.
 `--registry` overrides that file; `--runtime` before the action overrides the
 selected directory for one command. Start is idempotent. Stop validates the
@@ -92,13 +95,16 @@ approvals. The same application routes by authenticated role. Each institution
 also has a separate approval window and approval passphrase. Never enter that
 passphrase into the central wallet application.
 
-The runtime is a new private directory under `/tmp`. `--directory` accepts an
+The runtime is a new private directory under
+`~/.local/state/elements-audit/runtimes`. Keep runtimes out of `/tmp`: it is
+cleared at boot, which loses the chain, wallet keys and guardian shares.
+`--directory` accepts an
 empty directory; existing state is never overwritten. Stop with Ctrl-C or
 SIGTERM. To resume the same chain, users, wallet keys, guardian state and outbox:
 
 ```sh
 PYTHONPATH=contrib/threshold-audit:test/functional \
-  python3 -u -m settlement.sandbox --resume /tmp/elements-institutional-EXAMPLE
+  python3 -u -m settlement.sandbox --resume ~/.local/state/elements-audit/runtimes/elements-institutional-EXAMPLE
 ```
 
 The fixture CA certificates last two days. Resuming after expiry requires a
@@ -231,7 +237,7 @@ transfer, escrow/payout/burn, failed-payment return and unknown-payment resoluti
 
 ```sh
 PYTHONPATH=contrib/threshold-audit:test/functional \
-  python3 -u -m settlement.smoke /tmp/elements-institutional-EXAMPLE
+  python3 -u -m settlement.smoke ~/.local/state/elements-audit/runtimes/elements-institutional-EXAMPLE
 ```
 
 This driver reads all fixture credentials; the web application does not. It
