@@ -3,17 +3,69 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <test/fuzz/fuzz.h>
+#include <consensus/params.h>
+#include <consensus/validation.h>
 #include <crypto/sha256.h>
 #include <primitives/block.h>
+#include <primitives/transaction.h>
+#include <streams.h>
 #include <threshold_audit.h>
 #include <threshold_audit_governance.h>
+#include <threshold_audit_validation.h>
 
 #include <algorithm>
+#include <cassert>
+#include <ios>
 #include <span>
 #include <stdexcept>
 
-/** Input is TAG1, or the public statement/vector encoding described in
- * contrib/threshold-audit/NATIVE-INTEGRATION.md. No private keys enter either parser. */
+namespace {
+/** TXAU || height (BE32) || policy length (BE32) || policy || transaction with
+ * witness. Exercises the authorization witness parser and quorum check that
+ * every node runs on every transaction once a chain sets a policy. */
+void CheckAuthorizationInput(std::span<const unsigned char> bytes)
+{
+    if (bytes.size() < 12) return;
+    auto number = [&](size_t at) {
+        return uint32_t{bytes[at]} << 24 | uint32_t{bytes[at + 1]} << 16 | uint32_t{bytes[at + 2]} << 8 | bytes[at + 3];
+    };
+    const uint32_t height = number(4);
+    const uint32_t policy_size = number(8);
+    if (policy_size > bytes.size() - 12) return;
+    const std::vector<unsigned char> policy(bytes.begin() + 12, bytes.begin() + 12 + policy_size);
+    unsigned threshold;
+    std::vector<XOnlyPubKey> keys;
+    const bool policy_valid = threshold_audit::DecodeAuthorizationPolicy(policy, threshold, keys);
+    if (policy_valid) assert(threshold >= 1 && threshold <= keys.size() && keys.size() <= 16);
+
+    // Audit chains are Elements chains; both globals select their serialization.
+    const bool previous_elements = g_con_elementsmode, previous = g_threshold_audit_enabled;
+    g_con_elementsmode = true;
+    g_threshold_audit_enabled = true;
+    try {
+        DataStream stream{bytes.subspan(12 + policy_size)};
+        CMutableTransaction mutable_tx;
+        stream >> TX_WITH_WITNESS(mutable_tx);
+        const CTransaction tx{mutable_tx};
+        (void)threshold_audit::TransactionTemplateHash(tx);
+        const auto expiry = threshold_audit::AuthorizationExpiry(tx);
+        // Only policies that passed header validation reach this check.
+        if (policy.empty() || policy_valid) {
+            const Consensus::Params consensus{};
+            TxValidationState state;
+            if (threshold_audit::CheckAuthorization(tx, consensus, policy, height, state) && !policy.empty() && !tx.IsCoinBase()) {
+                assert(expiry && *expiry >= height && *expiry - height < threshold_audit::MAX_AUTHORIZATION_LIFETIME);
+            }
+        }
+    } catch (const std::ios_base::failure&) {
+    }
+    g_threshold_audit_enabled = previous;
+    g_con_elementsmode = previous_elements;
+}
+} // namespace
+
+/** Input is TAG1, TXAU (above), or the public statement/vector encoding described
+ * in contrib/threshold-audit/NATIVE-INTEGRATION.md. No private keys enter any parser. */
 FUZZ_TARGET(threshold_audit)
 {
     if (buffer.size() > 125000) return;
@@ -35,6 +87,10 @@ FUZZ_TARGET(threshold_audit)
         for (unsigned char byte : take(4)) value = (value << 8) | byte;
         return value;
     };
+    if (bytes.size() >= 4 && std::equal(bytes.begin(), bytes.begin() + 4, "TXAU")) {
+        CheckAuthorizationInput(bytes);
+        return;
+    }
     try {
         if (bytes.size() >= 4 && std::equal(bytes.begin(), bytes.begin() + 4, "TAPF")) {
             (void)take(4);

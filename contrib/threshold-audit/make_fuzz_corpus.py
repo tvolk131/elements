@@ -2,7 +2,7 @@
 # Copyright (c) 2026 The Elements Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Generate public TAC2/TAG1/TAP1 seeds for the native threshold_audit fuzz target."""
+"""Generate public TAC2/TAG1/TAP1/TXAU seeds for the native threshold_audit fuzz target."""
 
 import argparse
 import hashlib
@@ -19,6 +19,8 @@ from governance import AuditConfig, AuditKey, PreparedTransition, Transition, ma
 from native_governance import policy_binding, prepared_to_bytes
 from recovery import Opening, Statement
 from threshold import simulate_handoff, simulate_keygen
+from settlement.authorization import MAX_LIFETIME, authorization_digest, encode
+from test_framework import messages
 
 
 def number(value):
@@ -64,6 +66,29 @@ def generate(curve):
                        + blob(handed.to_bytes()) + blob(prepared_to_bytes(prepared))}
 
 
+def authorization_seeds(curve):
+    """Quorum-authorized transactions for the fuzz harness's default (zero) genesis."""
+    messages.THRESHOLD_AUDIT = True
+    secrets = [random_scalar() for _ in range(3)]
+    policy = bytes([2]) + b''.join(curve.mul(secret)[1:] for secret in secrets)
+    tx = messages.CTransaction()
+    tx.vin = [messages.CTxIn(messages.COutPoint(int.from_bytes(hashlib.sha256(b'audit fuzz input').digest(), 'big'), 0))]
+    tx.vout = [messages.CTxOut(1000, b'\x51'), messages.CTxOut(10)]
+    height = 100
+
+    def authorized(expiry, signers=(0, 2)):
+        result = messages.CTransaction(tx)
+        digest = authorization_digest('00' * 32, policy, tx, expiry)
+        result.wit.vchAuthorization = encode(expiry, {index: curve.sign(secrets[index], digest) for index in signers})
+        return b'TXAU' + number(height) + blob(policy) + result.serialize_with_witness()
+
+    return {'authorization': authorized(height + 5),
+            'authorization-last-height': authorized(height + MAX_LIFETIME - 1),
+            'authorization-too-far': authorized(height + MAX_LIFETIME),
+            'authorization-expired': authorized(height - 1),
+            'authorization-short-quorum': authorized(height + 5, signers=(1,))}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--library', default=os.environ.get('THRESHOLD_AUDIT_SECP256K1'), required=False)
@@ -76,6 +101,7 @@ def main():
     curve = Curve(options.library)
     try:
         seeds = generate(curve)
+        seeds.update(authorization_seeds(curve))
     finally:
         curve.close()
     rng = random.Random(0)
