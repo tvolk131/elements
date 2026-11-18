@@ -284,6 +284,10 @@ export function WalletPage({
 function Balances() {
   const { data, account } = useApp();
   const balances = data.balances.filter((b) => b.account_id === account);
+  const frozen = (b: (typeof balances)[number]) =>
+    (data.frozen_funds ?? [])
+      .filter((f) => f.account_id === b.account_id && f.currency === b.currency)
+      .reduce((sum, f) => sum + f.amount_minor, 0);
   return (
     <section
       className="wallet-balances"
@@ -322,8 +326,19 @@ function Balances() {
               </div>
               <div>
                 <span>Reserved</span>
-                <strong>{money(b.balance_minor - b.available_minor)}</strong>
+                <strong>
+                  {money(b.balance_minor - b.available_minor - frozen(b))}
+                </strong>
               </div>
+              {frozen(b) > 0 && (
+                <div
+                  className="warning-text"
+                  data-testid={`frozen-${b.currency}`}
+                >
+                  <span>Frozen by regulator order</span>
+                  <strong>{money(frozen(b))}</strong>
+                </div>
+              )}
             </div>
             <div
               data-reconciled={b.chain_reconciles === true}

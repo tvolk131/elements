@@ -34,7 +34,7 @@ in as anyone; use it only for a local demo runtime.
 1. `python3 -m settlement.demo_seed /path/to/runtimes/demo-core --reset`
    restores the snapshot and starts the demo (about a minute).
 2. Open the wallet URL it prints, at 1440×900 or larger.
-3. In that browser, sign in as **Regulator · opens disclosures**, open
+3. In that browser, sign in as **Regulator · disclosures and freezes**, open
    **Disclosures → Create or import a recipient key**, and import
    `demo-recipient-key.json` from the runtime directory. The password is
    `concord-demo`. The key stays in this browser across resets.
@@ -81,12 +81,23 @@ a withdrawal waits for a person at the company to release it.
    company to release it, so they control the timing and can still stop it.
 4. **Private, but accountable (4 min).** As *Bank compliance*, show the
    Disclosures page: a request names one payment and one recipient, and
-   guardians approve it. Switch to *Regulator · opens disclosures*, enter the
+   guardians approve it. Switch to *Regulator · disclosures and freezes*, enter the
    key password and open the case. The amount is decrypted in the regulator's
    browser and checked against the chain.
    *Point:* this is how the federation intervenes on suspected fraud: payment
    details are not public, yet a named authority can be shown exactly the
    payments it needs, with a guardian quorum's approval, and it is all logged.
+   **Freeze (3 min).** Still as the regulator, in the same case, fill in
+   **Freeze these funds** (a reason, and the key password again) and send it.
+   **Freeze orders** below shows each operator applying it: "Applied by 5 of 5
+   operators". Switch to *Initech*: the €12,750 shows as **Frozen by regulator
+   order** and is no longer available to send. Back as the regulator, open
+   **Release…** on the order to lift it.
+   *Point:* the regulator signs the order in its own browser; each operator
+   checks that signature itself, and from the next block no operator will
+   authorize or confirm a spend of those funds, even one authorized earlier.
+   The freeze stops the funds where they are; moving them back to their owner
+   is the next step and is not built yet.
 5. **Backing (1 min).** Switch to *Bank · reserves and oversight* and open
    **Reserves**: cash held equals tokens in circulation, per currency.
 6. **Optional: who runs it (1 min).** In the same console, **Operators** shows
@@ -142,12 +153,11 @@ created the request, a second bank person must still approve. If issuing
 cannot start (for example, the wallet does not reconcile), the request shows
 why and an approver can issue it by hand.
 
-Intervention today means disclosure. Freezing is not built yet, though the
-ledger already provides the lever: every transaction needs the operators'
-authorization, so refusing to authorize spends of particular funds would stop
-them, and an authorization already given expires within 20 blocks. Nothing
-reverses a payment that has confirmed. The simulated bank can hold issuance
-and payouts.
+Intervention means disclosure and freezing. A freeze stops the named funds
+where they are, from the next block, including a spend someone had already
+authorized. Moving frozen funds back to their owner is not built yet, and
+nothing reverses a payment that has confirmed. The simulated bank can hold
+issuance and payouts.
 
 The **Add the other operators' approvals** shortcut is demo-only. It asks
 each remaining operator's own approval service to sign, exactly as its

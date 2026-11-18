@@ -107,6 +107,61 @@ class Institution:
         if 'expires_at' not in {row[1] for row in self.db.execute('PRAGMA table_info(rotation_approvals)')}:
             self.db.execute('ALTER TABLE rotation_approvals ADD COLUMN expires_at INTEGER')
         self.db.execute('CREATE TABLE IF NOT EXISTS signed_blocks(height INTEGER PRIMARY KEY,header_hash TEXT NOT NULL)')
+        # Case-authority orders this operator has verified and applied.
+        self.db.execute('CREATE TABLE IF NOT EXISTS freeze_orders(id TEXT PRIMARY KEY,kind TEXT NOT NULL,data TEXT NOT NULL,'
+                        'released_by TEXT)')
+        self.db.execute('CREATE TABLE IF NOT EXISTS frozen_outputs(outpoint TEXT NOT NULL,order_id TEXT NOT NULL,'
+                        'PRIMARY KEY(outpoint,order_id))')
+
+    def apply_freeze_order(self, request):
+        """Record a case authority's freeze or release after checking its signature.
+
+        Only keys in this operator's own configuration count; the settlement
+        server that relays the order cannot add one. Applying the same order
+        again is harmless, so a relay can retry.
+        """
+        from .freeze_orders import receipt_digest, validate, verify
+        order, signature = request['order'], request['signature']
+        target = validate(order, self.config['genesis_hash'])
+        verify(self.curve, self.config.get('case_authority_keys'), order, signature)
+        data = canonical({'order': order, 'signature': signature}).decode()
+        with self.lock, self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            try:
+                prior = self.db.execute('SELECT data FROM freeze_orders WHERE id=?', (order['id'],)).fetchone()
+                if prior and json.loads(prior[0])['order'] != order:
+                    raise ValueError('a different order already uses this ID')
+                if not prior:
+                    if order['kind'] == 'freeze':
+                        self.db.executemany('INSERT OR IGNORE INTO frozen_outputs VALUES(?,?)',
+                                            [(item, order['id']) for item in target])
+                    else:
+                        lifted = self.db.execute('SELECT kind,released_by FROM freeze_orders WHERE id=?', (target,)).fetchone()
+                        if lifted is None or lifted[0] != 'freeze':
+                            raise ValueError('release names a freeze this operator has not applied')
+                        if lifted[1] is not None:
+                            raise ValueError('that freeze was already released')
+                        self.db.execute('UPDATE freeze_orders SET released_by=? WHERE id=?', (order['id'], target))
+                        self.db.execute('DELETE FROM frozen_outputs WHERE order_id=?', (target,))
+                    self.db.execute('INSERT INTO freeze_orders(id,kind,data) VALUES(?,?,?)', (order['id'], order['kind'], data))
+                self.db.execute('COMMIT')
+            except BaseException:
+                self.db.execute('ROLLBACK')
+                raise
+        return {'guardian_id': self.config['guardian_id'], 'order_id': order['id'],
+                'signature': self.curve.sign(int(self.config['approval_secret'], 16),
+                                             receipt_digest(order, self.config['guardian_id'])).hex()}
+
+    def frozen(self, transactions):
+        """The first input of these transactions that a freeze order covers, if any."""
+        with self.lock:
+            for transaction in transactions:
+                for inp in transaction.vin:
+                    spent = f'{inp.prevout.hash:064x}:{inp.prevout.n}'
+                    row = self.db.execute('SELECT order_id FROM frozen_outputs WHERE outpoint=? LIMIT 1', (spent,)).fetchone()
+                    if row:
+                        return spent, row[0]
+        return None
 
     def approve(self, operation):
         if operation.get('kind') == 'federation_rotation':
@@ -238,6 +293,11 @@ class Institution:
         # in this RPC rejects all OP_RETURNs with its null datacarrier setting,
         # including the intentional redemption burns admitted by this chain.
         self.rpc.testproposedblock(request['rawblock'], True)
+        # A transaction authorized before a freeze stays valid for up to the
+        # authorization lifetime; refusing the block stops it immediately.
+        frozen = self.frozen(block.vtx[1:])
+        if frozen:
+            raise ValueError(f'block spends {frozen[0]}, frozen by order {frozen[1]}')
         block.rehash()
         with self.lock, self.db:
             self.db.execute('BEGIN IMMEDIATE')
@@ -283,6 +343,9 @@ class Institution:
             if not isinstance(signature, str) or not self.curve.verify_signature(
                     bank, registration_digest(genesis, script), bytes.fromhex(signature)):
                 raise ValueError('an output pays an address that no member bank has registered')
+        frozen = self.frozen([transaction])
+        if frozen:
+            raise ValueError(f'funds frozen by order {frozen[1]}: {frozen[0]}')
         digest = authorization_digest(genesis, policy, transaction, expiry)
         return {'guardian_id': self.config['guardian_id'], 'signature': self.curve.sign(secret, digest).hex()}
 
@@ -500,7 +563,8 @@ def serve(config, rpc):
                         self.respond(403, {'error': 'Operator approval passphrase is required'})
                         return
                     result = institution.approve(request['operation'])
-                elif (self.path == '/' and request.get('method') in {'sign_transaction', 'sign_migration', 'sign_block', 'authorize_transaction'}
+                elif (self.path == '/' and request.get('method') in {'sign_transaction', 'sign_migration', 'sign_block', 'authorize_transaction',
+                                                                  'apply_freeze_order'}
                       and hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + config['token'])):
                     result = getattr(institution, request['method'])(request)
                 else:

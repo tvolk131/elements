@@ -16,6 +16,7 @@ import {
 import { date, human, money, short } from "./domain";
 import { memberName } from "./guardian";
 import { usePersonas } from "./demo";
+import { FreezeOrders } from "./freezes";
 
 interface Authorization {
   expiry_height: number;
@@ -324,6 +325,7 @@ export function LedgerPage() {
         <TryWithout />
         <Institutions />
       </div>
+      {app.can("view_bank") && <FreezeOrders />}
       <Panel
         title="Recent transactions"
         subtitle={

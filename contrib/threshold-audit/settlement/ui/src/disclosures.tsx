@@ -22,6 +22,7 @@ import {
   type RecoveredOutput,
 } from "./recipient-crypto";
 import type { ComponentProps } from "react";
+import { FreezeCaseOutputs, FreezeOrders, recipientKeyStore } from "./freezes";
 function Panel({ children, ...props }: ComponentProps<typeof BasePanel>) {
   return (
     <BasePanel {...props}>
@@ -66,7 +67,7 @@ interface Overview {
   my_keys: Recipient[];
   members: number[];
 }
-const keyStore = (user: string) => `concord-recipient-key-v1:${user}`;
+const keyStore = recipientKeyStore;
 export function DisclosuresPage() {
   const app = useApp();
   const [selected, setSelected] = useState("");
@@ -83,7 +84,9 @@ export function DisclosuresPage() {
       <Heading title="Confidential disclosures">
         {app.can("review_disclosure")
           ? "Approve recipient access to selected confidential outputs. These are disclosure approvals, separate from payments."
-          : "Request access to selected output details, or open an encrypted package addressed to you."}
+          : app.can("order_freeze")
+            ? "Open encrypted packages addressed to you, and freeze the funds a case names."
+            : "Request access to selected output details, or open an encrypted package addressed to you."}
       </Heading>
       <ErrorNote error={query.error} />
       {app.can("receive_disclosure") && <RecipientKeys onChange={refresh} />}
@@ -142,6 +145,7 @@ export function DisclosuresPage() {
           </Panel>
         )}
       </div>
+      {(app.can("order_freeze") || app.can("view_bank")) && <FreezeOrders />}
     </>
   );
 }
@@ -525,6 +529,8 @@ function NewCase({
     </Panel>
   );
 }
+const user_is_recipient = (user: string, c: DisclosureCase) =>
+  c.recipient.id === user;
 function CaseDetail({
   value: c,
   refresh,
@@ -751,6 +757,9 @@ function CaseDetail({
               </Button>
             </form>
           </div>
+        )}
+        {user_is_recipient(app.user.id, c) && (
+          <FreezeCaseOutputs caseId={c.id} outputs={c.outputs} />
         )}
         <ErrorNote
           error={action.error || open.error || exportPackage.error || c.error}

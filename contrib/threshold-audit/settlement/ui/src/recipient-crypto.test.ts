@@ -1,9 +1,14 @@
 import { expect, it } from "vitest";
+import { schnorr } from "@noble/curves/secp256k1.js";
 import fixture from "./fixtures/sealed-disclosure.json";
 import {
   assetGenerator,
   bytes,
   canonical,
+  caseAuthorityKey,
+  caseAuthoritySecret,
+  freezeOrderDigest,
+  signFreezeOrder,
   hex,
   newRecipientKey,
   unlockRecipientKey,
@@ -87,4 +92,41 @@ it("produces the same canonical JSON as Python's json.dumps(ensure_ascii=True)",
       canonical({ b: "x\x7f\u00e9\u{1F600}", a: [1, { z: true, y: null }] }),
     ),
   ).toBe('{"a":[1,{"y":null,"z":true}],"b":"x\\u007f\\u00e9\\ud83d\\ude00"}');
+});
+
+it("derives the regulator's order-signing key exactly as Python does", () => {
+  // settlement/test_freezes.py checks the same vector and this signature.
+  const recipient = new Uint8Array(32);
+  recipient[31] = 1;
+  const secret = caseAuthoritySecret(recipient);
+  expect(hex(secret)).toBe(
+    "23b8cc6122f8e30aec62f6cdb6d4262a17b74d621d42c2d4ffd3f407cf31df3f",
+  );
+  const key = caseAuthorityKey(secret);
+  expect(key).toBe(
+    "5d027bd59943981e1c762a33f03db253e6b403a1722a5905758348259852c4cb",
+  );
+  const order = {
+    format: "concord-freeze-order-v1",
+    kind: "freeze",
+    id: "f1".repeat(16),
+    genesis_hash: "cc".repeat(32),
+    authority: "Regulator",
+    authority_key: key,
+    case_reference: "case-7",
+    reason: "Proceeds of a reported theft",
+    issued_at: 1795000000,
+    outputs: [{ txid: "ab".repeat(32), vout: 1 }],
+  };
+  const signature = signFreezeOrder(order, secret);
+  expect(
+    schnorr.verify(bytes(signature), freezeOrderDigest(order), bytes(key)),
+  ).toBe(true);
+  expect(
+    schnorr.verify(
+      bytes(signature),
+      freezeOrderDigest({ ...order, case_reference: "case-8" }),
+      bytes(key),
+    ),
+  ).toBe(false);
 });

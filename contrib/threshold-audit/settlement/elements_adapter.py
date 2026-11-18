@@ -74,6 +74,8 @@ class ElementsAdapter:
         # Signs a member bank's statement that a destination is a registered
         # customer address. Installed by whoever holds that bank's key.
         self.registrar = None
+        # Outpoints under a freeze order, set by the freeze relay.
+        self.frozen = dict
         self.lock = threading.RLock()
         self.db = sqlite3.connect(config['database'], check_same_thread=False, isolation_level=None)
         self.db.execute('PRAGMA journal_mode=WAL')
@@ -208,8 +210,10 @@ class ElementsAdapter:
             packet = json.loads(row[0])
             wallet = self.sponsor if packet['stage'] in ('issue', 'burn', 'refund', 'migration') else self.wallets[operation['account_id']]
             locked = {(coin['txid'], coin['vout']) for coin in wallet.listlockunspent()}
+            frozen = self.frozen()
             inputs = [{'txid': f'{inp.prevout.hash:064x}', 'vout': inp.prevout.n} for inp in tx_from_hex(packet['rawtx']).vin
-                      if (f'{inp.prevout.hash:064x}', inp.prevout.n) in locked]
+                      if (f'{inp.prevout.hash:064x}', inp.prevout.n) in locked
+                      and f'{inp.prevout.hash:064x}:{inp.prevout.n}' not in frozen]
             if inputs:
                 wallet.lockunspent(True, inputs)
             self.db.execute('DELETE FROM prepared WHERE case_id=? AND stage=?', (operation['id'], stage))

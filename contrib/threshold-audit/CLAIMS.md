@@ -17,6 +17,7 @@ and login IDs still say `institution` for operators.
 | Every confidential output carries a recovery packet that only 7 of 10 guardians together can open | Elements consensus checks every packet's proofs | Hand-written zero-knowledge proofs; see "not built" for review status |
 | Every transaction needs an authorization from 3 of 5 operators | Elements consensus | The policy can be re-keyed through DynaFed but never switched off |
 | An authorization is usable for at most 20 blocks | Elements consensus | Withholding new authorizations therefore takes effect within 20 blocks |
+| A regulator can freeze named outputs: no operator will authorize or confirm a spend of them | Each operator's own service, enforced through the ledger's authorization and block-signing rules | Holds while 3 of 5 operators honor the order. Takes effect from the next block, even for a spend authorized earlier, which every node rejects once its authorization expires. Checked live on the demo chain |
 | The operators refuse payments to addresses no member bank registered | Each operator's signing service | Policy in the operators' software, not a ledger rule. The registration shows operators which member bank stands behind each destination, though not the customer or the amount. In the sandbox one simulated bank key signs every registration, for both banks |
 | Blocks need signatures from 3 of 5 operators | Elements consensus | |
 | Issuing or destroying tokens needs 3 of 5 operators to co-sign with their own keys | Elements consensus (3-of-5 treasury script) | Each operator's service checks the request before signing |
@@ -34,17 +35,16 @@ and login IDs still say `institution` for operators.
 | Ten independent guardians | Ten separate processes on the same machine. Their key setup is a simulated ceremony, not a secure distributed key generation |
 | Banks: deposits, payouts, reserves | A simulated bank in the application's database |
 | Bank-signed directory answers and address registrations | Real signatures, but every bank's key is held by the central application |
+| The regulator's freeze key being trusted | Each operator's configuration lists it; in production it would come from the operator-signed member directory |
 | Customers controlling their money | Customer wallets live in the central node and are signed by the application. The two-person approval is an application login check, not a cryptographic signature by each person |
 | Independent reserve evidence | The simulated bank's own numbers |
 | Signing in as anyone, the "add the other operators' approvals" shortcut | Demo mode only. The shortcut does ask each operator's real service to sign |
 
 ## Not built: do not claim
 
-- **Freezing specific funds.** The lever exists: operators can refuse to
-  authorize spends of chosen outputs, and consensus now caps how long an earlier
-  authorization stays usable. No freeze order, freeze list or case workflow is
-  implemented yet.
-- **Reversing or recovering stolen funds,** and serial-numbered notes (M1Coin).
+- **Moving frozen funds** (quarantine) and returning them to their owner;
+  **reversing or recovering stolen funds,** and serial-numbered notes (M1Coin).
+  A freeze today only stops the funds where they are.
 - **Validation by an independent node or an outside observer,** and behavior
   across real network faults.
 - **Customer-held keys.**

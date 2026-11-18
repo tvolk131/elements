@@ -347,6 +347,66 @@ class TreasuryRotationTests(unittest.TestCase):
             signer.sign_block({'rawblock': changed.serialize().hex()})
         signer.db.close(); signer.curve.close()
 
+    def freeze_order(self, outputs=None, **changes):
+        order = {'format': 'concord-freeze-order-v1', 'kind': 'freeze', 'id': 'f1' * 16, 'genesis_hash': 'cc' * 32,
+                 'authority': 'Regulator', 'authority_key': self.curve.mul(777)[1:].hex(), 'case_reference': 'case-1',
+                 'reason': 'Suspected theft of the named output', 'issued_at': int(time.time()),
+                 'outputs': outputs if outputs is not None else
+                 [{'txid': f'{self.transaction.vin[0].prevout.hash:064x}', 'vout': self.transaction.vin[0].prevout.n}]}
+        order.update(changes)
+        return order
+
+    def test_freeze_order_stops_authorization_and_blocks_until_released(self):
+        from .freeze_orders import receipt_digest, sign
+        policy = policy_bytes(self.source['approval_public_keys'], self.source['guardian_order'], 2)
+        self.rpc.native_authorization = policy.hex()
+        source = self.block_policy(self.source, (41, 42, 43))
+        config = dict(self.config, **source, block_secret=f'{41:064x}',
+                      case_authority_keys={'Regulator': self.curve.mul(777)[1:].hex()})
+        signer = Institution(config, self.rpc)
+        block = self.block(source)
+        block.vtx = [CTransaction(), CTransaction(self.transaction)]
+        block.hashMerkleRoot = block.calc_merkle_root()
+        order = self.freeze_order()
+        # Only a configured case authority's exact signature counts.
+        with self.assertRaisesRegex(ValueError, 'signature is invalid'):
+            signer.apply_freeze_order({'order': order, 'signature': sign(self.curve, 778, order)})
+        stranger = self.freeze_order(authority_key=self.curve.mul(778)[1:].hex())
+        with self.assertRaisesRegex(ValueError, 'not from a trusted case authority'):
+            signer.apply_freeze_order({'order': stranger, 'signature': sign(self.curve, 778, stranger)})
+        for bad in (self.freeze_order(genesis_hash='dd' * 32), self.freeze_order(outputs=[]),
+                    self.freeze_order(outputs=[{'txid': 'ab' * 32, 'vout': 0}] * 2), self.freeze_order(kind='seize')):
+            with self.assertRaises(ValueError):
+                signer.apply_freeze_order({'order': bad, 'signature': sign(self.curve, 777, bad)})
+        self.assertIn('signature', signer.authorize_transaction(self.authorization_request()))
+        receipt = signer.apply_freeze_order({'order': order, 'signature': sign(self.curve, 777, order)})
+        self.assertTrue(self.curve.verify_signature(self.curve.mul(111)[1:], receipt_digest(order, 'a1'),
+                                                    bytes.fromhex(receipt['signature'])))
+        # Relays retry, so applying the same order again is harmless; reusing its ID is not.
+        signer.apply_freeze_order({'order': order, 'signature': sign(self.curve, 777, order)})
+        reused = self.freeze_order(reason='A different reason for the same ID')
+        with self.assertRaisesRegex(ValueError, 'different order'):
+            signer.apply_freeze_order({'order': reused, 'signature': sign(self.curve, 777, reused)})
+        with self.assertRaisesRegex(ValueError, 'frozen by order'):
+            signer.authorize_transaction(self.authorization_request())
+        # A spend authorized before the freeze can't get into a block either.
+        with self.assertRaisesRegex(ValueError, 'frozen by order'):
+            signer.sign_block({'rawblock': block.serialize().hex()})
+        self.assertIsNone(signer.db.execute('SELECT 1 FROM signed_blocks').fetchone())
+        release = self.freeze_order(kind='release', id='e1' * 16, reason='Funds returned to their owner')
+        del release['outputs']
+        release['releases'] = order['id']
+        unknown = dict(release, id='e2' * 16, releases='00' * 16)
+        with self.assertRaisesRegex(ValueError, 'has not applied'):
+            signer.apply_freeze_order({'order': unknown, 'signature': sign(self.curve, 777, unknown)})
+        signer.apply_freeze_order({'order': release, 'signature': sign(self.curve, 777, release)})
+        again = dict(release, id='e3' * 16)
+        with self.assertRaisesRegex(ValueError, 'already released'):
+            signer.apply_freeze_order({'order': again, 'signature': sign(self.curve, 777, again)})
+        self.assertIn('signature', signer.authorize_transaction(self.authorization_request()))
+        self.assertIn('signature', signer.sign_block({'rawblock': block.serialize().hex()}))
+        signer.db.close(); signer.curve.close()
+
     def test_block_proposal_requires_exact_independent_rotation_approval(self):
         source, target = self.block_policy(self.source, (41, 42, 43)), self.block_policy(self.target, (51, 52, 53))
         signer = Institution(dict(self.config, **source, block_secret=f'{41:064x}'), self.rpc)

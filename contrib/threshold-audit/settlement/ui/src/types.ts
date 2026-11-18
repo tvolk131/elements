@@ -216,8 +216,19 @@ export interface Federation {
   rotation: Rotation | null;
   allowed_actions: string[];
 }
+export interface FrozenFunds {
+  account_id: string;
+  currency: Currency;
+  amount_minor: number;
+  outpoint: string;
+  order_id: string;
+  authority: string;
+  case_reference: string;
+}
 export interface Dashboard {
   directory_banks: { id: string; public_key: string }[];
+  /** Funds on visible accounts under a regulator's freeze order. */
+  frozen_funds?: FrozenFunds[];
   session: Session;
   accounts: Account[];
   balances: Balance[];

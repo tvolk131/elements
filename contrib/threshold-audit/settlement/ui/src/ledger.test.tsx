@@ -11,7 +11,7 @@ import {
 } from "./domain";
 import type { Operation } from "./types";
 
-const app = vi.hoisted(() => ({ setDialog: vi.fn() }));
+const app = vi.hoisted(() => ({ setDialog: vi.fn(), can: () => false }));
 const calls = vi.hoisted(() => ({ list: [] as [string, unknown][] }));
 const state = vi.hoisted(() => ({
   demo: true,

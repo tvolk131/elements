@@ -61,10 +61,39 @@ stop being valid at the activation boundary and are issued again.
 - Authorizers see what the chain shows. They are not given amounts.
 - A node wallet does not request authorizations. `sendtoaddress` on a chain
   with the rule on creates a transaction the node will not relay.
-- There is no freeze list. An operator that declines to sign is the only
-  refusal, and a single one does not block a 3-of-5 quorum.
+- The ledger has no freeze list of its own. Freezes are orders each operator
+  keeps (see [Freeze orders](#freeze-orders)); a single operator's refusal
+  does not block a 3-of-5 quorum.
 - Proposals that replace the authorizer keys need block signers' votes, not
   the outgoing authorizers' signatures.
+
+## Freeze orders
+
+A case authority (the regulator) signs a freeze order naming exact outputs.
+Each operator checks the signature against the case-authority keys in its own
+configuration, stores the order, and returns a signed receipt. From then on it
+refuses to authorize any transaction that spends those outputs and refuses to
+sign any block that contains one. A release order names the freeze it lifts.
+The settlement server only relays orders: it cannot create one, and an
+operator does not take its word for one (`settlement/freeze_orders.py`,
+`Institution.apply_freeze_order` in `settlement/treasury.py`).
+
+- **Effect.** A freeze holds while enough operators honor it that the rest
+  can't reach the threshold: 3 of 5 here. It takes effect from the next block,
+  including for a spend that was authorized before the freeze: the operators
+  won't sign a block containing it, and once its authorization expires (at
+  most 20 blocks) every node rejects it with `bad-tx-authorization-expired`.
+- **Block production.** The block producer leaves frozen spends out of
+  candidate blocks (`prioritisetransaction` with a large negative delta), so a
+  frozen spend in the mempool does not stall the chain.
+- **The holder's bank** locks the frozen coins in the customer's wallet, so
+  the customer's other payments still work, and shows the frozen amount.
+- **Keys.** The regulator signs in its browser with a key derived from its
+  disclosure recipient key (`case_authority_secret`; the browser and Python
+  derivations are pinned to the same test vector). In the sandbox each
+  operator's configuration lists the trusted key; in production it would come
+  from the operator-signed member directory.
+- **Not built:** moving frozen funds (quarantine) and returning them.
 
 ## In the settlement sandbox
 

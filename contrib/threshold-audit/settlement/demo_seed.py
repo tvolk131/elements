@@ -42,11 +42,14 @@ sys.path[:0] = [str(AUDIT), str(ROOT / 'test' / 'functional')]
 from curve import Curve, random_scalar  # noqa: E402
 from guardian_service import atomic_write  # noqa: E402
 from sealed_delivery import canonical  # noqa: E402
+from settlement.freeze_orders import case_authority_secret  # noqa: E402
 from settlement.runtime import load_config, save_config  # noqa: E402
 from settlement.smoke import Pilot  # noqa: E402
 
 APPROVAL_TTL = 14 * 24 * 3600
 RECIPIENT_PASSWORD = 'concord-demo'
+# The regulator persona's display name, which its freeze orders carry.
+REGULATOR = 'Financial Regulator'
 PERSONAS = [
     ('acme-maker', 'wallet', 'Acme · creates payments'),
     ('acme-approver', 'wallet', 'Acme · approves payments'),
@@ -55,7 +58,7 @@ PERSONAS = [
     ('bank-approver', 'wallet', 'Bank · approves requests'),
     ('initech-maker', 'wallet', 'Initech (Bank B) · receives payments'),
     ('bank-compliance', 'wallet', 'Bank compliance · requests disclosures'),
-    ('demo-recipient', 'wallet', 'Regulator · opens disclosures'),
+    ('demo-recipient', 'wallet', 'Regulator · disclosures and freezes'),
     ('institution-1', 'guardian', 'Operator 1 · signs approvals'),
     ('institution-2', 'guardian', 'Operator 2 · signs approvals'),
     ('institution-3', 'guardian', 'Operator 3 · signs approvals'),
@@ -96,9 +99,41 @@ def create(directory, port):
     log.close()
 
 
+def recipient_key(directory, curve):
+    """The regulator's key file, in the format the browser exports; created once."""
+    key_path = directory / 'demo-recipient-key.json'
+    if not key_path.exists():
+        secret, salt, nonce = random_scalar(), secrets.token_bytes(16), secrets.token_bytes(12)
+        aes = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=210000).derive(RECIPIENT_PASSWORD.encode())
+        base = {'format': 'concord-recipient-key-v1', 'user_id': 'demo-recipient', 'public_key': curve.mul(secret).hex()}
+        ciphertext = AESGCM(aes).encrypt(nonce, secret.to_bytes(32, 'big'), canonical(base))
+        atomic_write(key_path, dict(base, salt=salt.hex(), nonce=nonce.hex(), ciphertext=ciphertext.hex()))
+    return json.loads(key_path.read_text())
+
+
+def unlock_recipient_key(key):
+    aes = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=bytes.fromhex(key['salt']),
+                     iterations=210000).derive(RECIPIENT_PASSWORD.encode())
+    base = {name: key[name] for name in ('format', 'user_id', 'public_key')}
+    return int.from_bytes(AESGCM(aes).decrypt(bytes.fromhex(key['nonce']), bytes.fromhex(key['ciphertext']), canonical(base)), 'big')
+
+
+def regulator_authority(directory):
+    """The demo regulator's freeze-order key, derived in the browser from the same key file."""
+    curve = Curve(load_config(directory / 'adapter.json')['library'])
+    try:
+        public = curve.mul(case_authority_secret(unlock_recipient_key(recipient_key(directory, curve))))[1:].hex()
+    finally:
+        curve.close()
+    return {REGULATOR: public}
+
+
 def configure(directory, mesh):
     """Turn on demo conveniences. Every change is local to this runtime."""
     config = load_config(directory / 'web.json')
+    # Operators honor freeze orders only from keys in their own configuration.
+    trusted = regulator_authority(directory)
+    config['case_authority_keys'] = trusted
     config['approval_ttl'] = APPROVAL_TTL
     # The federation runs the ledger and controls what enters and leaves it;
     # payments between customers need only the customer's own approvals.
@@ -115,6 +150,7 @@ def configure(directory, mesh):
     for service in directory.glob('institution-*/service.json'):
         value = load_config(service)
         value['demo_autofill'] = True
+        value['case_authority_keys'] = trusted
         save_config(service, value)
     if mesh:
         shutil.copyfile(mesh, directory / 'mesh.json')
@@ -191,15 +227,8 @@ class Seeder:
         return self.authorize(operation, 'acme-approver', institutions)
 
     def recipient_key(self, curve):
-        key_path = self.directory / 'demo-recipient-key.json'
-        if not key_path.exists():
-            # Same format the browser exports, so the presenter can import it.
-            secret, salt, nonce = random_scalar(), secrets.token_bytes(16), secrets.token_bytes(12)
-            aes = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=210000).derive(RECIPIENT_PASSWORD.encode())
-            base = {'format': 'concord-recipient-key-v1', 'user_id': 'demo-recipient', 'public_key': curve.mul(secret).hex()}
-            ciphertext = AESGCM(aes).encrypt(nonce, secret.to_bytes(32, 'big'), canonical(base))
-            atomic_write(key_path, dict(base, salt=salt.hex(), nonce=nonce.hex(), ciphertext=ciphertext.hex()))
-        key = json.loads(key_path.read_text())
+        # Same format the browser exports, so the presenter can import it.
+        key = recipient_key(self.directory, curve)
         self.call('demo-recipient', '/api/disclosures/recipient-key', {'public_key': key['public_key']})
         return key
 

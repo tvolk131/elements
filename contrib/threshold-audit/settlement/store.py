@@ -32,8 +32,9 @@ ROLES = {
     "bankcompliance": {"view_bank", "request_disclosure", "receive_disclosure"},
     "federationcompliance": {"view_bank", "request_disclosure", "receive_disclosure", "network_disclosures"},
     "auditguardian": {"review_disclosure"},
-    # An outside authority: receives approved disclosures, sees no accounts.
-    "regulator": {"receive_disclosure"},
+    # An outside authority: receives approved disclosures and orders freezes,
+    # but sees no accounts.
+    "regulator": {"receive_disclosure", "order_freeze"},
 }
 FINAL = {"settled", "rejected", "failed", "cancelled"}
 PENDING_TOKEN = {"awaiting_approval", "ready", "preparing", "chain_pending"}
@@ -97,6 +98,7 @@ class Settlement:
         self.federation = None
         self.disclosures, self.directory = None, None
         self.receipts = None
+        self.freezes = None
         # Set by the sandbox: what the chain recorded, and demo-only controls.
         self.ledger_view, self.demo_runtime = None, None
         self.bank_signing_secret = bank_signing_secret
@@ -473,7 +475,8 @@ class Settlement:
             if (operation["account_id"] == account_id and operation["currency"] == currency
                     and operation["state"] in PENDING_TOKEN):
                 reserved += operation["amount_minor"]
-        return self.token_balance(account_id, currency) - reserved
+        frozen = self.freezes.frozen_balance(account_id, currency) if self.freezes is not None else 0
+        return self.token_balance(account_id, currency) - reserved - frozen
 
     def create(self, user, kind, body):
         self.check_rotation_hold()
@@ -1058,6 +1061,8 @@ class Settlement:
         with self.lock:
             if self.receipts is not None and not (self.federation is not None and self.federation.held):
                 self.receipts.poll()
+        if self.freezes is not None:
+            self.freezes.retry()
 
     def reconcile(self):
         result = []
@@ -1217,6 +1222,7 @@ class Settlement:
                     "reserves": self.reconcile() if "view_bank" in ROLES[user["role"]] and user["tenant"] == self.config.get("bank_tenant", "bank") else [],
                     "operations": operations, "activity": activity[:100], "beneficiaries": beneficiaries,
                     "directory_banks": self.directory.public_banks() if self.directory else [],
+                    "frozen_funds": self.freezes.frozen_funds(user) if self.freezes is not None else [],
                     "guardians": [{"id": guardian, "institution_id": guardian, "public_key": key,
                                    "approval_url": self.config.get("institution_approval_urls", {}).get(guardian),
                                    "name": guardian} for guardian, key in self.verifier.public_keys.items()]}

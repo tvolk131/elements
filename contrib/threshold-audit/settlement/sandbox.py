@@ -343,6 +343,7 @@ class Sandbox:
         self.store.ledger_view = LedgerView(adapter)
         from .capability_demo import enroll
         enroll(self, config, adapter_config)
+        self.blocks.exclude = lambda block: self.store.freezes.excluded(block) if self.store.freezes else []
         self.server = create_server(self.store, port=port)
         self.server.start_worker()
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -547,7 +548,9 @@ class Sandbox:
         services, users = {}, []
         for guardian, config in configs.items():
             config.update(policy, assets=self.adapter.config['assets'], bank_public_key=curve.mul(bank)[1:].hex(),
-                          policy_asset=policy_asset, historical_approval_policies=history)
+                          policy_asset=policy_asset, historical_approval_policies=history,
+                          # Incoming operators honor the same case authorities.
+                          case_authority_keys=self.store.config.get('case_authority_keys', {}))
             private_json(self.directory / guardian / 'service.json', config)
             services[guardian] = self._launch_institution(guardian, port)
             login = next(value for value in credentials if value['username'] == guardian)

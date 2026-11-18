@@ -683,3 +683,23 @@ export async function recoverBundle(
   requireThat(results.length > 0, unavailableReason);
   return results;
 }
+
+// Freeze orders (settlement/freeze_orders.py). The regulator signs with a key
+// derived from its recipient key, so one password-protected file serves both.
+const taggedHash = (tag: string, data: Uint8Array) => {
+  const prefix = sha256(text(tag));
+  return sha256(concat(prefix, prefix, data));
+};
+export function caseAuthoritySecret(recipientSecret: Uint8Array): Uint8Array {
+  const value = mod(
+    number(taggedHash("concord-case-authority-signing-v1", recipientSecret)),
+  );
+  requireThat(value !== 0n, "Derived case-authority key is zero");
+  return integer(value, 32);
+}
+export const caseAuthorityKey = (signingSecret: Uint8Array) =>
+  hex(schnorr.getPublicKey(signingSecret));
+export const freezeOrderDigest = (order: unknown) =>
+  sha256(concat(text("CEND/freeze-order/v1\x00"), canonical(order)));
+export const signFreezeOrder = (order: unknown, signingSecret: Uint8Array) =>
+  hex(schnorr.sign(freezeOrderDigest(order), signingSecret));

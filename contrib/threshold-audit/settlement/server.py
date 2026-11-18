@@ -10,6 +10,7 @@ import re
 import socket
 import threading
 import time
+import traceback
 from urllib.parse import urlsplit
 
 from .store import Problem
@@ -256,6 +257,9 @@ class Handler(BaseHTTPRequestHandler):
                             self.respond(200, store.disclosures.bundle(session['user'], parts[2]))
                         else:
                             raise Problem('endpoint not found', 404)
+                elif path == '/api/freezes' and store.freezes is not None:
+                    with store.lock:
+                        self.respond(200, store.freezes.overview(session['user']))
                 elif path.startswith('/api/disclosure-targets/') and store.disclosures is not None:
                     with store.lock:
                         self.respond(200, store.disclosures.targets(session['user'], path.rsplit('/', 1)[1]))
@@ -266,6 +270,7 @@ class Handler(BaseHTTPRequestHandler):
         except Problem as error:
             self.respond(error.status, {"error": error.code, "message": str(error)})
         except Exception:
+            traceback.print_exc()
             self.respond(503, {"error": "service_unavailable", "message": "The local service is unavailable; no settlement was inferred."})
 
     def do_POST(self):
@@ -311,6 +316,8 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         raise Problem('endpoint not found', 404)
                 self.respond(200, result)
+            elif path == '/api/freezes' and store.freezes is not None:
+                self.respond(200, store.freezes.submit(user, body))
             elif path == '/api/beneficiaries/resolve' and store.directory is not None:
                 with store.lock:
                     self.respond(200, store.directory.resolve(user, body))
@@ -382,6 +389,8 @@ class Handler(BaseHTTPRequestHandler):
         except Problem as error:
             self.respond(error.status, {"error": error.code, "message": str(error)})
         except Exception:
+            # Keep the cause in the operator's log; the client learns nothing more.
+            traceback.print_exc()
             self.respond(503, {"error": "service_unavailable", "message": "The local service is unavailable; no settlement was inferred."})
 
 

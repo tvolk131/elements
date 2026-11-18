@@ -18,6 +18,14 @@ from .treasury import InstitutionClient, NativeECDSA
 
 
 BOOTSTRAP_SCRIPT = b'\x00\x20' + hashlib.sha256(b'\x51').digest()
+# Fee delta (in base units) that keeps a transaction out of block templates.
+EXCLUDE_DELTA = 10**12
+
+
+class QuorumUnavailable(ValueError):
+    def __init__(self, collected):
+        super().__init__('block-signing quorum unavailable')
+        self.collected = collected
 
 
 class BlockFederation:
@@ -29,6 +37,9 @@ class BlockFederation:
         if self.directory is not None:
             self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.pending = None
+        # Returns the txids in a candidate block that operators will refuse,
+        # such as spends of frozen outputs.
+        self.exclude = None
         if self.directory is not None and (self.directory / 'pending.json').exists():
             self.pending = parse_json((self.directory / 'pending.json').read_bytes())
         self.manifests = {}
@@ -88,7 +99,7 @@ class BlockFederation:
             if len(signatures) == manifest['threshold']:
                 break
         if len(signatures) != manifest['threshold']:
-            raise ValueError('block-signing quorum unavailable')
+            raise QuorumUnavailable(len(signatures))
         block.m_signblock_witness.stack = [b'', *signatures, bytes.fromhex(manifest['block_witness_script'])]
         return block.serialize().hex()
 
@@ -115,9 +126,16 @@ class BlockFederation:
                     raise ValueError('retry the original pending block proposal before changing it')
                 raw = self.pending['raw']
             else:
-                raw = self.node.getnewblockhex(min_tx_age) if proposal is None else self.node.getnewblockhex(min_tx_age, proposal)
+                raw = self._candidate(min_tx_age, proposal)
                 self._store_pending({'raw': raw, 'proposal': proposal})
-            signed = self.sign(raw)
+            try:
+                signed = self.sign(raw)
+            except QuorumUnavailable as error:
+                # Nobody signed a candidate that operators now refuse (it
+                # spends funds frozen after it was built): safe to replace.
+                if error.collected == 0 and self.exclude is not None and self.exclude(from_hex(CBlock(), raw)):
+                    self._store_pending(None)
+                raise
             result = self.node.submitblock(signed)
             if result is not None:
                 raise RuntimeError('federation block rejected: ' + str(result))
@@ -126,6 +144,16 @@ class BlockFederation:
             hashes.append(self.node.getbestblockhash())
             self._store_pending(None)
         return hashes
+
+    def _candidate(self, min_tx_age, proposal):
+        for _ in range(4):
+            raw = self.node.getnewblockhex(min_tx_age) if proposal is None else self.node.getnewblockhex(min_tx_age, proposal)
+            refused = self.exclude(from_hex(CBlock(), raw)) if self.exclude is not None else []
+            if not refused:
+                return raw
+            for txid in refused:
+                self.node.prioritisetransaction(txid, 0, -EXCLUDE_DELTA)
+        raise ValueError('could not build a block without transactions the operators refuse')
 
     def _store_pending(self, pending):
         self.pending = pending

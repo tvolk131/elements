@@ -9,6 +9,7 @@ from guardian_service import atomic_write
 from .directory import Directory
 from .disclosures import Disclosures
 from .receipts import Receipts
+from .freezes import Freezes
 
 
 def enroll(sandbox, config, adapter_config):
@@ -95,3 +96,4 @@ def enroll(sandbox, config, adapter_config):
     store.directory = Directory(store, {bank: int(value, 16) for bank, value in keys.items() if bank != 'schema_version'})
     store.disclosures = Disclosures(store, sandbox.audit)
     store.receipts = Receipts(store)
+    store.freezes = Freezes(store, adapter)
