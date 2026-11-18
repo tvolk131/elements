@@ -17,7 +17,7 @@ and login IDs still say `institution` for operators.
 | Every confidential output carries a recovery packet that only 7 of 10 guardians together can open | Elements consensus checks every packet's proofs | Hand-written zero-knowledge proofs; see "not built" for review status |
 | Every transaction needs an authorization from 3 of 5 operators | Elements consensus | The policy can be re-keyed through DynaFed but never switched off |
 | An authorization is usable for at most 20 blocks | Elements consensus | Withholding new authorizations therefore takes effect within 20 blocks |
-| The operators refuse payments to addresses no member bank registered | Each operator's signing service | Policy in the operators' software, not a ledger rule |
+| The operators refuse payments to addresses no member bank registered | Each operator's signing service | Policy in the operators' software, not a ledger rule. The registration shows operators which member bank stands behind each destination, though not the customer or the amount. In the sandbox one simulated bank key signs every registration, for both banks |
 | Blocks need signatures from 3 of 5 operators | Elements consensus | |
 | Issuing or destroying tokens needs 3 of 5 operators to co-sign with their own keys | Elements consensus (3-of-5 treasury script) | Each operator's service checks the request before signing |
 | Issued amounts are public, so supply can be checked by anyone with the chain | Elements consensus for issuance; burns are public by construction | |
