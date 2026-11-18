@@ -13,6 +13,22 @@ import { memberName } from "./guardian";
 import { Dialogs } from "./dialogs";
 import { WorkspaceLink } from "./navigation";
 import type { Page } from "./types";
+const ORGANIZATIONS: Record<string, string> = {
+  bank: "Bank",
+  "bank-b": "Bank B",
+  regulator: "Regulator",
+  federation: "Federation",
+};
+/** "Acme" from "Acme · Operating"; known names for banks and authorities. */
+function organization(app: ReturnType<typeof useApp>) {
+  const tenant = app.user.tenant;
+  const own = app.data.accounts.find((a) => a.tenant === tenant);
+  return (
+    ORGANIZATIONS[tenant] ??
+    own?.name.split(" · ")[0] ??
+    tenant.charAt(0).toUpperCase() + tenant.slice(1)
+  );
+}
 export function Shell() {
   const app = useApp();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -50,7 +66,7 @@ export function Shell() {
     : forAccount(app.data.operations, app.account).filter(needsAction).length;
   const title = items.find((item) => item[0] === page)?.[1] || "Overview";
   useEffect(() => {
-    document.title = `${title} · Concord ${app.guardian ? "network" : "wallet"}`;
+    document.title = `${title} · CEND ${app.guardian ? "network" : "wallet"}`;
   }, [title, app.guardian]);
   return (
     <div className="shell">
@@ -87,7 +103,7 @@ export function Shell() {
       <div className="shell-main">
         <header className="topbar">
           <div className="breadcrumb">
-            {app.guardian ? "Guardian" : app.user.tenant}
+            {app.guardian ? "Network console" : organization(app)}
             <Icon name="chevron" />
             <strong>{title}</strong>
           </div>

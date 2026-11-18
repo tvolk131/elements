@@ -58,6 +58,9 @@ export const human = (value?: string): string =>
   (value || "Not available")
     .replace(/_/g, " ")
     .replace(/^./, (c) => c.toUpperCase());
+/** Display name of the payment token for a currency, e.g. "UNITED EUR". */
+export const tokenName = (currency?: string) =>
+  currency ? `UNITED ${currency}` : "UNITED";
 export const money = (minor?: number) =>
   minor === undefined
     ? "—"
@@ -74,7 +77,7 @@ export function baseUnits(amount: string | number, currency?: Currency) {
   const decimals = fraction.endsWith("000000")
     ? fraction.slice(0, 2)
     : fraction;
-  return `${(n / 100000000n).toLocaleString("en-GB")}.${decimals} Test${currency}`;
+  return `${(n / 100000000n).toLocaleString("en-GB")}.${decimals} ${tokenName(currency)}`;
 }
 export const short = (value?: string, size = 14) =>
   value ? value.slice(0, size) + (value.length > size ? "…" : "") : "—";

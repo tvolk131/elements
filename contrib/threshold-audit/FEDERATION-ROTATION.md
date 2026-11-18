@@ -112,7 +112,7 @@ PYTHONPATH=contrib/threshold-audit:test/functional \
   python3 -u -m settlement.rotation_smoke /tmp/ROTATION-RUNTIME --phase stage
 ```
 
-The seed phase issues real TestEUR/TestUSD and creates two confirmed escrows
+The seed phase issues real UNITED EUR and UNITED USD test tokens and creates two confirmed escrows
 with ambiguous simulated payments. The stage phase rejects advancement without
 a quorum, checks the financial hold, obtains independent outgoing signatures and
 activates incoming native policy/shares. It stops before treasury migration.

@@ -154,7 +154,7 @@ it("shows what the ledger recorded beside what only the bank knows", async () =>
   expect(first.getByText(/Valid until block 181/)).toBeVisible();
   await userEvent.click(
     first.getByRole("button", {
-      name: /Payment · 12,750.00 TestEUR · Acme · Operating → Initech/,
+      name: /Payment · 12,750.00 UNITED EUR · Acme · Operating → Initech/,
     }),
   );
   expect(app.setDialog).toHaveBeenCalledWith({ type: "operation", id: "op-1" });

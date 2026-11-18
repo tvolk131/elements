@@ -1,7 +1,7 @@
 import { useApp } from "./context";
 import { Badge, Button, Icon } from "./components";
 import { DemoInstitutions, DemoNext } from "./demo";
-import { money } from "./domain";
+import { money, tokenName } from "./domain";
 import type { Operation, WorkflowActor } from "./types";
 
 function Actors({
@@ -76,7 +76,7 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
           <>
             The app has reserved{" "}
             <strong>
-              {money(op.amount_minor)} Test{op.currency}
+              {money(op.amount_minor)} {tokenName(op.currency)}
             </strong>{" "}
             from {app.accountName(op.account_id)}. It has not been transferred
             yet.

@@ -28,6 +28,7 @@ import {
   waitingForInstitutions,
   settlementHold,
   transferNeedsInstitutions,
+  tokenName,
 } from "./domain";
 import { Quorum, Receive } from "./wallet";
 import { ApprovalProgress } from "./approval-progress";
@@ -380,10 +381,10 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
             </select>
           </Field>
           <div className="form-grid">
-            <Field label="Test currency">
+            <Field label="Token">
               <select
                 name="currency"
-                aria-label="Test currency"
+                aria-label="Token"
                 data-testid="currency"
                 value={currency}
                 required
@@ -394,7 +395,7 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
               >
                 {accountInfo?.currencies.map((c) => (
                   <option key={c} value={c}>
-                    Test{c}
+                    {tokenName(c)}
                   </option>
                 ))}
               </select>
@@ -414,7 +415,7 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
               <span>Available from {accountInfo?.name || account}</span>
               <strong>
                 {balance
-                  ? money(balance.available_minor) + " Test" + currency
+                  ? money(balance.available_minor) + " " + tokenName(currency)
                   : "Balance check unavailable"}
               </strong>
               {balance && (
@@ -547,7 +548,7 @@ function OperationDetail({ id }: { id: string }) {
                 : human(op.kind) + " request"}
             </div>
             <div className="detail-amount number">
-              {money(op.amount_minor)} <span>Test{op.currency}</span>
+              {money(op.amount_minor)} <span>{tokenName(op.currency)}</span>
             </div>
             <Badge status={op.state}>
               {op.declined_by === "institutions" ? "Declined" : undefined}
@@ -678,7 +679,7 @@ function OperationDetail({ id }: { id: string }) {
               download(
                 JSON.stringify(
                   {
-                    document: "Concord local sandbox settlement record",
+                    document: "CEND local sandbox settlement record",
                     warning:
                       "Simulated bank reserves. This is not proof of a real bank payment or legal redemption promise.",
                     exported_at: new Date().toISOString(),
@@ -795,7 +796,7 @@ function ReviewForm({
           <div className="confirmation-summary">
             <span>{human(op.kind)}</span>
             <strong className="number">
-              {money(op.amount_minor)} Test{op.currency}
+              {money(op.amount_minor)} {tokenName(op.currency)}
             </strong>
           </div>
           <KV label="From">{sourceName(op, app)}</KV>
@@ -1025,8 +1026,8 @@ function BankForm({ operation }: { operation?: Operation }) {
               value={currency}
               onChange={(e) => setCurrency(e.target.value as Currency)}
             >
-              <option value="EUR">TestEUR</option>
-              <option value="USD">TestUSD</option>
+              <option value="EUR">{tokenName("EUR")}</option>
+              <option value="USD">{tokenName("USD")}</option>
             </select>
           </Field>
           {related && (
@@ -1041,7 +1042,7 @@ function BankForm({ operation }: { operation?: Operation }) {
                 {options.map((op) => (
                   <option value={op.id} key={op.id}>
                     {op.id.slice(0, 15)} · {human(op.kind)} ·{" "}
-                    {money(op.amount_minor)} Test{op.currency}
+                    {money(op.amount_minor)} {tokenName(op.currency)}
                   </option>
                 ))}
               </select>

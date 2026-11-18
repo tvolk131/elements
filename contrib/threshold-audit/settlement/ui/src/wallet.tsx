@@ -31,6 +31,7 @@ import {
   requestSummary,
   short,
   waitingForInstitutions,
+  tokenName,
 } from "./domain";
 import { NetworkCard, RotationNotice } from "./guardian";
 import type { Activity, Currency, Operation } from "./types";
@@ -142,7 +143,8 @@ export function WalletPage({
             >
               <span>
                 <strong>
-                  {human(op.kind)} · {money(op.amount_minor)} Test{op.currency}
+                  {human(op.kind)} · {money(op.amount_minor)}{" "}
+                  {tokenName(op.currency)}
                 </strong>
                 <small>{viewerNextAction(op) || nextStep(op)}</small>
               </span>
@@ -309,7 +311,7 @@ function Balances() {
                 <span className="currency-flag">
                   {b.currency === "EUR" ? "€" : "$"}
                 </span>
-                <strong>Test{b.currency}</strong>
+                <strong>{tokenName(b.currency)}</strong>
               </div>
               <span className="wallet-asset-label">Test token</span>
             </div>
@@ -574,7 +576,9 @@ export function OperationPanel({
                             : "−")}
                       {money(op.amount_minor)}
                     </span>
-                    <span className="cell-secondary">Test{op.currency}</span>
+                    <span className="cell-secondary">
+                      {tokenName(op.currency)}
+                    </span>
                   </td>
                   <td>
                     <Badge status={op.state} />
@@ -668,7 +672,7 @@ export function RecipientsPage() {
               {internal.map((a) => (
                 <li key={a.id}>
                   <strong>{a.name}</strong>
-                  <span>{a.currencies.map((c) => "Test" + c).join(" / ")}</span>
+                  <span>{a.currencies.map(tokenName).join(" / ")}</span>
                   <small>Account reference: {a.id}</small>
                 </li>
               ))}
@@ -696,7 +700,9 @@ export function RecipientsPage() {
               {bank.map((b) => (
                 <li key={b.id}>
                   <strong>{b.name}</strong>
-                  <span>Test{b.currency} · configured bank destination</span>
+                  <span>
+                    {tokenName(b.currency)} · configured bank destination
+                  </span>
                   <small>Bank account details are held by the bank.</small>
                 </li>
               ))}
@@ -829,7 +835,7 @@ export function ActivityPage() {
                             }
                           >
                             {op
-                              ? `${human(op.kind)} · ${money(op.amount_minor)} Test${op.currency}`
+                              ? `${human(op.kind)} · ${money(op.amount_minor)} ${tokenName(op.currency)}`
                               : short(e.operation_id, 16)}
                           </button>
                         ) : (
@@ -909,7 +915,7 @@ export function Receive() {
           >
             {account.currencies.map((c) => (
               <option key={c} value={c}>
-                Test{c}
+                {tokenName(c)}
               </option>
             ))}
           </select>

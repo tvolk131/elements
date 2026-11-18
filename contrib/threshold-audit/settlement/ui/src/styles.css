@@ -3561,3 +3561,72 @@ td,
     justify-items: start;
   }
 }
+
+/* Freeze orders */
+.freeze-orders {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+.freeze-order {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--red);
+  border-radius: 8px;
+}
+.freeze-order.released {
+  border-left-color: var(--line);
+  background: var(--paper);
+}
+.freeze-order-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.freeze-order-head small {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+.freeze-outputs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.freeze-outputs li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  font-size: var(--text-base);
+}
+.freeze-outputs span,
+.freeze-outputs code {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+.freeze-order .small-note {
+  margin: 0;
+}
+.freeze-order .inline-warning {
+  margin: 0;
+}
+.freeze-history {
+  margin-top: 16px;
+}
+.freeze-history > summary {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.freeze-history[open] > .freeze-orders {
+  margin-top: 12px;
+}

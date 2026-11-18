@@ -177,7 +177,7 @@ class Sandbox:
         prepared = self.cluster.prepare(chain_id, genesis_config, plans)
         self.cluster.activate(chain_id, prepared)
         node.generatetoaddress(101, sponsor.getnewaddress('', 'bech32'))
-        print('Elements ready; registering TestEUR and TestUSD through DynaFed.', flush=True)
+        print('Elements ready; registering the UNITED EUR and UNITED USD test tokens through DynaFed.', flush=True)
         assets = bootstrap_assets(node, sponsor, self.cluster, genesis_config, curve)
         institutions = {}
         public_keys, spending_public, secrets_by_guardian, block_public_keys = {}, [], {}, {}

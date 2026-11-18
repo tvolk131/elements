@@ -11,7 +11,7 @@ scope, build instructions and two-node functional test.
 
 The [settlement sandbox](SETTLEMENT-SANDBOX.md) adds a local
 bank/corporate wallet GUI, independent operator approval windows and actual
-federation-multisig TestEUR/TestUSD issuance, redemption and refunds. Its reserve
+federation-multisig UNITED EUR/USD test-token issuance, redemption and refunds. Its reserve
 accounts and bank payments are explicitly simulated; the redemption obligor is
 undecided. Run it separately from the cryptographic-only examples below.
 Its demo manager provides one selected runtime with `status`, `stop` and

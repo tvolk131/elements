@@ -236,7 +236,7 @@ class ElementsAdapter:
     def assets(self):
         network = self.network()
         return [dict(value, currency=currency, registered=value['asset_id'] in network['audit_assets'],
-                     registry_version=network['registry_version'], label='Test' + currency,
+                     registry_version=network['registry_version'], label='UNITED ' + currency,
                      issuer='Sandbox issuer — legal obligor undecided', simulated=True)
                 for currency, value in self.config['assets'].items()]
 

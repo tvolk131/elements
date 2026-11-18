@@ -13,7 +13,7 @@ import {
   Icon,
   Panel,
 } from "./components";
-import { date, human, money, short } from "./domain";
+import { date, human, money, short, tokenName } from "./domain";
 import { memberName } from "./guardian";
 import { usePersonas } from "./demo";
 import { FreezeOrders } from "./freezes";
@@ -98,7 +98,7 @@ function signedBy(list: string[]) {
 function whatItWas(item: LedgerTransaction) {
   const k = item.known;
   if (!k) return null;
-  const amount = `${money(k.amount_minor)} Test${k.currency}`;
+  const amount = `${money(k.amount_minor)} ${tokenName(k.currency)}`;
   switch (k.stage) {
     case "transfer":
       return `Payment · ${amount} · ${k.from} → ${k.to || "a wallet address"}`;
@@ -325,7 +325,6 @@ export function LedgerPage() {
         <TryWithout />
         <Institutions />
       </div>
-      {app.can("view_bank") && <FreezeOrders />}
       <Panel
         title="Recent transactions"
         subtitle={
@@ -437,6 +436,7 @@ export function LedgerPage() {
           <Empty title="No transactions yet" />
         )}
       </Panel>
+      {app.can("view_bank") && <FreezeOrders />}
     </>
   );
 }

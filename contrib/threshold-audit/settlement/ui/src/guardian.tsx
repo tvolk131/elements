@@ -23,6 +23,7 @@ import {
   settlementHold,
   short,
   thresholdLabel,
+  tokenName,
 } from "./domain";
 import { OperationPanel } from "./wallet";
 import type {
@@ -674,7 +675,7 @@ export function FederationPage() {
                   download(
                     JSON.stringify(
                       {
-                        document: "Concord same-chain federation handover",
+                        document: "CEND same-chain federation handover",
                         exported_at: new Date().toISOString(),
                         viewer: app.user.id,
                         warning:
@@ -765,7 +766,7 @@ function MigrationTable({ rows }: { rows: Migration[] }) {
                     ? "Tokens held for a withdrawal"
                     : human(item.kind)}
               </td>
-              <td>{item.currency ? "Test" + item.currency : "—"}</td>
+              <td>{item.currency ? tokenName(item.currency) : "—"}</td>
               <td>
                 {item.txid ? (
                   <CopyField label="Transaction" value={item.txid} />

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import { useApp } from "./context";
 import { Badge, Button, Empty, ErrorNote, Field, Panel } from "./components";
-import { date, money } from "./domain";
+import { date, money, tokenName } from "./domain";
 import { memberName } from "./guardian";
 import {
   caseAuthorityKey,
@@ -297,75 +297,106 @@ function ReleaseForm({ order }: { order: FreezeOrder }) {
   );
 }
 
+function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
+  const app = useApp();
+  const released = Boolean(o.released_by);
+  const all = o.applied_by.length === o.operators.length;
+  const account = (id: string) =>
+    app.data.accounts?.find((a) => a.id === id)?.name ?? id;
+  return (
+    <li
+      className={`freeze-order ${released ? "released" : ""}`}
+      data-testid={`freeze-${o.id}`}
+    >
+      <div className="freeze-order-head">
+        <Badge status={released ? "complete" : "blocked"}>
+          {released ? "Released" : "Frozen"}
+        </Badge>
+        <strong>{o.reason}</strong>
+        <small>
+          {o.authority} · {date(o.issued_at, true)}
+        </small>
+      </div>
+      <ul className="freeze-outputs">
+        {(o.outputs ?? []).map((x) => (
+          <li key={`${x.txid}:${x.vout}`}>
+            {x.holding ? (
+              <strong>
+                {money(x.holding.amount_minor)} {tokenName(x.holding.currency)}{" "}
+                held by {account(x.holding.account_id)}
+              </strong>
+            ) : (
+              <strong>Output {x.vout}</strong>
+            )}
+            <span>
+              {released ? "No longer frozen" : OUTPUT_STATUS[x.status]}
+            </span>
+            <code title={`${x.txid}:${x.vout}`}>
+              {x.txid.slice(0, 12)}…:{x.vout}
+            </code>
+          </li>
+        ))}
+      </ul>
+      {!released && (
+        <p className="small-note" data-testid={`freeze-applied-${o.id}`}>
+          {all
+            ? `Applied by all ${o.operators.length} operators`
+            : `Applied by ${o.applied_by.length} of ${o.operators.length} operators` +
+              (o.applied_by.length
+                ? ` (${o.applied_by.map(memberName).join(", ")})`
+                : "")}
+          , each with a signed receipt. Any{" "}
+          {o.operators.length - o.threshold + 1} refusing stop a spend.
+        </p>
+      )}
+      {!released &&
+        Object.entries(o.errors).map(([guardian, error]) => (
+          <p className="inline-warning" key={guardian}>
+            {memberName(guardian)}: {error}
+          </p>
+        ))}
+      {app.can("order_freeze") && !released && <ReleaseForm order={o} />}
+    </li>
+  );
+}
+
 /** Every freeze order this account may see, with each operator's receipt. */
 export function FreezeOrders() {
   const query = useFreezes();
-  const app = useApp();
   const orders = (query.data?.orders ?? []).filter((o) => o.kind === "freeze");
+  const active = orders.filter((o) => !o.released_by);
+  const released = orders.filter((o) => o.released_by);
   return (
     <Panel
       title="Freeze orders"
-      subtitle="Signed by the regulator. Each operator verifies the signature and returns a signed receipt."
+      subtitle="Signed by the regulator. Each operator checks the signature itself and returns a signed receipt."
     >
-      <ErrorNote error={query.error} />
-      {query.isPending ? (
-        <p role="status">Loading freeze orders…</p>
-      ) : orders.length ? (
-        <ul className="freeze-orders">
-          {orders.map((o) => (
-            <li key={o.id} data-testid={`freeze-${o.id}`}>
-              <div className="freeze-order-head">
-                <Badge status={o.released_by ? "complete" : "blocked"}>
-                  {o.released_by ? "Released" : "Frozen"}
-                </Badge>
-                <strong>{o.authority}</strong>
-                <small>
-                  {date(o.issued_at, true)} · case {o.case_reference}
-                </small>
-              </div>
-              <p>{o.reason}</p>
-              <ul className="freeze-outputs">
-                {(o.outputs ?? []).map((x) => (
-                  <li key={`${x.txid}:${x.vout}`}>
-                    <code>
-                      {x.txid.slice(0, 16)}…:{x.vout}
-                    </code>{" "}
-                    <span>{OUTPUT_STATUS[x.status]}</span>
-                    {x.holding && (
-                      <span>
-                        {" "}
-                        · {money(x.holding.amount_minor)} {x.holding.currency}{" "}
-                        held by {x.holding.account_id}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <p className="small-note" data-testid={`freeze-applied-${o.id}`}>
-                Applied by {o.applied_by.length} of {o.operators.length}{" "}
-                operators
-                {o.applied_by.length
-                  ? ` (${o.applied_by.map(memberName).join(", ")})`
-                  : ""}
-                . {o.operators.length - o.threshold + 1} refusing are enough to
-                stop a spend.
-              </p>
-              {Object.entries(o.errors).map(([guardian, error]) => (
-                <p className="inline-warning" key={guardian}>
-                  {memberName(guardian)}: {error}
-                </p>
+      <div className="capability-panel-body">
+        <ErrorNote error={query.error} />
+        {query.isPending ? (
+          <p role="status">Loading freeze orders…</p>
+        ) : active.length ? (
+          <ul className="freeze-orders">
+            {active.map((o) => (
+              <FreezeOrderCard key={o.id} order={o} />
+            ))}
+          </ul>
+        ) : (
+          <Empty title="Nothing is frozen">
+            Funds frozen by the regulator will appear here.
+          </Empty>
+        )}
+        {released.length > 0 && (
+          <details className="freeze-history">
+            <summary>Released ({released.length})</summary>
+            <ul className="freeze-orders">
+              {released.map((o) => (
+                <FreezeOrderCard key={o.id} order={o} />
               ))}
-              {app.can("order_freeze") && !o.released_by && (
-                <ReleaseForm order={o} />
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <Empty title="No freeze orders">
-          Funds frozen by the regulator will appear here.
-        </Empty>
-      )}
+            </ul>
+          </details>
+        )}
+      </div>
     </Panel>
   );
 }

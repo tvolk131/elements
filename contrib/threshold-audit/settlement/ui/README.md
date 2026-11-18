@@ -1,4 +1,4 @@
-# Concord web application
+# CEND web application
 
 React and TypeScript, TanStack Router, and TanStack Query power the wallet and
 guardian interfaces. Vite builds a static single-page app into `dist/`. The

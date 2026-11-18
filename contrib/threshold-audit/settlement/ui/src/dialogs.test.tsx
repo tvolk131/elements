@@ -138,7 +138,7 @@ it("changes bank destinations when the asset changes", async () => {
   app.dialog = { type: "create", kind: "redemption" };
   show();
   expect(screen.getByRole("option", { name: "EUR bank" })).toBeInTheDocument();
-  await userEvent.selectOptions(screen.getByLabelText("Test currency"), "USD");
+  await userEvent.selectOptions(screen.getByLabelText("Token"), "USD");
   expect(
     screen.queryByRole("option", { name: "EUR bank" }),
   ).not.toBeInTheDocument();
@@ -148,15 +148,15 @@ it("changes bank destinations when the asset changes", async () => {
 it("keeps the available amount tied to the source and currency", async () => {
   app.dialog = { type: "create", kind: "transfer" };
   show();
-  expect(screen.getByText("159.77 TestEUR")).toBeVisible();
-  await userEvent.selectOptions(screen.getByLabelText("Test currency"), "USD");
-  expect(screen.getByText("252.00 TestUSD")).toBeVisible();
+  expect(screen.getByText("159.77 UNITED EUR")).toBeVisible();
+  await userEvent.selectOptions(screen.getByLabelText("Token"), "USD");
+  expect(screen.getByText("252.00 UNITED USD")).toBeVisible();
   await userEvent.selectOptions(
     screen.getByLabelText("From wallet account"),
     "b",
   );
-  await userEvent.selectOptions(screen.getByLabelText("Test currency"), "EUR");
-  expect(screen.getByText("1.23 TestEUR")).toBeVisible();
+  await userEvent.selectOptions(screen.getByLabelText("Token"), "EUR");
+  expect(screen.getByText("1.23 UNITED EUR")).toBeVisible();
 });
 
 it("displays an observed outside receipt as a credit without missing application approvals", async () => {

@@ -586,7 +586,10 @@ function CaseDetail({
       ),
   });
   return (
-    <Panel title="Case details" subtitle={`Case ${c.id}`}>
+    <Panel
+      title="Case details"
+      subtitle={`${c.outputs.length} payment output${c.outputs.length === 1 ? "" : "s"} · requested by ${c.requester_name || c.requester_id}`}
+    >
       <div className="disclosure-detail">
         <Badge status={c.state}>{human(c.state)}</Badge>
         <h3>{c.authority}</h3>
@@ -612,31 +615,6 @@ function CaseDetail({
             </dd>
           </div>
         </dl>
-        <CopyField
-          label="Approved recipient public key"
-          value={c.recipient.public_key}
-        />
-        <ul className="disclosure-output-status">
-          {c.outputs.map((o) => (
-            <li key={o.txid + ":" + o.output_index}>
-              <strong>Output {o.output_index}</strong>
-              <code>{o.txid}</code>
-              <span>
-                Created at block {o.creation_height} · recovery key{" "}
-                {o.key_version}
-              </span>
-              <span>
-                {o.released_partials} encrypted guardian contributions retained
-              </span>
-            </li>
-          ))}
-        </ul>
-        <details>
-          <summary>Approval and case evidence</summary>
-          <p>Approved guardians: {c.approved_members.join(", ") || "None"}</p>
-          <p>Declined guardians: {c.declined_members.join(", ") || "None"}</p>
-          <CopyField label="Approved case binding" value={c.manifest_hash} />
-        </details>
         {c.state === "membership_changed" && (
           <p className="inline-warning">
             Federation recovery policy changed. Create a new case so the current
@@ -823,6 +801,36 @@ function CaseDetail({
             </Button>
           </div>
         )}
+        <details className="wallet-technical">
+          <summary>Technical details</summary>
+          <CopyField label="Case" value={c.id} />
+          <CopyField
+            label="Approved recipient public key"
+            value={c.recipient.public_key}
+          />
+          <ul className="disclosure-output-status">
+            {c.outputs.map((o) => (
+              <li key={o.txid + ":" + o.output_index}>
+                <strong>Output {o.output_index}</strong>
+                <code>{o.txid}</code>
+                <span>
+                  Created at block {o.creation_height} · recovery key{" "}
+                  {o.key_version}
+                </span>
+                <span>
+                  {o.released_partials} encrypted guardian contributions
+                  retained
+                </span>
+              </li>
+            ))}
+          </ul>
+          <details>
+            <summary>Approval and case evidence</summary>
+            <p>Approved guardians: {c.approved_members.join(", ") || "None"}</p>
+            <p>Declined guardians: {c.declined_members.join(", ") || "None"}</p>
+            <CopyField label="Approved case binding" value={c.manifest_hash} />
+          </details>
+        </details>
       </div>
     </Panel>
   );

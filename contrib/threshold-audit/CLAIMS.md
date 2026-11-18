@@ -8,6 +8,8 @@ Terms: **operators** run the network (they sign blocks, authorize every
 transaction and co-sign issuance); **members** are the banks that serve
 customers on it; **guardians** hold the disclosure key. Code, configuration
 and login IDs still say `institution` for operators.
+The interface calls the network **CEND** and the payment tokens **UNITED EUR**
+and **UNITED USD**; in the sandbox these are test tokens with simulated backing.
 
 ## Real: running code, enforced where stated
 

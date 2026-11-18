@@ -2,7 +2,7 @@
 
 This local pilot connects the experimental native Elements recovery protocol to
 an authenticated bank/corporate wallet and an operator approval interface.
-It creates **TestEUR and TestUSD**, with simulated custodian balances. There is
+It creates the **UNITED EUR and UNITED USD** test tokens, with simulated custodian balances. There is
 no real bank connection, reserve account, licensed issuer or redemption promise.
 The legal entity owing redemption remains an open product/legal decision.
 
@@ -393,8 +393,8 @@ harness:
 PYTHONPATH=contrib/threshold-audit:test/functional python3 -m settlement.capability_smoke /path/to/runtime
 ```
 
-It creates a 1.23 TestEUR cross-bank payment, a 0.01 TestEUR address return,
-and a 0.02 TestEUR outside-wallet funding followed by a 0.01 TestEUR observed receipt,
+It creates a 1.23 UNITED EUR cross-bank payment, a 0.01 UNITED EUR address return,
+and a 0.02 UNITED EUR outside-wallet funding followed by a 0.01 UNITED EUR observed receipt,
 uses individual fixture guardian credentials to approve sealed disclosures,
 checks current and historical recovery against the real node, and verifies
 recipient account isolation and reserve reconciliation. It preserves any

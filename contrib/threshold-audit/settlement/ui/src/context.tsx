@@ -104,7 +104,7 @@ function Login({ guardian }: { guardian: boolean }) {
     onSuccess: startSession,
   });
   useEffect(() => {
-    document.title = `Sign in · Concord ${guardian ? "network" : "wallet"}`;
+    document.title = `Sign in · CEND ${guardian ? "network" : "wallet"}`;
   }, [guardian]);
   return (
     <main className="login-shell">
@@ -136,7 +136,7 @@ function Login({ guardian }: { guardian: boolean }) {
           </span>
         </div>
         <footer>
-          Concord settlement sandbox. Banks, reserves and payouts are simulated.
+          CEND settlement sandbox. Banks, reserves and payouts are simulated.
         </footer>
       </section>
       <section className="login-form-side">

@@ -121,7 +121,15 @@ const pageRoute = createRoute({
       if (page === "overview" || page === "payments" || page === "banking")
         return <WalletPage key={page} page={page} />;
     }
-    return <h1>Page not available in this workspace</h1>;
+    // After switching to someone who can't open this page (or following an
+    // old link), go to their own home page rather than an error.
+    return (
+      <Navigate
+        to="/$workspace"
+        params={{ workspace: app.guardian ? "guardian" : "wallet" }}
+        replace
+      />
+    );
   },
 });
 

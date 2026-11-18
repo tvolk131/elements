@@ -79,7 +79,7 @@ export function Brand() {
     <div className="brand">
       <span className="brand-mark">C</span>
       <div>
-        <div className="brand-name">Concord</div>
+        <div className="brand-name">CEND</div>
         <div className="brand-caption">Institutional settlement</div>
       </div>
     </div>
