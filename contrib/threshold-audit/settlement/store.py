@@ -156,6 +156,12 @@ class Settlement:
                                     (user["id"], user["username"], hashed, self.encode(safe)))
 
     def close(self):
+        # Fold the write-ahead log into the database before closing, so a
+        # close deferred by a still-referenced query writes nothing later.
+        try:
+            self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
         self.db.close()
 
     @staticmethod

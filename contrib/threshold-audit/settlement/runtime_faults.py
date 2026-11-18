@@ -6,7 +6,9 @@ expected failed starts. Bank payments remain simulated.
 """
 
 import argparse
+import contextlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -17,7 +19,9 @@ from .smoke import Pilot
 
 
 def database_backup(source, destination):
-    with sqlite3.connect(source) as original, sqlite3.connect(destination) as backup:
+    # `with sqlite3.connect()` commits but does not close; close explicitly.
+    with contextlib.closing(sqlite3.connect(source)) as original, \
+            contextlib.closing(sqlite3.connect(destination)) as backup:
         original.backup(backup)
     Path(destination).chmod(0o600)
 
@@ -27,8 +31,13 @@ def restore_database(runtime, backup):
     # closed the store connection and stopped its owned child services.
     for suffix in ('-wal', '-shm'):
         (runtime / ('settlement.sqlite' + suffix)).unlink(missing_ok=True)
-    shutil.copyfile(backup, runtime / 'settlement.sqlite')
-    (runtime / 'settlement.sqlite').chmod(0o600)
+    # Swap in a new file rather than overwriting in place: a connection from
+    # the stopped session that closes late then writes to the old file, not
+    # into the restored one (seen as a mix of old and new tables).
+    staged = runtime / 'settlement.sqlite.restore'
+    shutil.copyfile(backup, staged)
+    staged.chmod(0o600)
+    os.replace(staged, runtime / 'settlement.sqlite')
 
 
 def run(work_dir, daemon, library):
