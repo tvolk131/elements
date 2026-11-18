@@ -24,19 +24,26 @@ NATIVE_TRACKED = {
     'src/consensus/params.h', 'src/dynafed.cpp', 'src/headerssync.cpp', 'src/headerssync.h',
     'src/interfaces/chain.h', 'src/kernel/chainparams.cpp', 'src/node/interfaces.cpp',
     'src/node/miner.cpp', 'src/node/miner.h', 'src/primitives/block.cpp', 'src/primitives/block.h',
+    'src/primitives/transaction.cpp',
     'src/primitives/txwitness.cpp', 'src/primitives/txwitness.h', 'src/psbt.cpp', 'src/psbt.h',
     'src/rpc/blockchain.cpp', 'src/rpc/mining.cpp', 'src/rpc/rawtransaction.cpp',
     'src/validation.cpp', 'src/wallet/rpc/elements.cpp', 'src/wallet/spend.cpp', 'src/wallet/wallet.cpp',
 }
 TEST_TRACKED = {'src/test/fuzz/CMakeLists.txt', 'src/test/headers_sync_chainwork_tests.cpp',
-                'test/functional/test_framework/messages.py'}
+                'test/functional/test_framework/messages.py', 'test/functional/test_runner.py'}
 EXTRA_NATIVE = {'src/threshold_audit.cpp', 'src/threshold_audit.h',
                 'src/threshold_audit_governance.cpp', 'src/threshold_audit_governance.h',
                 'src/threshold_audit_validation.cpp', 'src/threshold_audit_validation.h'}
 EXTRA_TEST = {'src/test/fuzz/threshold_audit.cpp', 'test/functional/feature_threshold_audit.py',
               'test/functional/feature_threshold_audit_assets.py',
+              'test/functional/feature_threshold_audit_authorization.py',
               'test/functional/feature_threshold_audit_guardians.py'}
-SOURCE_SUFFIXES = {'.py', '.cpp', '.h', '.md', '.html', '.css', '.js', '.sh', '.txt'}
+SOURCE_SUFFIXES = {'.py', '.cpp', '.h', '.md', '.html', '.css', '.js', '.ts', '.tsx', '.sh', '.txt'}
+# Exact project files that the general rules below would refuse: ignore files and
+# the wallet UI's package and compiler settings plus its committed test fixture.
+PUBLIC_EXTRA = {'.gitignore', 'settlement/ui/.gitignore', 'settlement/ui/.prettierignore',
+                'settlement/ui/package.json', 'settlement/ui/package-lock.json',
+                'settlement/ui/tsconfig.json', 'settlement/ui/src/fixtures/sealed-disclosure.json'}
 GROUPS = ('01-native-consensus-wallet', '02-native-tests', '03-crypto-guardian-models',
           '04-institutional-settlement', '05-review-verification-docs')
 
@@ -59,6 +66,8 @@ def category(path):
     if not path.startswith(prefix):
         return None
     relative = PurePosixPath(path[len(prefix):])
+    if str(relative) in PUBLIC_EXTRA:
+        return GROUPS[3] if relative.parts[0] == 'settlement' else GROUPS[4]
     if any(part.startswith('.') or part in {'__pycache__', 'runtime', 'runtimes', 'node_modules', 'build'} for part in relative.parts):
         return None
     if relative.suffix == '.json':
@@ -188,7 +197,7 @@ def export(output, base='HEAD', *, root=ROOT, check_apply=True):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--base', default='HEAD')
+    parser.add_argument('--base', default='HEAD', help='Git commit the patches apply to; verify.py passes the branch point from master')
     parser.add_argument('--skip-apply-check', action='store_true', help='export only; report explicitly records verification not run')
     options = parser.parse_args()
     try:

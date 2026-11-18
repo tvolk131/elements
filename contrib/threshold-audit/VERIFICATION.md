@@ -111,7 +111,8 @@ Export without staging, committing or changing the checkout:
 python3 contrib/threshold-audit/export_review.py --output /path/to/new-review-bundle
 ```
 
-The exporter reads the selected Git base (default `HEAD`) and includes the
+The exporter reads the selected Git base (default `HEAD`; `verify.py` passes
+the commit where the branch left `master`) and includes the
 authorized tracked changes and explicitly allowed untracked research sources.
 It groups them into native consensus/wallet code, native tests, cryptographic
 models/guardian services, settlement sandbox, and review/tooling/docs.

@@ -377,8 +377,12 @@ class Verifier:
         if self.options.skip_patch_export:
             self.skip('review-patch-export', 'explicit --skip-patch-export')
         else:
+            # The research changes are committed on a branch, so export them
+            # against where that branch left master, not against HEAD.
+            base = git('merge-base', 'HEAD', 'master', check=False)
+            base = base.stdout.decode().strip() if base.returncode == 0 else 'HEAD'
             self.command('review-patch-export', [sys.executable, ROOT / 'contrib' / 'threshold-audit' / 'export_review.py',
-                         '--output', self.directory / 'review-patches'])
+                         '--output', self.directory / 'review-patches', '--base', base])
 
     def functional(self):
         tests = [('native-audit', 'feature_threshold_audit.py', '--descriptors'),
