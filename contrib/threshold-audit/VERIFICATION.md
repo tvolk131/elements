@@ -43,7 +43,7 @@ python3 contrib/threshold-audit/verify.py --mode full --no-build \
 binaries correspond to the current source. The report says so explicitly. Use
 the build mode for the complete source/build/test procedure.
 
-The current institutional fixture requires POSIX. Full verification additionally
+The current settlement fixture requires POSIX. Full verification additionally
 requires Linux procfs to identify and clean up orphaned servers safely. Use a
 separate port seed when running multiple native verification jobs concurrently.
 
@@ -67,7 +67,7 @@ Full mode also runs:
 * Existing non-audit DynaFed and PSET regressions.
 * Generation/replay of public parser fuzz seeds. This is seed replay, not a
   coverage-guided fuzz campaign.
-* A newly owned institutional sandbox with A-to-B-to-C rotation, intermediate
+* A newly owned settlement sandbox with A-to-B-to-C rotation, intermediate
   restarts and a completed-state restart. C completes A's outstanding cases and
   recovers A/B-era outputs.
 * The runtime failure/backup-recovery scenario provided by
@@ -90,7 +90,7 @@ commands, timestamps, exit codes and cleanup result. Full command output is in
 edits invalidate the run even if individual checks passed.
 
 The work directory is private because `runtimes/` contains test wallet keys,
-institution credentials and guardian state. Keep the complete directory private;
+operator credentials and guardian state. Keep the complete directory private;
 share only reviewed reports, public vectors and the exported source patches.
 Logs are retained on failure. A failing command's exit status is preserved where
 possible; timeout exits 124, interruption exits 128 plus the signal number.
@@ -114,7 +114,7 @@ python3 contrib/threshold-audit/export_review.py --output /path/to/new-review-bu
 The exporter reads the selected Git base (default `HEAD`) and includes the
 authorized tracked changes and explicitly allowed untracked research sources.
 It groups them into native consensus/wallet code, native tests, cryptographic
-models/guardian services, institutional settlement, and review/tooling/docs.
+models/guardian services, settlement sandbox, and review/tooling/docs.
 
 `series` gives the order. `manifest.json` records the exact base, each patch's
 digest, all reconstructed source digests and the apply-check result. The exporter

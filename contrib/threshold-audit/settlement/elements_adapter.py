@@ -1,4 +1,4 @@
-"""Real Elements transaction adapter for the institutional settlement sandbox."""
+"""Real Elements transaction adapter for the settlement sandbox."""
 
 from decimal import Decimal
 import json
@@ -103,7 +103,7 @@ class ElementsAdapter:
             else:
                 validate_successor(previous, policy)
             if set(institutions) != set(policy['guardian_order']):
-                raise ValueError('institution services do not match incoming membership')
+                raise ValueError('operator services do not match incoming membership')
             history = dict(self.config.get('historical_approval_policies', {}))
             if previous['policy_version'] != policy['policy_version']:
                 historic = {'public_keys': previous['approval_public_keys'], 'threshold': previous['threshold'],
@@ -180,9 +180,9 @@ class ElementsAdapter:
             if len(refusals) > len(keys) - threshold:
                 reasons = list(refusals.values())
                 reason = max(set(reasons), key=reasons.count)
-                raise AuthorizationRefused(f'{len(refusals)} of {len(keys)} institutions refused to authorize this '
+                raise AuthorizationRefused(f'{len(refusals)} of {len(keys)} operators refused to authorize this '
                                            f'transaction: {reason}')
-            raise AuthorizationUnavailable(f'Waiting for the institutions to authorize this transaction: '
+            raise AuthorizationUnavailable(f'Waiting for the operators to authorize this transaction: '
                                            f'{len(keys) - unreachable} of {len(keys)} reachable, {threshold} needed')
         transaction.wit.vchAuthorization = encode(expiry, signatures)
         return transaction.serialize().hex()

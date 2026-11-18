@@ -9,8 +9,8 @@ Separate guardian processes exercise historical-key handoff and disclosure. It i
 cryptosystem. See [NATIVE-INTEGRATION.md](NATIVE-INTEGRATION.md) for the native
 scope, build instructions and two-node functional test.
 
-The [institutional settlement sandbox](SETTLEMENT-SANDBOX.md) adds a local
-bank/corporate wallet GUI, independent institution approval windows and actual
+The [settlement sandbox](SETTLEMENT-SANDBOX.md) adds a local
+bank/corporate wallet GUI, independent operator approval windows and actual
 federation-multisig TestEUR/TestUSD issuance, redemption and refunds. Its reserve
 accounts and bank payments are explicitly simulated; the redemption obligor is
 undecided. Run it separately from the cryptographic-only examples below.
@@ -33,7 +33,7 @@ two-asset recovery package from 111,940 to **54,628 bytes**. It uses 36 encrypte
 ranges to the ciphertexts. See [OPTIMIZATION.md](OPTIMIZATION.md) for equations,
 measurements, review findings, alternatives and remaining limitations.
 
-A chain can also require a quorum of the federation's institutions to authorize
+A chain can also require a quorum of the federation's operators to authorize
 every transaction; see [TRANSACTION-AUTHORIZATION.md](TRANSACTION-AUTHORIZATION.md).
 
 [DYNAFED-AUDIT-SPEC.md](DYNAFED-AUDIT-SPEC.md) specifies the proposed public

@@ -70,7 +70,7 @@ commands/test evidence. A checked box is not a security certification.
 - [ ] Check wallet/PSET fee sizing, proof preservation and stale-policy failure
       behavior; collaborative unsupported cases must fail explicitly.
 
-## Control plane, evidence and institutional settlement
+## Control plane, evidence and the settlement sandbox
 
 - [ ] Verify separate TLS/approval/spending/block keys, authenticated roles,
       tenant isolation, session revocation, CSRF/origin checks and credential
@@ -78,7 +78,7 @@ commands/test evidence. A checked box is not a security certification.
 - [ ] Verify scoped disclosure request, exact packet/committee/member bindings,
       recipient-only delivery, replay/expiry behavior and independent checkpoints.
 - [ ] Test coordinator attempts to obtain approval signatures using bearer
-      tokens; test malicious/duplicate/insufficient institution approvals.
+      tokens; test malicious/duplicate/insufficient operator approvals.
 - [ ] Verify exact proposal/template binding and independent native-activation
       checks before migration. Test stages/expiry before and after commitment.
 - [ ] Verify original economic certificates/bank escrow IDs remain immutable;

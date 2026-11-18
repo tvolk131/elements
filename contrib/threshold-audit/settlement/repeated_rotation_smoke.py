@@ -89,7 +89,7 @@ class RepeatedRotationPilot(RotationPilot):
             except RuntimeError:
                 pass
             else:
-                raise AssertionError('an older institutional credential survived repeated retirement')
+                raise AssertionError('an older operator credential survived repeated retirement')
         state.update(status='passed', historical_b_recovery=historical_b, completed_history=history,
                      final_reserves=dashboard['reserves'])
         self.save(state)

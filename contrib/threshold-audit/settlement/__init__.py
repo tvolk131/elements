@@ -1,1 +1,1 @@
-"""Local institutional settlement sandbox. No connection to a real bank."""
+"""Local settlement sandbox. No connection to a real bank."""

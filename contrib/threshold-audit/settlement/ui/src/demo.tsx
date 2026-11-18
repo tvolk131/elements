@@ -61,9 +61,7 @@ function PersonaList({
     <div className="persona-groups">
       {groups.map(([w, list]) => (
         <div key={w}>
-          <h3>
-            {w === "wallet" ? "Institutional wallet" : "Guardian console"}
-          </h3>
+          <h3>{w === "wallet" ? "Institutional wallet" : "Network console"}</h3>
           <ul className="persona-list">
             {list.map((p) => (
               <li key={p.username}>
@@ -267,7 +265,7 @@ export function DemoInstitutions({ operation }: { operation: string }) {
         <Icon name="shield" />
         {sign.isPending
           ? "Collecting approvals…"
-          : "Add the other institutions’ approvals"}
+          : "Add the other operators’ approvals"}
       </button>
       <ErrorNote error={sign.error} />
     </div>

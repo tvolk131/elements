@@ -18,7 +18,7 @@ from .rotation_history import RotationHistory
 
 
 STEPS = [('preparing', 'Prepare incoming guardians and exact treasury migrations'),
-         ('awaiting_approval', 'Collect independent outgoing institution approvals'),
+         ('awaiting_approval', 'Collect independent outgoing operator approvals'),
          ('voting', 'Activate incoming block signing and audit policy through DynaFed'),
          ('audit_activated', 'Activate incoming historical audit shares'),
          ('migrating', 'Confirm authority and outstanding escrow migrations'),
@@ -75,7 +75,7 @@ class FederationRotation:
 
     def _institution(self, user):
         if user['role'] != 'institutionguardian' or user.get('institution_id') not in self.state['source_policy']['approval_public_keys']:
-            raise Problem('outgoing institution membership is required for rotation approval', 403)
+            raise Problem('outgoing operator membership is required for rotation approval', 403)
 
     def _escrows(self):
         operations = [json.loads(row[0]) for row in self.store.db.execute("SELECT data FROM operations WHERE kind='redemption'")]
@@ -173,7 +173,7 @@ class FederationRotation:
             self._get(rotation_id)
             self._institution(user)
             if self.state['stage'] != 'awaiting_approval':
-                raise Problem('rotation is not awaiting institution authorization', 409)
+                raise Problem('rotation is not awaiting operator authorization', 409)
             return {'approval_request': self.state['operation']}
 
     def add_signature(self, user, rotation_id, signature):
@@ -181,10 +181,10 @@ class FederationRotation:
             self._get(rotation_id)
             self._institution(user)
             if self.state['stage'] != 'awaiting_approval':
-                raise Problem('rotation is not awaiting institution authorization', 409)
+                raise Problem('rotation is not awaiting operator authorization', 409)
             if (not isinstance(signature, dict) or signature.get('guardian_id') != user.get('institution_id')
                     or not self._verifier().verify_one(self.state['operation'], signature)):
-                raise Problem('invalid outgoing institution rotation signature', 403)
+                raise Problem('invalid outgoing operator rotation signature', 403)
             if self.state['operation']['expires_at'] <= int(time.time()):
                 raise Problem('rotation authorization expired', 409)
             if signature['guardian_id'] not in {entry['guardian_id'] for entry in self.state['signatures']}:

@@ -307,7 +307,7 @@ class Verifier:
 
     def preflight(self):
         if os.name != 'posix' or not hasattr(os, 'killpg'):
-            raise VerificationFailure('the process-isolated institutional fixture currently requires POSIX')
+            raise VerificationFailure('the process-isolated settlement fixture currently requires POSIX')
         if self.options.mode == 'full' and not Path('/proc/self/stat').is_file():
             raise VerificationFailure('full lifecycle verification currently requires Linux procfs for orphan-safe cleanup')
         for tool in ('git', 'cmake', 'openssl'):
@@ -353,7 +353,7 @@ class Verifier:
         config = self.native / 'test' / 'config.ini'
         parsed = configparser.ConfigParser(); parsed.read(config)
         if not parsed.has_section('components') or not parsed.getboolean('components', 'USE_BDB', fallback=False):
-            raise VerificationFailure('the institutional sandbox and legacy DynaFed baseline require WITH_BDB=ON')
+            raise VerificationFailure('the settlement sandbox and legacy DynaFed baseline require WITH_BDB=ON')
         if Path(parsed.get('environment', 'SRCDIR')).resolve() != ROOT:
             raise VerificationFailure('native test configuration belongs to another source checkout')
         self.env['THRESHOLD_AUDIT_SECP256K1'] = str(self.library)
@@ -361,7 +361,7 @@ class Verifier:
         self.report['artifacts'] = {'native_build': str(self.native), 'secp_build': str(self.secp),
                                     'library': str(self.library), 'library_sha256': hashlib.sha256(self.library.read_bytes()).hexdigest(),
                                     'built_by_this_run': self.options.build,
-                                    'source_binary_binding': 'CMake configure/build executed by this run' if self.options.build else 'existing artifacts supplied by operator; source correspondence is not attested',
+                                    'source_binary_binding': 'CMake configure/build executed by this run' if self.options.build else 'existing artifacts supplied by whoever ran verification; source correspondence is not attested',
                                     'binaries': {name: hashlib.sha256((self.native / 'bin' / name).read_bytes()).hexdigest() for name in required}}
         self.save()
 

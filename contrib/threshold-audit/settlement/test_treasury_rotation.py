@@ -318,7 +318,7 @@ class TreasuryRotationTests(unittest.TestCase):
         with patch.object(InstitutionClient, 'request', request):
             # Unregistered addresses get no registration; the institutions decide.
             behaviour.update(a1='refuse', a2='refuse', a3='ok')
-            with self.assertRaisesRegex(AuthorizationRefused, '2 of 3 institutions refused.*no member bank'):
+            with self.assertRaisesRegex(AuthorizationRefused, '2 of 3 operators refused.*no member bank'):
                 adapter.authorize(raw)
             self.assertEqual(registrations[0], {})
             behaviour.update(a1='down', a2='down', a3='ok')
@@ -373,7 +373,7 @@ class TreasuryRotationTests(unittest.TestCase):
             proposal_hash=hashlib.sha256(proposed.m_dynafed_params.m_proposed.serialize()).hexdigest())
         signer.approve_rotation(operation)
         with patch('time.time', return_value=operation['expires_at']):
-            with self.assertRaisesRegex(ValueError, 'unexpired independent institution approval'):
+            with self.assertRaisesRegex(ValueError, 'unexpired independent operator approval'):
                 signer.sign_block({'rawblock': proposed.serialize().hex()})
             self.assertIn('signature', signer.sign_block({'rawblock': self.block(source).serialize().hex()}))
         signer.db.close(); signer.curve.close()
@@ -393,7 +393,7 @@ class TreasuryRotationTests(unittest.TestCase):
         legacy.commit(); legacy.close()
         signer = Institution(dict(self.config, **source, block_secret=f'{41:064x}'), self.rpc)
         self.assertIsNone(signer.db.execute('SELECT expires_at FROM rotation_approvals').fetchone()[0])
-        with self.assertRaisesRegex(ValueError, 'unexpired independent institution approval'):
+        with self.assertRaisesRegex(ValueError, 'unexpired independent operator approval'):
             signer.sign_block({'rawblock': proposed.serialize().hex()})
         signer.approve_rotation(operation)
         self.assertEqual(signer.db.execute('SELECT expires_at FROM rotation_approvals').fetchone()[0], operation['expires_at'])

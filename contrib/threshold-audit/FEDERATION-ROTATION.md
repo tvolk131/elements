@@ -1,19 +1,19 @@
-# Same-chain institutional federation rotation
+# Same-chain operator and guardian rotation
 
-This milestone replaces the block-signing functionaries, audit guardians and
-treasury institutions on one existing Elements chain. Genesis, asset IDs,
+This milestone replaces the operators (block signers and treasury co-signers)
+and the audit guardians on one existing Elements chain. Genesis, asset IDs,
 customer addresses, balances and historical transactions remain on that chain.
 The local scenario moves from 7-of-10 audit guardians to a wholly new 11-of-15
 committee, and from one 3-of-5 block/treasury group to another 3-of-5 group.
 
-Bank balances, payments, institutional identities and credentials remain test
+Bank balances, payments, operator identities and credentials remain test
 fixtures. The protocol and Python key handling remain research software.
 
 ## Procedure
 
 Start or resume the [settlement sandbox](SETTLEMENT-SANDBOX.md). Startup upgrades
 its bootstrap OP_TRUE block policy through DynaFed to actual federation P2WSH
-signing before enabling the web application. Each institution holds a separate
+signing before enabling the web application. Each operator holds a separate
 block-signing key, treasury spending key and BIP340 approval key.
 
 The guardian interface has a **Federation lifecycle** view. A bank administrator
@@ -26,19 +26,19 @@ outstanding redemption escrows can carry across this sandbox transition.
    distribute new shares for every retained audit key without reconstructing a
    master scalar in the coordinator. Prepare exact authority and escrow
    migration transactions. Persist their bytes, public summaries and hashes.
-2. **Obtain outgoing approval.** Three outgoing institutions independently
+2. **Obtain outgoing approval.** Three outgoing operators independently
    approve the full manifest through their own service windows and credentials.
    The domain-separated certificate binds genesis, source/target policies,
    exact DynaFed proposal, target audit configuration, epoch and migration
    transaction templates. The coordinator's bearer credentials cannot approve.
-3. **Activate the native policy.** Outgoing functionaries sign voting blocks.
+3. **Activate the native policy.** Outgoing operators sign voting blocks.
    Each service independently checks the exact approved proposal and native
-   candidate validity. At the boundary, incoming functionaries sign the first
+   candidate validity. At the boundary, incoming operators sign the first
    block under the new policy. Activate the incoming audit shares. The same
-   proposal names the incoming institutions as the chain's
+   proposal names the incoming operators as the chain's
    [transaction authorizers](TRANSACTION-AUTHORIZATION.md), so they authorize
    the migrations in the next step and everything after.
-4. **Migrate treasury control.** Outgoing institutions independently verify the
+4. **Migrate treasury control.** Outgoing operators independently verify the
    incoming native policy is active before signing migrations. Each authority
    token or tracked escrow moves in full to one incoming output. Confirm each
    exact transaction on the same chain before proceeding.
@@ -46,7 +46,7 @@ outstanding redemption escrows can carry across this sandbox transition.
    install the incoming operational group, record confirmed escrow mappings,
    and require fresh approvals for queued unexecuted requests. Keep already
    executed redemption authorizations and bank references unchanged.
-6. **Retire and resume.** Stop outgoing audit/institution services, revoke
+6. **Retire and resume.** Stop outgoing audit/operator services, revoke
    outgoing application sessions and logins, then resume block production and
    settlement under the incoming membership.
 
@@ -79,7 +79,7 @@ production also persists its exact unsigned candidate before asking any signer;
 after partial signing or restart it retries that candidate, avoiding an
 accidental second signature request at the same height.
 Private launch configurations are versioned and written atomically; unknown
-versions and missing active signing keys fail startup. Institution readiness has
+versions and missing active signing keys fail startup. Operator readiness has
 a single deadline even if a child emits only a partial response. The launcher
 tracks the process handles it owns and closes its workers, databases and servers
 on shutdown.
@@ -89,7 +89,7 @@ OP_RETURN burns used here. Treasury services separately verify exact authorized
 burn amounts, escrow references and signed bank payment evidence.
 
 Resume restores the required outgoing and incoming services for an incomplete
-handover. A completed handover restores only current audit and institution
+handover. A completed handover restores only current audit and operator
 membership. Incoming native policy and activation ancestry are rechecked before
 migration and settlement activation; disagreement holds the transition for
 reconciliation. Source signing services independently perform native activation

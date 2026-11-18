@@ -199,7 +199,7 @@ class Settlement:
 
     def _open_session(self, row, evidence):
         if json.loads(row["data"]).get("disabled"):
-            raise Problem("institution membership is no longer active", 401, "membership_inactive")
+            raise Problem("operator membership is no longer active", 401, "membership_inactive")
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         self.db.execute("INSERT INTO sessions VALUES(?,?,?,?)", (reference_hash(token), row["id"], csrf,
                                                                int(time.time()) + 8 * 3600))
@@ -336,7 +336,7 @@ class Settlement:
             raise Problem("sign in required", 401, "authentication_required")
         user = json.loads(row["data"])
         if user.get("disabled"):
-            raise Problem("institution membership is no longer active", 401, "membership_inactive")
+            raise Problem("operator membership is no longer active", 401, "membership_inactive")
         return {"user": user, "csrf": row["csrf"], "permissions": sorted(ROLES[user["role"]])}
 
     def check_rotation_hold(self):
@@ -446,7 +446,7 @@ class Settlement:
 
     def _require_institution_approval(self, operation):
         if not self.institutions_required(operation):
-            raise Problem("this payment does not need institution approval", 409)
+            raise Problem("this payment does not need operator approval", 409)
 
     def refresh_ready(self, operation):
         if operation["state"] not in {"awaiting_approval", "ready"}:
@@ -593,12 +593,12 @@ class Settlement:
             self._bind_approval(operation)
             if signature is None:
                 if self.approval_signer is None:
-                    raise Problem("institution signer is unavailable", 503)
+                    raise Problem("operator signer is unavailable", 503)
                 signature = self.approval_signer(operation, user)
             if not isinstance(signature, dict) or signature.get("guardian_id") != user.get("institution_id"):
-                raise Problem("institution credential does not match signed approval", 403)
+                raise Problem("operator credential does not match signed approval", 403)
             if not self.verifier.verify_one(operation, signature):
-                raise Problem("invalid institution signature", 403)
+                raise Problem("invalid operator signature", 403)
             with self.transaction():
                 previous = self.db.execute("SELECT data FROM signatures WHERE operation_id=? AND guardian_id=?",
                                            (operation_id, signature["guardian_id"])).fetchone()
@@ -622,7 +622,7 @@ class Settlement:
         if operation["state"] != "ready" or not self.issues_automatically(operation):
             return
         try:
-            self._authorize_execution(operation, "settlement", {"automatic": "bank and institution approvals complete"})
+            self._authorize_execution(operation, "settlement", {"automatic": "bank and operator approvals complete"})
         except Problem as error:
             self._record_error(operation, "Issuance did not start automatically: " + str(error)[:400])
 
@@ -632,7 +632,7 @@ class Settlement:
             template = self.chain.bind_authorization(operation, "issue")
             if (not isinstance(template, str) or len(template) != 64
                     or any(character not in "0123456789abcdef" for character in template)):
-                raise Problem("institution issuance template could not be bound", 503)
+                raise Problem("operator issuance template could not be bound", 503)
             operation["transaction_template_hash"] = template
             # This is committed before any institution is asked to approve.
             with self.transaction():
@@ -667,7 +667,7 @@ class Settlement:
             operation = self._operation(operation_id)
             self.accessible_account(user, operation["account_id"])
             if operation["state"] not in {"awaiting_approval", "ready"} or operation["expires_at"] <= int(time.time()):
-                raise Problem("operation is not awaiting a current institution approval", 409)
+                raise Problem("operation is not awaiting a current operator approval", 409)
             self._require_institution_approval(operation)
             self._bind_approval(operation)
             return self.public_operation(user, operation)
@@ -1194,7 +1194,7 @@ class Settlement:
             operation_ids = {operation["id"] for operation in operations}
             names = {row["id"]: json.loads(row["data"]).get("name", row["id"]) for row in self.db.execute("SELECT id,data FROM users")}
             names.setdefault("settlement", "Automatic, once approvals were complete")
-            names.setdefault("federation", "The institutions, automatically")
+            names.setdefault("federation", "The operators, automatically")
             for row in self.db.execute("SELECT * FROM evidence ORDER BY seq DESC LIMIT 300"):
                 if row["operation_id"] in operation_ids or (row["operation_id"] is None and "view_bank" in ROLES[user["role"]]):
                     activity.append({"id": row["seq"], "created_at": row["created"], "operation_id": row["operation_id"],

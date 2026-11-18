@@ -1,12 +1,12 @@
 """Create and seed a sandbox runtime for a live product/leadership demo.
 
 Creates a fresh runtime (or continues an earlier, interrupted seed), turns on
-the demo conveniences (persona sign-in and institution passphrase prefill),
+the demo conveniences (persona sign-in and operator passphrase prefill),
 then drives realistic history and three pre-staged cases through the real API:
 
 * a funding request waiting for the bank's credit (demo flow: add funds),
-* a withdrawal approved by Acme and two of three institutions (demo flow:
-  the last institution signs and the payout completes), and
+* a withdrawal approved by Acme and two of three operators (demo flow:
+  the last operator signs and the payout completes), and
 * a delivered disclosure of an Acme to Initech payment for the regulator
   persona to open in the browser.
 
@@ -56,9 +56,9 @@ PERSONAS = [
     ('initech-maker', 'wallet', 'Initech (Bank B) · receives payments'),
     ('bank-compliance', 'wallet', 'Bank compliance · requests disclosures'),
     ('demo-recipient', 'wallet', 'Regulator · opens disclosures'),
-    ('institution-1', 'guardian', 'Institution 1 · signs approvals'),
-    ('institution-2', 'guardian', 'Institution 2 · signs approvals'),
-    ('institution-3', 'guardian', 'Institution 3 · signs approvals'),
+    ('institution-1', 'guardian', 'Operator 1 · signs approvals'),
+    ('institution-2', 'guardian', 'Operator 2 · signs approvals'),
+    ('institution-3', 'guardian', 'Operator 3 · signs approvals'),
     ('bank-admin', 'guardian', 'Bank · reserves and oversight'),
 ]
 

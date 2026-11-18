@@ -91,7 +91,7 @@ it("shows handover steps, approvals and checks while a handover runs", () => {
   expect(screen.getByText("Incoming operators")).toBeVisible();
   // Named both as the current step (metric) and in the step list.
   expect(
-    screen.getAllByText("Current institutions approve the handover"),
+    screen.getAllByText("Current operators approve the handover"),
   ).toHaveLength(2);
   expect(screen.getByText("1 of 3 approved")).toBeVisible();
   expect(screen.getByText("Past payments stay disclosable")).toBeVisible();
@@ -100,6 +100,6 @@ it("shows handover steps, approvals and checks while a handover runs", () => {
 });
 
 it("names operators for people", () => {
-  expect(memberName("institution-c-1")).toBe("Institution C-1");
+  expect(memberName("institution-c-1")).toBe("Operator C-1");
   expect(memberName("7")).toBe("Guardian 7");
 });

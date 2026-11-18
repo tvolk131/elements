@@ -55,11 +55,11 @@ class PublicFederationPolicy:
                 or script[-2] != len(members) or script[-1] != OP_CHECKMULTISIG
                 or len(set(script[1:-2])) != len(members)
                 or set(value['approval_public_keys']) != set(members)):
-            raise ValueError('treasury witness does not match institution roster')
+            raise ValueError('treasury witness does not match operator roster')
         approval = tuple((member, value['approval_public_keys'][member]) for member in members)
         encoded = [bytes.fromhex(key) for _, key in approval]
         if len(set(encoded)) != len(members) or any(len(key) != 32 for key in encoded):
-            raise ValueError('institution approval keys must be distinct x-only public keys')
+            raise ValueError('operator approval keys must be distinct x-only public keys')
         if any(not isinstance(key, bytes) or len(key) != 33 or key[0] not in (2, 3) for key in script[1:-2]):
             raise ValueError('treasury members must use compressed public keys')
         address = value['treasury_address']
@@ -68,7 +68,7 @@ class PublicFederationPolicy:
         block_keys, block_witness, block_script = (), '', ''
         if any(key in value for key in BLOCK_FIELDS):
             if not all(key in value for key in BLOCK_FIELDS) or set(value['block_public_keys']) != set(members):
-                raise ValueError('block policy must describe the complete institution roster')
+                raise ValueError('block policy must describe the complete operator roster')
             block_keys = tuple((member, value['block_public_keys'][member]) for member in members)
             public = [bytes.fromhex(key) for _, key in block_keys]
             if (len(set(public)) != len(members)
@@ -79,7 +79,7 @@ class PublicFederationPolicy:
             expected = bytes(CScript([threshold, *public, len(members), OP_CHECKMULTISIG]))
             if (bytes.fromhex(block_witness) != expected
                     or bytes.fromhex(block_script) != b'\x00\x20' + hashlib.sha256(expected).digest()):
-                raise ValueError('block signing program or keys differ from institution roster')
+                raise ValueError('block signing program or keys differ from operator roster')
         return cls(version, threshold, members, approval, value['witness_script'],
                    value['treasury_script'], address, block_keys, block_witness, block_script)
 

@@ -5,8 +5,8 @@ independent audit, security certification, production recommendation or claim
 that passing the included tests establishes cryptographic security.
 
 The package describes the code that exists, the assumptions it needs, concrete
-known limits and questions an independent reviewer should resolve. Institutional
-settlement and repeated membership rotation continue to evolve; identify the
+known limits and questions an independent reviewer should resolve. The settlement
+sandbox and repeated membership rotation continue to evolve; identify the
 exact source snapshot with the generated inventory before reviewing behavior.
 
 ## Start here
@@ -22,7 +22,7 @@ Existing detailed references remain authoritative for implementation context:
 [native integration](../NATIVE-INTEGRATION.md),
 [governance](../NATIVE-GOVERNANCE.md), [wallet/PSET](../NATIVE-WALLET.md),
 [TAC2 equations](../OPTIMIZATION.md), [guardian services](../GUARDIAN-SERVICES.md)
-and [institutional rotation](../FEDERATION-ROTATION.md).
+and [operator and guardian rotation](../FEDERATION-ROTATION.md).
 
 ## Snapshot identity
 
@@ -113,5 +113,5 @@ Record the source inventory, toolchain/library hashes, inspected paths, modeled
 adversaries, checked security properties, test commands/results, limitations and
 each finding's severity/reproduction/remediation. Separate the algebra/proof
 review, native consensus integration, implementation/side-channel review and
-institutional control-plane review. Do not label automated subagent review or
+settlement control-plane review. Do not label automated subagent review or
 successful acceptance runs as an independent cryptographic audit.

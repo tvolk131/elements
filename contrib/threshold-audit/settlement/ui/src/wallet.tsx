@@ -274,7 +274,7 @@ export function WalletPage({
         </div>
         {app.can("view_bank") && (
           <p className="small-note">
-            <a href="/guardian">Open guardian and federation console</a>
+            <a href="/guardian">Open the network console</a>
           </p>
         )}
       </details>
@@ -333,7 +333,7 @@ function Balances() {
               {b.chain_reconciles === true
                 ? "Matches the on-chain wallet"
                 : b.chain_reconciles === false
-                  ? "Balance mismatch · contact your bank operator"
+                  ? "Balance mismatch · contact your bank"
                   : "On-chain balance check unavailable"}
             </div>
           </article>
@@ -473,7 +473,7 @@ export function OperationPanel({
       <div className="toolbar">
         <div className="tabs" role="group" aria-label="Filter operations">
           {(actionQueue
-            ? [["all", "Awaiting your institution"]]
+            ? [["all", "Awaiting your organization"]]
             : [
                 ["all", "All"],
                 ["pending", "In progress"],
@@ -512,7 +512,7 @@ export function OperationPanel({
                 <th>Request / counterparty</th>
                 <th>Amount</th>
                 <th>Status</th>
-                <th>{app.guardian ? "Institution approvals" : "Created"}</th>
+                <th>{app.guardian ? "Operator approvals" : "Created"}</th>
                 <th>
                   <span className="sr-only">Review</span>
                 </th>
@@ -571,7 +571,7 @@ export function OperationPanel({
                     {op.error && isPending(op) && (
                       <span className="cell-secondary warning-text">
                         {waitingForInstitutions(op)
-                          ? "Waiting for the institutions"
+                          ? "Waiting for the operators"
                           : "Review required"}
                       </span>
                     )}
@@ -682,9 +682,7 @@ export function RecipientsPage() {
                 <li key={b.id}>
                   <strong>{b.name}</strong>
                   <span>Test{b.currency} · configured bank destination</span>
-                  <small>
-                    Bank account details are held by the bank operator.
-                  </small>
+                  <small>Bank account details are held by the bank.</small>
                 </li>
               ))}
             </ul>

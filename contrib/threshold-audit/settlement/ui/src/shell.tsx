@@ -9,6 +9,7 @@ import {
   needsInstitutionApproval,
 } from "./domain";
 import { DemoSwitcher } from "./demo";
+import { memberName } from "./guardian";
 import { Dialogs } from "./dialogs";
 import { WorkspaceLink } from "./navigation";
 import type { Page } from "./types";
@@ -49,7 +50,7 @@ export function Shell() {
     : forAccount(app.data.operations, app.account).filter(needsAction).length;
   const title = items.find((item) => item[0] === page)?.[1] || "Overview";
   useEffect(() => {
-    document.title = `${title} · Concord ${app.guardian ? "guardian" : "wallet"}`;
+    document.title = `${title} · Concord ${app.guardian ? "network" : "wallet"}`;
   }, [title, app.guardian]);
   return (
     <div className="shell">
@@ -57,7 +58,7 @@ export function Shell() {
         <Brand />
         <div className="workspace-label">
           <Icon name={app.guardian ? "shield" : "wallet"} />
-          {app.guardian ? "Guardian console" : "Institutional wallet"}
+          {app.guardian ? "Network console" : "Institutional wallet"}
           <span className="dot" />
         </div>
         <div className="nav-label">Workspace</div>
@@ -111,7 +112,8 @@ export function Shell() {
                 <div className="user-name">{app.user.name}</div>
                 <div className="user-role">
                   {human(app.user.role)}
-                  {app.user.institution_id && ` · ${app.user.institution_id}`}
+                  {app.user.institution_id &&
+                    ` · ${memberName(app.user.institution_id)}`}
                 </div>
               </div>
             </div>

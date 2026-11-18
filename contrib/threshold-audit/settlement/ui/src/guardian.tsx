@@ -134,7 +134,8 @@ export function GuardianOverview({
         }
       >
         Independent oversight, shared responsibility.
-        {app.user.institution_id && ` Acting for ${app.user.institution_id}.`}
+        {app.user.institution_id &&
+          ` Acting for ${memberName(app.user.institution_id)}.`}
       </Heading>
       <RotationNotice />
       {approvals ? (
@@ -144,11 +145,11 @@ export function GuardianOverview({
             <strong>
               {mine.length}{" "}
               {mine.length === 1 ? "request awaits" : "requests await"} your
-              institution
+              organization
             </strong>
             <p>
-              Review the exact amount and destination. Institution certificates
-              and user approvals are separate requirements.
+              Review the exact amount and destination. Operator certificates and
+              user approvals are separate requirements.
             </p>
           </div>
           <WorkspaceLink page="overview" className="link-button">
@@ -158,9 +159,9 @@ export function GuardianOverview({
       ) : (
         <div className="metrics">
           <Metric
-            title="Awaiting your institution"
+            title="Awaiting your organization"
             value={mine.length}
-            detail="Review before providing an institution certificate"
+            detail="Review before providing an operator certificate"
             symbol="shield"
           />
           <Metric
@@ -204,11 +205,11 @@ export function GuardianOverview({
             title={approvals ? "Requests for review" : "Settlement requests"}
             operations={approvals ? mine : ops}
             emptyTitle={
-              approvals ? "Your institution is up to date" : undefined
+              approvals ? "Your organization is up to date" : undefined
             }
             emptyDetail={
               approvals
-                ? "No requests currently need a certificate from your institution. Completed and other requests remain in the overview."
+                ? "No requests currently need a certificate from your organization. Completed and other requests remain in the overview."
                 : undefined
             }
           />
@@ -360,15 +361,15 @@ export function NetworkPage() {
       <div className="panels">
         <section>
           <Panel
-            title="Guardian institutions"
-            subtitle="Authority is supplied by independently configured institution signers."
+            title="Operators"
+            subtitle="Authority is supplied by independently configured operator signers."
           >
             {app.data.guardians.length ? (
               <div className="table-scroll">
                 <table>
                   <thead>
                     <tr>
-                      <th>Institution</th>
+                      <th>Operator</th>
                       <th>Approval signer</th>
                     </tr>
                   </thead>
@@ -416,11 +417,11 @@ export function NetworkPage() {
     </>
   );
 }
-/** "institution-c-1" → "Institution C-1"; audit member "7" → "Guardian 7". */
+/** "institution-c-1" → "Operator C-1"; audit member "7" → "Guardian 7". */
 export const memberName = (member: string) =>
   /^\d+$/.test(member)
     ? `Guardian ${member}`
-    : `Institution ${member.replace(/^institution-/i, "").toUpperCase()}`;
+    : `Operator ${member.replace(/^institution-/i, "").toUpperCase()}`;
 const ROLE_COPY = [
   [
     "treasury",
@@ -449,7 +450,7 @@ const ROLE_COPY = [
 ] as const;
 const STEP_COPY: Record<string, string> = {
   preparing: "Prepare the new operators",
-  awaiting_approval: "Current institutions approve the handover",
+  awaiting_approval: "Current operators approve the handover",
   voting: "The network switches to the new operators",
   audit_activated: "New guardians take over disclosure keys",
   migrating: "Move held funds to the new operators",
@@ -533,8 +534,8 @@ export function FederationPage() {
           </Button>
         }
       >
-        The independent institutions that run this network, and how they hand
-        over to a new group.
+        The independent operators that run this network, and how they hand over
+        to a new group.
       </Heading>
       <div className="federation-chain">
         <span className="federation-chain-icon">
@@ -565,7 +566,7 @@ export function FederationPage() {
           <Metric
             title="Handover approvals"
             value={`${r.approval_count} of ${r.approval_threshold}`}
-            detail="From the current institutions"
+            detail="From the current operators"
             symbol="lock"
           />
           <Metric
@@ -625,7 +626,7 @@ export function FederationPage() {
           <aside className="aside-panels">
             <Panel title="Handover approvals" className="side-card">
               <div className="kv-list">
-                <KV label="Current institutions">
+                <KV label="Current operators">
                   {r.approval_count} of {r.approval_threshold} approved
                 </KV>
               </div>
@@ -665,7 +666,7 @@ export function FederationPage() {
                   ))}
               </div>
               <p className="small-note">
-                Each current institution approves the exact handover in its own
+                Each current operator approves the exact handover in its own
                 approval window.
               </p>
               <Button
@@ -732,7 +733,7 @@ export function FederationPage() {
         >
           <p className="federation-explainer">
             To replace the operators, the bank prepares the incoming group, the
-            current institutions approve, and the network switches over while
+            current operators approve, and the network switches over while
             pending requests carry on. Past payments remain disclosable by the
             new guardians.
           </p>

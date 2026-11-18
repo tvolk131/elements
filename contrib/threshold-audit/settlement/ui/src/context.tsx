@@ -104,7 +104,7 @@ function Login({ guardian }: { guardian: boolean }) {
     onSuccess: startSession,
   });
   useEffect(() => {
-    document.title = `Sign in · Concord ${guardian ? "guardian" : "wallet"}`;
+    document.title = `Sign in · Concord ${guardian ? "network" : "wallet"}`;
   }, [guardian]);
   return (
     <main className="login-shell">
@@ -124,7 +124,7 @@ function Login({ guardian }: { guardian: boolean }) {
         <div className="login-points">
           <span>
             <Icon name="shield" />
-            Approved by independent institutions
+            Approved by independent operators
           </span>
           <span>
             <Icon name="lock" />
@@ -143,13 +143,13 @@ function Login({ guardian }: { guardian: boolean }) {
         <div className="login-card">
           <div className="login-badge">
             <Icon name={guardian ? "shield" : "wallet"} />
-            {guardian ? "Federation guardian" : "Institutional wallet"}
+            {guardian ? "Network console" : "Institutional wallet"}
           </div>
           <h2>Welcome to your workspace.</h2>
           <p className="muted">
             {demo
               ? "Choose who to sign in as. Each person sees only what their role allows."
-              : `Sign in with your assigned ${guardian ? "guardian institution" : "bank or corporate"} account.`}
+              : `Sign in with your assigned ${guardian ? "operator or oversight" : "bank or corporate"} account.`}
           </p>
           {demo ? (
             <>
@@ -254,7 +254,7 @@ function Login({ guardian }: { guardian: boolean }) {
           </div>
           <p className="login-switch">
             <a href={guardian ? "/wallet" : "/guardian"}>
-              Open {guardian ? "institutional wallet" : "guardian console"}
+              Open {guardian ? "institutional wallet" : "network console"}
               <Icon name="arrow" />
             </a>
           </p>
@@ -349,7 +349,7 @@ function Workspace({
         notify(
           expected.rotation
             ? "Handover authorization recorded."
-            : "Institution approval recorded.",
+            : "Operator approval recorded.",
         );
         await refreshData();
         // Show the request again so the updated approval count is visible.
@@ -401,7 +401,7 @@ function Workspace({
       !user.institution_id
     )
       throw new Error(
-        "Your institution’s independent approval service is not configured.",
+        "Your organization’s independent approval service is not configured.",
       );
     // Open synchronously while still in the user's submit gesture.
     const popup = window.open(
@@ -413,7 +413,7 @@ function Workspace({
     );
     if (!popup)
       throw new Error(
-        "Allow the independent institution approval window, then try again.",
+        "Allow the independent operator approval window, then try again.",
       );
     const path = rotation
       ? `/api/federation/rotations/${encodeURIComponent(id)}`
@@ -465,7 +465,7 @@ function Workspace({
         path,
         rotation,
         toast: notify(
-          "Sign in your institution’s approval window to record this approval.",
+          "Sign in your organization’s approval window to record this approval.",
           "info",
         ),
       });

@@ -1,7 +1,7 @@
 # Federation authorization of every transaction
 
 Research prototype. Once a chain turns this rule on, no transaction confirms
-unless a quorum of the federation's institutions has authorized it. It is the
+unless a quorum of the federation's operators has authorized it. It is the
 ledger-level control that the application-level approvals sit on top of: the
 federation decides what moves, and every node checks that it did.
 
@@ -57,11 +57,11 @@ stop being valid at the activation boundary and are issued again.
 ## What it does not do
 
 - It adds accountability, not a new trust assumption: in the sandbox the same
-  five institutions sign blocks and authorize transactions, with separate keys.
+  five operators sign blocks and authorize transactions, with separate keys.
 - Authorizers see what the chain shows. They are not given amounts.
 - A node wallet does not request authorizations. `sendtoaddress` on a chain
   with the rule on creates a transaction the node will not relay.
-- There is no freeze list. An institution that declines to sign is the only
+- There is no freeze list. An operator that declines to sign is the only
   refusal, and a single one does not block a 3-of-5 quorum.
 - Proposals that replace the authorizer keys need block signers' votes, not
   the outgoing authorizers' signatures.
@@ -69,10 +69,10 @@ stop being valid at the activation boundary and are issued again.
 ## In the settlement sandbox
 
 The rule is activated together with federation block signing at startup, with
-the five institutions' approval keys and a threshold of three. A handover
-proposes the incoming institutions' keys in the same DynaFed transition.
+the five operators' approval keys and a threshold of three. A handover
+proposes the incoming operators' keys in the same DynaFed transition.
 
-Each institution's service signs automatically. It refuses unless
+Each operator's service signs automatically. It refuses unless
 
 - its key is in the policy its own node reports,
 - the expiry is within the next 20 blocks, and
@@ -82,7 +82,7 @@ Each institution's service signs automatically. It refuses unless
 The simulated bank registers only addresses held in wallets it runs: its
 customers' wallets and the network's own (the sponsor wallet and the
 treasuries it watches). A payment to any other address goes without a
-registration, and the institutions refuse it. The bank's key still sits in
+registration, and the operators refuse it. The bank's key still sits in
 the coordinator process, so a coordinator that chose to could register an
 outside address itself; a real bank would hold that key in its own service.
 
@@ -90,20 +90,20 @@ outside address itself; a real bank would hold that key in its own service.
 transaction the coordinator sends, including retries. It tells two failures
 apart:
 
-- **Refused** (`AuthorizationRefused`): so many institutions answered no that
+- **Refused** (`AuthorizationRefused`): so many operators answered no that
   the rest cannot reach the threshold. A customer payment that is refused
   before anything reached the chain is closed as rejected with
   `declined_by: "institutions"`, and its coins are released.
-- **Unavailable** (`AuthorizationUnavailable`): too few institutions
+- **Unavailable** (`AuthorizationUnavailable`): too few operators
   answered. The request waits ("2 of 5 reachable, 3 needed") and the worker
   retries the same transaction until enough are back.
 
 The guardian console's **Ledger** page reads recent blocks from the node and
 shows, per transaction, what the chain recorded (hidden amounts, sealed
-recovery records, token issuance or burns), which institutions authorized it
-and until which block, and which institutions confirmed its block. The
-service checks every signature it shows against the institutions' keys. Its
-**Send without the institutions** button has a bank wallet sign a valid
+recovery records, token issuance or burns), which operators authorized it
+and until which block, and which operators confirmed its block. The
+service checks every signature it shows against the operators' keys. Its
+**Send without the operators** button has a bank wallet sign a valid
 payment to itself and offers it to the node with and without an
 authorization; only the refused copy is broadcast, and the node refuses it.
 
@@ -111,9 +111,9 @@ authorization; only the refused copy is broadcast, and the node refuses it.
 
 - `test/functional/feature_threshold_audit_authorization.py`: two nodes,
   mempool and block validation, expiry, re-keying, restart.
-- `settlement/test_treasury_rotation.py`: what an institution will and will
+- `settlement/test_treasury_rotation.py`: what an operator will and will
   not authorize, and how the coordinator tells a refusal from too few
-  institutions.
+  operators.
 - `settlement/test_settlement.py`: a refused payment is declined and
-  released; a payment waits while too few institutions answer.
+  released; a payment waits while too few operators answer.
 - `settlement/ui/src/ledger.test.tsx`: the Ledger page.

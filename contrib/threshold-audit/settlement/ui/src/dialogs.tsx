@@ -52,7 +52,7 @@ const REVIEW: Record<
     open: "Review and approve",
     title: "Approve this request",
     context:
-      "Your approval is the second-person check. Institution approvals are still needed before it can be sent.",
+      "Your approval is the second-person check. Operator approvals are still needed before it can be sent.",
     confirm: "Approve",
     done: "Approval recorded.",
   },
@@ -65,8 +65,8 @@ const REVIEW: Record<
     done: "Approved and sent. It settles in a few seconds.",
   },
   "guardian-approve": {
-    open: "Review institution approval",
-    title: "Institution approval",
+    open: "Review operator approval",
+    title: "Operator approval",
     context: "",
     confirm: "Open approval window",
     done: "",
@@ -102,13 +102,13 @@ const ROTATION: Record<
   prepare: {
     title: "Prepare a handover to new operators",
     context:
-      "The bank sets up the incoming operators and checks they hold the keys for past payments. New requests pause until the handover finishes. The current institutions then approve it.",
+      "The bank sets up the incoming operators and checks they hold the keys for past payments. New requests pause until the handover finishes. The current operators then approve it.",
     confirm: "Prepare handover",
   },
   "guardian-approve": {
     title: "Approve the handover",
     context:
-      "Review the incoming operators and the funds that move to them in your institution’s own approval window.",
+      "Review the incoming operators and the funds that move to them in your organization’s own approval window.",
     confirm: "Open approval window",
   },
   advance: {
@@ -232,8 +232,7 @@ export function Dialogs() {
           <div className="dialog-body">
             <p>{hold}</p>
             <p>
-              Ask your bank operator to check the transition before creating a
-              request.
+              Ask your bank to check the transition before creating a request.
             </p>
           </div>
           <Footer>
@@ -343,15 +342,15 @@ function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
           <div className="form-context">
             {kind === "deposit"
               ? app.data.deposit_issuance === "automatic"
-                ? "Once the bank confirms the deposit arrived, three independent institutions approve and the tokens are issued automatically."
-                : "After the bank confirms the deposit, a second person and three independent institutions approve before tokens are issued."
+                ? "Once the bank confirms the deposit arrived, three independent operators approve and the tokens are issued automatically."
+                : "After the bank confirms the deposit, a second person and three independent operators approve before tokens are issued."
               : kind === "redemption"
-                ? "Tokens are locked while the bank pays out, then destroyed once the payment is confirmed. A second person and three institutions approve first."
+                ? "Tokens are locked while the bank pays out, then destroyed once the payment is confirmed. A second person and three operators approve first."
                 : transferNeedsInstitutions(
                       app.data.transfer_institution_approval,
                       Math.round(Number(amount || 0) * 100),
                     )
-                  ? "A second person and three independent institutions approve before the payment is sent."
+                  ? "A second person and three independent operators approve before the payment is sent."
                   : "A second person at your company approves before the payment is sent."}
           </div>
           <Field
@@ -630,7 +629,7 @@ function OperationDetail({ id }: { id: string }) {
                 <KV label="Second-person approval">
                   {op.user_approved ? "Recorded" : "Waiting"}
                 </KV>
-                <KV label="Institution approvals">
+                <KV label="Operator approvals">
                   <Quorum operation={op} />
                 </KV>
                 <KV label="Approvals valid until">
@@ -790,7 +789,7 @@ function ReviewForm({
         <div className="dialog-body">
           <div className="form-context">
             {guardian
-              ? `You sign in ${app.user.institution_id || "your institution"}’s own approval window. This console never sees the institution’s signing key.`
+              ? "You sign in your organization’s own approval window. This console never sees your operator signing key."
               : copy.context}
           </div>
           <div className="confirmation-summary">
@@ -874,7 +873,7 @@ function BankCreditForm({ operation: op }: { operation: Operation }) {
     onSuccess: async () => {
       app.notify(
         op.issues_automatically
-          ? "Deposit confirmed. Tokens are issued once three institutions approve."
+          ? "Deposit confirmed. Tokens are issued once three operators approve."
           : "Bank deposit recorded. The request now needs approvals.",
       );
       app.setDialog({ type: "operation", id: op.id });
@@ -903,8 +902,8 @@ function BankCreditForm({ operation: op }: { operation: Operation }) {
           <KV label="For">{app.accountName(op.account_id)}</KV>
           <p className="small-note">
             {op.issues_automatically
-              ? "Simulated bank: no real money moves. Confirming is the bank’s approval; tokens are issued once three institutions approve."
-              : "Simulated bank: no real money moves. Tokens are issued only after a second person and three institutions approve."}
+              ? "Simulated bank: no real money moves. Confirming is the bank’s approval; tokens are issued once three operators approve."
+              : "Simulated bank: no real money moves. Tokens are issued only after a second person and three operators approve."}
           </p>
           <ErrorNote error={mutation.error} />
         </div>
@@ -965,14 +964,14 @@ function BankForm({ operation }: { operation?: Operation }) {
     return (
       <Modal title="Bank simulator" close={() => app.setDialog(null)}>
         <div className="dialog-body">
-          <Empty title="Bank operator access required" />
+          <Empty title="Bank staff access required" />
         </div>
       </Modal>
     );
   return (
     <Modal
       title="Record simulated bank event"
-      description="Restricted to the bank simulator operator."
+      description="Restricted to staff running the bank simulator."
       close={() => app.setDialog(null)}
     >
       <form

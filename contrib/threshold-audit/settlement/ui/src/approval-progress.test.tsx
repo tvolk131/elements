@@ -17,11 +17,11 @@ const app = vi.hoisted(() => ({
   can: (permission: string) => permission === "execute",
   data: {
     guardians: [
-      { id: "c1", name: "Institution C1" },
-      { id: "c2", name: "Institution C2" },
-      { id: "c3", name: "Institution C3" },
-      { id: "c4", name: "Institution C4" },
-      { id: "c5", name: "Institution C5" },
+      { id: "c1", name: "Operator C1" },
+      { id: "c2", name: "Operator C2" },
+      { id: "c3", name: "Operator C3" },
+      { id: "c4", name: "Operator C4" },
+      { id: "c5", name: "Operator C5" },
     ],
   },
 }));
@@ -89,7 +89,7 @@ it("opens a separate review for an eligible approver without approving anything"
     action: "approve",
   });
 });
-it("keeps chain submission unavailable while institutions still need to approve", () => {
+it("keeps chain submission unavailable while operators still need to approve", () => {
   app.user = { id: "bank-approver", name: "Bank Approver" };
   render(
     <ApprovalProgress
@@ -140,7 +140,7 @@ it("lets the last approver approve and send in one step", async () => {
     action: "approve-send",
   });
 });
-it("leaves out institutions when the payment policy does not need them", async () => {
+it("leaves out operators when the payment policy does not need them", async () => {
   app.user = { id: "acme-approver", name: "Acme Approver" };
   const base = operation();
   const op = operation({
@@ -149,7 +149,7 @@ it("leaves out institutions when the payment policy does not need them", async (
     approval_workflow: { ...base.approval_workflow!, required_institutions: 0 },
   });
   render(<ApprovalProgress operation={op} />);
-  expect(screen.queryByText("Institution approvals")).not.toBeInTheDocument();
+  expect(screen.queryByText("Operator approvals")).not.toBeInTheDocument();
   expect(screen.getByText(/step 1 approval also sends/)).toBeVisible();
   await userEvent.click(
     screen.getByRole("button", { name: "Review, approve and send" }),

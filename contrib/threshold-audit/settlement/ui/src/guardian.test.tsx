@@ -46,7 +46,7 @@ beforeEach(() => {
     op("closed-cancellation", { state: "cancelled", error: "escrow returned" }),
   ];
 });
-it("shows only this institution’s actionable requests in the approval queue", () => {
+it("shows only this operator’s actionable requests in the approval queue", () => {
   render(<GuardianOverview approvals />);
   expect(screen.getAllByTestId("operation-row")).toHaveLength(1);
   expect(screen.getByTestId("operation-row")).toHaveAttribute(
@@ -62,7 +62,7 @@ it("shows a completed queue state while keeping closed outcomes in history", () 
     (o) => !o.allowed_actions.length,
   );
   const { unmount } = render(<GuardianOverview approvals />);
-  expect(screen.getByText("Your institution is up to date")).toBeVisible();
+  expect(screen.getByText("Your organization is up to date")).toBeVisible();
   unmount();
   render(<GuardianOverview />);
   expect(screen.getAllByTestId("operation-row")).toHaveLength(3);

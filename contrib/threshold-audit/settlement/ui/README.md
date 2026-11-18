@@ -4,7 +4,7 @@ React and TypeScript, TanStack Router, and TanStack Query power the wallet and
 guardian interfaces. Vite builds a static single-page app into `dist/`. The
 Python settlement server serves those files and the `/api` endpoints from one
 loopback origin. Python, the Elements daemon, and the independent
-institution/guardian services keep transaction execution and key custody.
+operator/guardian services keep transaction execution and key custody.
 
 ## Build and run
 
@@ -38,15 +38,15 @@ redirected in the browser.
   and cross-site requests, bounds request bodies, and serves only `index.html`
   for app routes and files under `dist/assets/`. The CSP allows only same-origin
   scripts. The mesh gateway remains the private Rayfish entry point and keeps
-  independent institution origins separate.
+  independent operator origins separate.
 - Authenticated sessions use an HttpOnly, SameSite=Strict cookie plus a CSRF
   header on every POST. Role checks, approval policy and durable financial
   state stay in Python.
 - Query caches are kept in browser memory, scoped by identity, and cleared on
   logout or session expiry. Financial mutations have no automatic
   retry or optimistic balance updates.
-- Institution approval passphrases stay in the independent institution windows.
-  The callback checks the popup, origin, request ID and institution identity
+- Operator approval passphrases stay in the independent operator windows.
+  The callback checks the popup, origin, request ID and operator identity
   before sending a certificate to the engine for verification.
 
 The capability demo adds signed bank-reference routing, confidential-address

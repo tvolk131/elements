@@ -100,26 +100,26 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
             </span>
             <div>
               <div className="payment-step-title">
-                <h4>Institution approvals</h4>
+                <h4>Operator approvals</h4>
                 <Badge status={approved >= required ? "complete" : "pending"}>
                   {approved} of {required} recorded
                 </Badge>
               </div>
               <p>
                 {approved >= required ? (
-                  "The required institution approvals are recorded."
+                  "The required operator approvals are recorded."
                 ) : (
                   <>
                     Any <strong>{required}</strong>
                     {institutionCount ? ` of the ${institutionCount}` : ""}{" "}
-                    independent institutions must also approve this {kind}, each
-                    in its own approval window.
+                    independent operators must also approve this {kind}, each in
+                    its own approval window.
                   </>
                 )}
               </p>
               {!!policyIds.length && (
                 <details className="payment-institutions">
-                  <summary>Which institutions can approve?</summary>
+                  <summary>Which operators can approve?</summary>
                   <ul>
                     {policyIds.map((id) => {
                       const institution = app.data.guardians.find(
@@ -163,7 +163,7 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                     })
                   }
                 >
-                  Review institution approval
+                  Review operator approval
                 </Button>
               )}
             </div>
@@ -300,7 +300,7 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
               ) : approved >= required && !op.user_approved ? (
                 <p>
                   {institutionsNeeded
-                    ? "The institutions have approved, so the"
+                    ? "The operators have approved, so the"
                     : "The"}{" "}
                   step {personStep} approval also sends the request.
                 </p>

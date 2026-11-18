@@ -140,7 +140,7 @@ class Pilot:
                   'transactions': [{'kind': op['kind'], 'id': op['id'], 'txid': op.get('txid'), 'state': op['state']} for op in operations],
                   'reserves': dashboard['reserves']}
         (self.directory / 'smoke-result.json').write_text(json.dumps(result, indent=2))
-        print('PASS: real Elements settlement and independent institution services; report:', self.directory / 'smoke-result.json', flush=True)
+        print('PASS: real Elements settlement and independent operator services; report:', self.directory / 'smoke-result.json', flush=True)
 
 
 if __name__ == '__main__':

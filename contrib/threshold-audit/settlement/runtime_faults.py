@@ -95,7 +95,7 @@ def run(work_dir, daemon, library):
             assert 'unsupported runtime schema' in str(error)
             assert json.loads(key_path.read_text())['schema_version'] == 999
         else:
-            raise AssertionError('future institution schema was silently rewritten')
+            raise AssertionError('future operator service schema was silently rewritten')
         finally:
             sandbox.close(); save_config(key_path, original_service)
         checks.append('unknown-institution-schema-refused-before-rewrite')

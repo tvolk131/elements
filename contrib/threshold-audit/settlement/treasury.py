@@ -1,4 +1,4 @@
-"""Isolated institution approval and Elements signing service, for local tests.
+"""Isolated operator approval and Elements signing service, for local tests.
 
 Each process owns one ECDSA spending key and a distinct BIP340 approval key.
 The coordinator receives signatures, never those private keys. This local
@@ -115,7 +115,7 @@ class Institution:
         # server maps its guardian principal to this one institution endpoint.
         import time
         if operation['policy_version'] != self.verifier.policy_version or operation['expires_at'] <= int(time.time()):
-            raise ValueError('unknown or expired institutional policy')
+            raise ValueError('unknown or expired operator policy')
         if operation['genesis_hash'] != self.config['genesis_hash']:
             raise ValueError('wrong chain')
         if operation['kind'] == 'deposit':
@@ -150,7 +150,7 @@ class Institution:
             raise ValueError('rotation must bind the exact DynaFed proposal')
         if any(source[key] != public_policy(self.config)[key] for key in
                ('policy_version', 'approval_public_keys', 'threshold', 'guardian_order', 'treasury_script', 'witness_script')):
-            raise ValueError('rotation does not replace this institution policy')
+            raise ValueError('rotation does not replace this operator policy')
         digest = rotation_digest(operation).hex()
         with self.lock, self.db:
             prior = self.db.execute('SELECT digest FROM rotation_approvals WHERE case_id=?', (operation['id'],)).fetchone()
@@ -215,7 +215,7 @@ class Institution:
 
     def sign_block(self, request):
         if not self.config.get('block_secret'):
-            raise ValueError('institution has no block-signing identity')
+            raise ValueError('operator has no block-signing identity')
         block = from_hex(CBlock(), request['rawblock'])
         if block.m_dynafed_params.m_current.m_signblockscript.hex() != self.config['block_signing_script']:
             raise ValueError('block is assigned to another federation signing policy')
@@ -231,7 +231,7 @@ class Institution:
                 allowed = {row[0] for row in self.db.execute('SELECT proposal_hash FROM rotation_approvals WHERE expires_at>?',
                                                             (int(time.time()),)) if row[0]}
             if proposal_hash not in allowed:
-                raise ValueError('exact DynaFed proposal lacks unexpired independent institution approval')
+                raise ValueError('exact DynaFed proposal lacks unexpired independent operator approval')
         # Native validation independently checks candidate transactions, policy,
         # registry and TAP1 readiness while omitting only the block signatures.
         # Consensus validation is mandatory. The optional relay-policy filter
@@ -270,7 +270,7 @@ class Institution:
             raise ValueError('this chain does not require transaction authorization')
         secret = int(self.config['approval_secret'], 16)
         if self.curve.mul(secret)[1:] not in decode_policy(policy)[1]:
-            raise ValueError('institution is not an authorizer under the active chain policy')
+            raise ValueError('operator is not an authorizer under the active chain policy')
         if type(expiry) is not int or not info['blocks'] < expiry <= info['blocks'] + WINDOW:
             raise ValueError('authorization must expire within the next %d blocks' % WINDOW)
         genesis, registrations = self.config['genesis_hash'], request.get('registrations') or {}
@@ -309,11 +309,11 @@ class Institution:
             raise ValueError('wrong chain')
         stage = request['stage']
         if stage == 'issue' and operation['policy_version'] != self.verifier.policy_version:
-            raise ValueError('retired institutions cannot authorize new issuance')
+            raise ValueError('retired operators cannot authorize new issuance')
         if (stage == 'issue' and operation['kind'] != 'deposit') or (stage == 'burn' and operation['kind'] != 'redemption') or (stage == 'refund' and operation['kind'] != 'refund'):
             raise ValueError('wrong transaction stage')
         if stage not in ('issue', 'burn', 'refund'):
-            raise ValueError('institution can sign only issuance or escrow burn')
+            raise ValueError('operator can sign only issuance or escrow burn')
         transaction = tx_from_hex(request['rawtx'])
         outputs = public_outputs(self.curve, transaction, request['openings'])
         asset = self.config['assets'][operation['currency']]
@@ -497,14 +497,14 @@ def serve(config, rpc):
                 request = json.loads(self.rfile.read(length))
                 if self.path == '/approve':
                     if not hmac.compare_digest(request.get('passphrase', ''), config['approval_passphrase']):
-                        self.respond(403, {'error': 'Institution approval passphrase is required'})
+                        self.respond(403, {'error': 'Operator approval passphrase is required'})
                         return
                     result = institution.approve(request['operation'])
                 elif (self.path == '/' and request.get('method') in {'sign_transaction', 'sign_migration', 'sign_block', 'authorize_transaction'}
                       and hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + config['token'])):
                     result = getattr(institution, request['method'])(request)
                 else:
-                    self.respond(403, {'error': 'Independent institution approval is required'})
+                    self.respond(403, {'error': 'Independent operator approval is required'})
                     return
                 status = 200
             except (ValueError, KeyError, TypeError, RuntimeError) as error:

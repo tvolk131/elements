@@ -45,7 +45,7 @@ class Directory:
             raise Problem('choose a different destination account')
         bank = account.get('bank_tenant', 'bank')
         if bank not in self.keys:
-            raise Problem('receiving institution is not available', 503)
+            raise Problem('receiving member bank is not available', 503)
         address = self.store.chain.wallets[account['id']].getnewaddress('beneficiary-route', 'blech32')
         asset = next(a for a in self.store.chain.assets() if a['currency'] == currency and a.get('registered'))
         payload = {'id': secrets.token_hex(16), 'reference': reference, 'beneficiary_name': account['name'],

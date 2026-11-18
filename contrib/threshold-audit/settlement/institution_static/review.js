@@ -5,10 +5,10 @@ const button = document.querySelector('#submit');
 button.disabled = true;
 async function initialize() {
   information = await (await fetch('/info')).json();
-  document.querySelector('#institution').textContent = 'Institution ' + information.guardian_id.replace(/^institution-/i, '').toUpperCase();
+  document.querySelector('#institution').textContent = 'Operator ' + information.guardian_id.replace(/^institution-/i, '').toUpperCase();
   operation = JSON.parse(decodeURIComponent(location.hash.slice(1)));
   history.replaceState(null, '', '/');
-  if (!information.coordinator_origins.includes(operation.return_origin) || !window.opener) throw new Error('Open this review from the guardian approval queue.');
+  if (!information.coordinator_origins.includes(operation.return_origin) || !window.opener) throw new Error('Open this review from the network console approval queue.');
   if (operation.kind !== 'federation_rotation') {
     const amount = document.createElement('div'), label = document.createElement('span'), value = document.createElement('strong');
     amount.className = 'amount';
@@ -37,7 +37,7 @@ async function initialize() {
     // Demo runtimes only: the service offers its own passphrase so a presenter
     // can sign without copying credentials. Signing still happens here.
     document.querySelector('#passphrase').value = information.demo_passphrase;
-    status.textContent = 'Demo mode: this institution\u2019s passphrase is filled in.';
+    status.textContent = 'Demo mode: this operator\u2019s passphrase is filled in.';
   }
   button.disabled=false;
 }

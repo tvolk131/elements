@@ -144,13 +144,13 @@ it("shows what the ledger recorded beside what only the bank knows", async () =>
   const rows = await screen.findAllByTestId("ledger-row");
   expect(rows).toHaveLength(2);
   expect(
-    screen.getByText("Every transaction needs 3 of 5 institutions"),
+    screen.getByText("Every transaction needs 3 of 5 operators"),
   ).toBeVisible();
-  expect(screen.getByText("Confirmed by Institutions 3, 4, 5")).toBeVisible();
+  expect(screen.getByText("Confirmed by Operators 3, 4, 5")).toBeVisible();
   const first = within(rows[0]);
   expect(first.getByText(/all amounts hidden/)).toBeVisible();
   expect(first.getByText(/3 sealed recovery records/)).toBeVisible();
-  expect(first.getByText("Institutions 1, 2, 3")).toBeVisible();
+  expect(first.getByText("Operators 1, 2, 3")).toBeVisible();
   expect(first.getByText(/Valid until block 181/)).toBeVisible();
   await userEvent.click(
     first.getByRole("button", {
@@ -165,34 +165,34 @@ it("shows what the ledger recorded beside what only the bank knows", async () =>
   expect(second.getByText(/Not one of this bank’s requests/)).toBeVisible();
 });
 
-it("shows the ledger refusing a transaction sent without the institutions", async () => {
+it("shows the ledger refusing a transaction sent without the operators", async () => {
   renderPage();
   await userEvent.click(
-    screen.getByRole("button", { name: "Send without the institutions" }),
+    screen.getByRole("button", { name: "Send without the operators" }),
   );
   const results = await screen.findByTestId("attempt-results");
   expect(results).toHaveTextContent(
-    "Without the institutions: refused by the ledger",
+    "Without the operators: refused by the ledger",
   );
   expect(results).toHaveTextContent(
-    "it carries no authorization from the institutions",
+    "it carries no authorization from the operators",
   );
   expect(results).toHaveTextContent(
-    "The same payment, authorized by the institutions: accepted",
+    "The same payment, authorized by the operators: accepted",
   );
   expect(results).toHaveTextContent("checked, not sent");
 });
 
-it("lets a demo presenter take institutions offline and says when nothing can move", async () => {
+it("lets a demo presenter take operators offline and says when nothing can move", async () => {
   renderPage();
   expect(await screen.findByText("5 of 5 online")).toBeVisible();
   for (const n of [1, 2, 3]) {
     await userEvent.click(
-      screen.getByRole("switch", { name: `Institution ${n} online` }),
+      screen.getByRole("switch", { name: `Operator ${n} online` }),
     );
     await waitFor(() =>
       expect(
-        screen.getByRole("switch", { name: `Institution ${n} online` }),
+        screen.getByRole("switch", { name: `Operator ${n} online` }),
       ).not.toBeChecked(),
     );
     if (n === 2)
@@ -210,7 +210,7 @@ it("lets a demo presenter take institutions offline and says when nothing can mo
   ]);
 });
 
-it("hides the institution switches outside demo runtimes", async () => {
+it("hides the operator switches outside demo runtimes", async () => {
   state.demo = false;
   renderPage();
   await screen.findAllByTestId("ledger-row");
@@ -227,7 +227,16 @@ it("summarizes declined and waiting requests in plain words", () => {
     requestSummary(
       op({ state: "rejected", declined_by: "institutions", error: "refused" }),
     ),
-  ).toBe("Declined by the institutions");
+  ).toBe("Declined by the operators");
+  expect(
+    requestSummary(
+      op({
+        error:
+          "Waiting for the operators to authorize this transaction: 2 of 5 reachable, 3 needed",
+      }),
+    ),
+  ).toBe("Waiting for the operators");
+  // Runtimes started before the rename still report "institutions".
   expect(
     requestSummary(
       op({
@@ -235,7 +244,7 @@ it("summarizes declined and waiting requests in plain words", () => {
           "Waiting for the institutions to authorize this transaction: 2 of 5 reachable, 3 needed",
       }),
     ),
-  ).toBe("Waiting for the institutions");
+  ).toBe("Waiting for the operators");
   expect(requestSummary(op({ state: "rejected" }))).toBe("Closed · rejected");
 });
 
@@ -243,15 +252,15 @@ it("tells people a waiting payment needs nothing from them", () => {
   const waiting = {
     state: "preparing",
     error:
-      "Waiting for the institutions to authorize this transaction: 2 of 5 reachable, 3 needed",
+      "Waiting for the operators to authorize this transaction: 2 of 5 reachable, 3 needed",
     allowed_actions: ["execute"],
   } as unknown as Operation;
   expect(needsAction(waiting)).toBe(false);
   expect(viewerNextAction(waiting)).toBeUndefined();
   expect(nextStep(waiting)).toBe(
-    "Waiting for the institutions to authorize it (2 of 5 reachable, 3 needed). It goes through on its own as soon as enough of them are back; nobody needs to do anything.",
+    "Waiting for the operators to authorize it (2 of 5 reachable, 3 needed). It goes through on its own as soon as enough of them are back; nobody needs to do anything.",
   );
-  // Any other recorded error is still a retry for an operator.
+  // Any other recorded error is still a retry for a person.
   const stuck = { ...waiting, error: "node unreachable" } as Operation;
   expect(needsAction(stuck)).toBe(true);
   const declined = {
@@ -259,5 +268,5 @@ it("tells people a waiting payment needs nothing from them", () => {
     declined_by: "institutions",
     allowed_actions: [],
   } as unknown as Operation;
-  expect(nextStep(declined)).toMatch(/^The institutions declined this payment/);
+  expect(nextStep(declined)).toMatch(/^The operators declined this payment/);
 });

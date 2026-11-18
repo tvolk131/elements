@@ -22,20 +22,20 @@ export const human = (value?: string): string =>
     bankapprover: "Bank payment approver",
     corporatemaker: "Corporate payment maker",
     corporateapprover: "Corporate payment approver",
-    institutionguardian: "Institution guardian",
+    institutionguardian: "Operator",
     awaiting_approval: "Payment approvals needed",
     payment_failed: "Bank payout failed",
     refund_requested: "Escrow return requested",
     // Activity log events.
     operation_created: "Request created",
     user_approved: "Second-person approval",
-    institution_approved: "Institution approval",
+    institution_approved: "Operator approval",
     operation_rejected: "Request rejected",
-    operation_declined: "Declined by the institutions",
+    operation_declined: "Declined by the operators",
     unauthorized_transaction_refused:
       "Ledger refused a transaction without authorization",
-    demo_institution_offline: "Demo: institution switched off",
-    demo_institution_online: "Demo: institution switched on",
+    demo_institution_offline: "Demo: operator switched off",
+    demo_institution_online: "Demo: operator switched on",
     execution_authorized: "Submitted for settlement",
     issuance_template_bound: "Token issuance prepared",
     credit_receipt_sealed: "Bank deposit confirmed",
@@ -171,19 +171,20 @@ export const needsAction = (op: Operation) =>
     ].includes(a),
   ) &&
   !(SETTLING.includes(op.state) && !retryable(op));
+// The server's message; older runtimes still say "institutions".
 export const waitingForInstitutions = (op: Operation) =>
-  !!op.error?.startsWith("Waiting for the institutions");
+  !!op.error?.match(/^Waiting for the (operators|institutions)\b/);
 /** A settling request whose recorded error a person can retry. Waiting for
  * the institutions is not one: it continues on its own when they are back. */
 export const retryable = (op: Operation) =>
   !!op.error && !waitingForInstitutions(op);
 export function requestSummary(op: Operation): string {
-  if (op.declined_by === "institutions") return "Declined by the institutions";
-  if (waitingForInstitutions(op)) return "Waiting for the institutions";
+  if (op.declined_by === "institutions") return "Declined by the operators";
+  if (waitingForInstitutions(op)) return "Waiting for the operators";
   if (op.state === "awaiting_approval")
     return !op.user_approved
       ? "Waiting for separate user approval"
-      : "Waiting for institution approvals";
+      : "Waiting for operator approvals";
   return (
     {
       awaiting_bank: "Waiting for bank credit",
@@ -217,18 +218,18 @@ export function viewerNextAction(op: Operation): string | undefined {
   if (SETTLING.includes(op.state) && !retryable(op)) return undefined;
   if (actions.includes("bank-credit"))
     return op.issues_automatically
-      ? "Confirm the bank deposit arrived. That is the bank’s approval; tokens are issued once three institutions approve."
+      ? "Confirm the bank deposit arrived. That is the bank’s approval; tokens are issued once three operators approve."
       : "Record the bank deposit so the tokens can be issued.";
   if (actions.includes("approve"))
     return op.guardian_approvals >= op.guardian_threshold
       ? op.issues_automatically
-        ? "The institutions have approved. Your approval is the last one needed; the tokens are then issued."
+        ? "The operators have approved. Your approval is the last one needed; the tokens are then issued."
         : op.guardian_threshold
-          ? "The institutions have approved. Your approval is the last one needed: approve and send."
+          ? "The operators have approved. Your approval is the last one needed: approve and send."
           : "Your approval is the only one needed: approve and send."
       : "Your approval is needed. Check the amount and destination, then approve.";
   if (needsInstitutionApproval(op))
-    return "Your institution’s approval is needed. You sign in your institution’s own approval window.";
+    return "Your approval as an operator is needed. You sign in your organization’s own approval window.";
   if (actions.includes("execute"))
     return op.state === "ready"
       ? "All approvals are in place. Send it to settle."
@@ -260,37 +261,37 @@ export function eligibleDestinations(
 export function nextStep(op: Operation): string {
   if (waitingForInstitutions(op)) {
     const counts = op.error?.split(": ")[1];
-    return `Waiting for the institutions to authorize it${counts ? ` (${counts})` : ""}. It goes through on its own as soon as enough of them are back; nobody needs to do anything.`;
+    return `Waiting for the operators to authorize it${counts ? ` (${counts})` : ""}. It goes through on its own as soon as enough of them are back; nobody needs to do anything.`;
   }
   if (op.declined_by === "institutions")
-    return "The institutions declined this payment, so nothing was sent and the reserved funds were released.";
+    return "The operators declined this payment, so nothing was sent and the reserved funds were released.";
   if (op.state === "bank_unknown")
-    return "The bank payout outcome is unknown. Tokens remain locked; a bank operator must reconcile the result before a payout or refund can be completed.";
+    return "The bank payout outcome is unknown. Tokens remain locked; someone at the bank must reconcile the result before a payout or refund can be completed.";
   if (op.error && isPending(op))
-    return "Review required. An operator must resolve the recorded issue before proceeding.";
+    return "Review required. An authorized person must resolve the recorded issue before proceeding.";
   if (op.state === "awaiting_bank")
     return op.issues_automatically
-      ? "Next: the bank confirms the deposit arrived. Tokens are then issued as soon as three institutions approve."
+      ? "Next: the bank confirms the deposit arrived. Tokens are then issued as soon as three operators approve."
       : "Next: a bank administrator records the matching simulated bank credit. Tokens have not been issued yet.";
   if (op.state === "awaiting_approval") {
     if (!op.user_approved) {
       const reviewers = op.approval_workflow?.user_reviewers
         .map((actor) => actor.name)
         .join(" or ");
-      return `Waiting for ${reviewers || "a bank or corporate payment approver"} to perform the second-person check.${op.guardian_threshold ? " Institution approvals are also required before it is sent." : ""}`;
+      return `Waiting for ${reviewers || "a bank or corporate payment approver"} to perform the second-person check.${op.guardian_threshold ? " Operator approvals are also required before it is sent." : ""}`;
     }
     const remaining = Math.max(
       0,
       op.guardian_threshold - op.guardian_approvals,
     );
-    return `Waiting for ${remaining || "the remaining"} institution ${remaining === 1 ? "approval" : "approvals"}.${op.issues_automatically ? " Tokens are issued as soon as they are in." : ""}`;
+    return `Waiting for ${remaining || "the remaining"} operator ${remaining === 1 ? "approval" : "approvals"}.${op.issues_automatically ? " Tokens are issued as soon as they are in." : ""}`;
   }
   if (op.state === "ready")
     return op.issues_automatically
       ? "All approvals are in place, but issuing did not start automatically. An approver can issue it."
       : "All approvals are in place. An approver sends it to settle.";
   if (op.state === "preparing")
-    return "The transaction is being prepared. It has not been confirmed; an authorized operator can retry the recorded request if needed.";
+    return "The transaction is being prepared. It has not been confirmed; an authorized person can retry the recorded request if needed.";
   if (op.state === "chain_pending")
     return "The transaction has been submitted. Waiting for on-chain confirmation.";
   if (["bank_pending", "escrow_confirmed"].includes(op.state))

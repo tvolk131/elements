@@ -15,11 +15,11 @@ transaction/context binding, current control of escrow and consistent block
 validation across cache states. Availability includes retained historical-share
 access, quorum operation, bounded verification and restart recovery.
 
-Distinct roles are the sender/recipient wallet, audit guardian, institutional
+Distinct roles are the sender/recipient wallet, audit guardian, operator
 approval signer, block/treasury signer, settlement coordinator, bank/custodian,
 disclosure requester/recipient, chain observer and independent audit-log
 observer. Code may colocate roles for a fixture; that does not make their trust
-assumptions equivalent. An institution ID/public key is not evidence of a legal
+assumptions equivalent. An operator or guardian ID/public key is not evidence of a legal
 identity, regulatory authorization or reserve ownership.
 
 ## Adversary classes to analyze separately
@@ -31,8 +31,8 @@ identity, regulatory authorization or reserve ownership.
   equivocates public plans, changes an escrow locator or retries after uncertainty.
 * Some guardians return invalid partials, withhold service, retain old shares,
   submit malicious dealer commitments/evaluations or coordinate adaptively.
-* A signing institution equivocates or its private key/state backup is compromised.
-* The host or operator reads memory/files, rolls state back, alters entropy,
+* A signing operator equivocates or its private key/state backup is compromised.
+* The host or its administrator reads memory/files, rolls state back, alters entropy,
   interferes with clocks/storage/network or replaces native library binaries.
 * A bank/custodian reports a false credit/finality outcome or violates its own
   reserve/payment mandate. Cryptographic evidence cannot make that report true.
@@ -101,11 +101,11 @@ recipient receiving complete openings can copy and disclose them. Operational
 controls and legal obligations are separate from a mathematical privacy claim.
 
 The disclosure test harness holds fixture approver/recipient credentials and can
-automate approvals. The settlement GUI's separate institution windows exercise
+automate approvals. The settlement GUI's separate operator windows exercise
 an independent credential interface, but same-user local processes share host
 administration. Neither is proof of organizational independence under a fully
 compromised coordinator host. Private participant identity/KYC mapping and
-cross-institution data exchange are additional systems, not a consequence of
+data exchange between member banks are additional systems, not a consequence of
 recovering an amount and asset ID.
 
 ## Key handling and hardware
@@ -125,7 +125,7 @@ and durable policy. Hardware support, isolation, attestation, backup/rollback
 and protocol policy need their own design; do not assume moving a signing key
 into a device moves the audit-share protocol with it.
 
-## Institution/chain/settlement boundaries
+## Operator/chain/settlement boundaries
 
 The 3-of-5 operational fixture demonstrates liveness with two offline services.
 It does not prove Byzantine fork safety against an equivocating signer: two

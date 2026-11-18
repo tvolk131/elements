@@ -66,9 +66,9 @@ class ApprovalVerifier:
         self.threshold = threshold
         self.policy_version = policy_version
         if type(threshold) is not int or not 1 <= threshold <= len(public_keys):
-            raise ValueError("invalid institutional approval threshold")
+            raise ValueError("invalid operator approval threshold")
         if len(set(public_keys.values())) != len(public_keys):
-            raise ValueError("institution public keys must be distinct")
+            raise ValueError("operator public keys must be distinct")
 
     def verify_one(self, operation, signature):
         try:
@@ -90,13 +90,13 @@ class ApprovalVerifier:
         valid = {}
         for signature in signatures:
             if not self.verify_one(operation, signature):
-                raise ValueError("invalid institutional signature")
+                raise ValueError("invalid operator signature")
             guardian = signature["guardian_id"]
             if guardian in valid:
-                raise ValueError("duplicate institutional signature")
+                raise ValueError("duplicate operator signature")
             valid[guardian] = signature
         if len(valid) < self.threshold:
-            raise ValueError("institutional approval threshold not reached")
+            raise ValueError("operator approval threshold not reached")
         return {"version": 1, "payload": approval_payload(operation),
                 "payload_hash": approval_digest(operation).hex(),
                 "signatures": [valid[key] for key in sorted(valid)]}

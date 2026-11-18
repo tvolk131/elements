@@ -55,7 +55,7 @@ def validate_packet(curve, rpc, config, operation, packet, *, require_own_source
     if require_own_source:
         if any(source[key] != public_policy(config)[key] for key in
                ('policy_version', 'approval_public_keys', 'threshold', 'guardian_order', 'treasury_script', 'witness_script')):
-            raise ValueError('rotation does not migrate this institution policy')
+            raise ValueError('rotation does not migrate this operator policy')
     if packet_summary(packet) not in operation['manifest']['migrations']:
         raise ValueError('migration transaction was not approved in rotation manifest')
     transaction = tx_from_hex(packet['rawtx'])
@@ -85,7 +85,7 @@ def validate_packet(curve, rpc, config, operation, packet, *, require_own_source
         raise ValueError('migration contains unrelated output asset')
     fees = [out for out in outputs if not out['script']]
     if len(fees) != 1 or fees[0]['asset'] != config['policy_asset'] or not 0 < fees[0]['amount'] <= 1_000_000:
-        raise ValueError('migration fee exceeds institutional policy')
+        raise ValueError('migration fee exceeds operator policy')
     for position, inp in enumerate(transaction.vin):
         if not inp.assetIssuance.isNull():
             raise ValueError('a handover cannot issue currency or authority tokens')

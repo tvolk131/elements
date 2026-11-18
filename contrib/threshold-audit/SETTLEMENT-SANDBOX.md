@@ -1,7 +1,7 @@
-# Institutional settlement sandbox
+# Settlement sandbox
 
 This local pilot connects the experimental native Elements recovery protocol to
-an authenticated bank/corporate wallet and an institution approval interface.
+an authenticated bank/corporate wallet and an operator approval interface.
 It creates **TestEUR and TestUSD**, with simulated custodian balances. There is
 no real bank connection, reserve account, licensed issuer or redemption promise.
 The legal entity owing redemption remains an open product/legal decision.
@@ -42,7 +42,7 @@ start/stop commands on one runtime are refused. Failed startup retains a private
 `manager.log` and cleans up only the process tree it just launched.
 
 A rotated demo normally has 22 processes: one Python settlement coordinator,
-one Elements node, 15 audit guardians and five institution signers. The isolated
+one Elements node, 15 audit guardians and five operator signers. The isolated
 guardians and signers deliberately retain separate key custody. The coordinator
 serves the wallet and guardian consoles and their API from one loopback port.
 Additional stacks are needed only for explicit
@@ -63,15 +63,15 @@ one explicit Rayfish interface address, forwarding the app to the settlement
 server. Its versioned configuration contains
 `bind_address`, an exact `.ray` `hostname`, `port`, and an ordered list of
 `institution_ports`. The app and approval-window ports must be distinct. Each
-institution keeps a separate browser origin. The sandbox starts and stops the
+operator keeps a separate browser origin. The sandbox starts and stops the
 front ends with its existing lifecycle; `manage.py status` reports their URLs.
 
 The front ends validate the external Host, Origin and browser fetch metadata
 before translating requests to the existing localhost services. Dashboard
 approval URLs and approval-window return origins are translated for the browser;
-coordinator-to-institution URLs remain local. Only the institution's public
+coordinator-to-operator URLs remain local. Only the operator's public
 review pages and passphrase-authenticated `/approve` are routed. The gateway
-does not forward central session cookies to institutions or expose their bearer
+does not forward central session cookies to operators or expose their bearer
 signing RPC. Node RPC and audit-share services remain bound to localhost.
 
 Grant the app/approval ports only to the intended laptop peers in the Rayfish
@@ -90,8 +90,8 @@ PYTHONPATH=contrib/threshold-audit:test/functional \
 ```
 
 The command prints the loopback URL and the path to a private `credentials.json`
-file. Open `/wallet` for bank/corporate work and `/guardian` for institution
-approvals. The same application routes by authenticated role. Each institution
+file. Open `/wallet` for bank/corporate work and `/guardian` for operator
+approvals. The same application routes by authenticated role. Each operator
 also has a separate approval window and approval passphrase. Never enter that
 passphrase into the central wallet application.
 
@@ -125,7 +125,7 @@ requests. Bank simulator tools and transaction hashes are secondary details.
 Funding requests currently require a bank maker or bank administrator. Corporate
 makers can request sends and withdrawals; the interface explains role limits
 without changing authorization. Approval and execution remain separate actions
-subject to the existing maker/checker and institution quorum policy.
+subject to the existing maker/checker and operator quorum policy.
 
 On-chain sends support managed accounts, exact bank-qualified beneficiary
 references, and confidential wallet addresses for this chain. Receiving provides
@@ -144,7 +144,7 @@ compensation or general external payment provenance service.
   and 7-of-10 recovery. Historical handoff remains available through the existing
   guardian service protocol. The disclosure workspace requests sealed recovery;
   federation lifecycle manages the local handover fixture.
-* Five institution services. Each has its own ECDSA spending key, separate
+* Five operator services. Each has its own ECDSA spending key, separate
   BIP340 approval identity, durable signing bindings and independent approval
   passphrase. Three signatures authorize treasury spends in this fixture.
 * The full reissuance-token balance for each currency is held in a real
@@ -152,7 +152,7 @@ compensation or general external payment provenance service.
   key for observation; it has no federation spending private keys.
 * Bank-managed customer wallets hold the test currency and a separate policy
   asset for transaction fees. Customer transfers/escrows use those wallet keys;
-  maker/checker and institution approval are application policy for these spends.
+  maker/checker and operator approval are application policy for these spends.
 * A SQLite workflow, double-entry reserve journal, transaction outbox, hash-linked
   evidence and explicitly simulated bank payment gateway.
 
@@ -187,9 +187,9 @@ sub-cent wallet amounts rather than truncating them.
 
 For issuance, a bank maker creates a deposit case. A bank administrator supplies
 an explicit simulated cash-credit event with a stable receipt ID. Another user
-checks the case. Before institution approval, the adapter creates and durably
+checks the case. Before operator approval, the adapter creates and durably
 stores the exact native issuance template; the simulated custodian seals that
-receipt to the one case and template. Each institution independently reviews the
+receipt to the one case and template. Each operator independently reviews the
 amount, beneficiary, chain, receipt and template in its own service window.
 Three BIP340 approvals authorize that exact transaction. Independent services
 then produce ECDSA signatures after checking its mint amount, destination,
@@ -198,7 +198,7 @@ persists signed bytes before broadcasting. Retries inspect/rebroadcast those
 bytes, using the same txid and authority input.
 
 For redemption, the customer and checker approve a bank beneficiary and three
-institutions authorize the request. The customer's tokens first move into
+operators authorize the request. The customer's tokens first move into
 federation escrow. The gateway verifies the currently confirmed escrow and
 threshold certificate before creating one durable payout ID. A definite signed
 payment receipt authorizes the federation to spend that exact escrow into an
@@ -213,7 +213,7 @@ nonpayment evidence; a fresh checker and quorum authorize returning the escrow
 to the original customer. Freezing a simulated reserve account blocks new
 issuance and payouts while preserving escrow.
 
-Quorum approval requires distinct authenticated institutions. The coordinator's
+Quorum approval requires distinct authenticated operators. The coordinator's
 transaction-service bearer tokens cannot obtain approval signatures. Bank
 receipts are independently keyed, but the simulated bank key lives in the local
 launcher/web process: this is not security against a malicious custodian or
@@ -326,7 +326,7 @@ scalar is reconstructed or handed to the recipient. The package is an
 output-specific recovery capability, not a general federation viewing key.
 This new composition and browser implementation remain research code.
 
-Normal-path confidentiality is distinct from institutional isolation. The local
+Normal-path confidentiality is distinct from operator isolation. The local
 fixture coordinator retains guardian **approver TLS credentials** for test
 orchestration, and the shared customer-wallet backend already knows its own
 wallet openings. Approvals are explicit authenticated user actions in this demo;
@@ -343,7 +343,7 @@ ledger anchoring, and the local hash-linked case journal alone is rewritable by
 a privileged writer. A case records a claimed authority/basis; it does not verify
 legal authority or disclose customer identities/business documents automatically.
 
-### Cross-institution payments and receiving
+### Payments between member banks, and receiving
 
 `initech-main@bank-b` resolves to **Initech · Operating** at the second demo bank.
 In **Send on-chain**, choose **Beneficiary at a bank**, look up the exact reference,
@@ -362,7 +362,7 @@ identity. There is no globally browsable customer directory.
 unverified. Use **Receive on-chain** to obtain an address. Known customer-wallet
 receipts are matched to their account, including cross-bank payments, without
 letting the recipient approve or inspect unrelated sender operations. The normal
-second-user and three-institution application payment requirements remain.
+second-user and three-operator application payment requirements remain.
 Use `initech-maker`, `initech-approver`, `bank-b-maker`, `bank-b-approver`,
 `bank-b-admin` and `bank-b-compliance` for the receiving side. Simulator
 administrators operate the shared test reserve pool; these are not separate

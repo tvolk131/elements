@@ -1,4 +1,4 @@
-"""Run the complete local institutional sandbox. No real bank connection.
+"""Run the complete local settlement sandbox. No real bank connection.
 
 Usage from repository root:
  PYTHONPATH=contrib/threshold-audit:test/functional python3 -m settlement.sandbox
@@ -418,7 +418,7 @@ class Sandbox:
             service.setdefault('treasury_address', adapter_config['treasury_address'])
             if 'block_secret' not in service:
                 if native_script != BOOTSTRAP_SCRIPT.hex():
-                    raise ValueError('active institution block identity is missing; refusing key replacement')
+                    raise ValueError('active operator block identity is missing; refusing key replacement')
                 service['block_secret'] = f'{random_scalar():064x}'
         block_keys = {guardian: self.cluster.curve.mul(int(service['block_secret'], 16)).hex() for guardian, service in service_configs.items()}
         witness = bytes(CScript([adapter_config['threshold'], *[bytes.fromhex(block_keys[guardian]) for guardian in adapter_config['guardian_order']], len(block_keys), OP_CHECKMULTISIG]))
@@ -472,7 +472,7 @@ class Sandbox:
             from urllib.parse import urlsplit
             parsed = urlsplit(endpoint['url'])
             if parsed.scheme != 'http' or parsed.hostname != '127.0.0.1' or not parsed.port:
-                raise ValueError('institution readiness is not a loopback endpoint')
+                raise ValueError('operator readiness is not a loopback endpoint')
         except BaseException:
             self.processes.stop(process)
             raise
@@ -490,11 +490,11 @@ class Sandbox:
         previous = history.get(source['policy_version'])
         if previous and (previous.get('public_keys', previous.get('approval_public_keys')) != source['approval_public_keys']
                          or previous['threshold'] != source['threshold']):
-            raise ValueError('historical institution policy cannot be replaced')
+            raise ValueError('historical operator policy cannot be replaced')
         if previous and any(previous[key] != source[key] for key in (
                 'treasury_script', 'witness_script', 'treasury_address', 'guardian_order',
                 'block_signing_script', 'block_witness_script', 'block_public_keys') if key in previous):
-            raise ValueError('historical institution scripts or roster cannot be replaced')
+            raise ValueError('historical operator scripts or roster cannot be replaced')
         preserved = dict(source)
         preserved.update(previous or {})
         preserved['public_keys'] = source['approval_public_keys']
@@ -574,7 +574,7 @@ class Sandbox:
         """Demo: stop or restart one institution's whole service, as if it went
         offline. It keeps its address, so nothing that calls it changes."""
         if guardian not in self.adapter.config['guardian_order']:
-            raise ValueError('not a current institution')
+            raise ValueError('not a current operator')
         with self.institution_lock:
             return self._set_institution_online(guardian, online)
 
@@ -586,7 +586,7 @@ class Sandbox:
             endpoint = self.institution_endpoints[guardian]
             self._launch_institution(guardian, self.server.server_port, urlsplit(endpoint['url']).port)
             if self.institution_endpoints[guardian]['url'] != endpoint['url']:
-                raise RuntimeError('institution restarted at a different address')
+                raise RuntimeError('operator restarted at a different address')
         elif not online and running:
             self.processes.stop(process, timeout=5)
         return self.institution_status()

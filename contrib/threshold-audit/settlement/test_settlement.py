@@ -141,7 +141,7 @@ class SettlementTests(unittest.TestCase):
         self.authorize(transfer)
         abandoned = []
         def refused(operation, stage, certificate):
-            raise AuthorizationRefused("5 of 5 institutions refused to authorize this transaction: "
+            raise AuthorizationRefused("5 of 5 operators refused to authorize this transaction: "
                                        "an output pays an address that no member bank has registered")
         self.chain.prepare = refused
         self.chain.abandon = lambda operation, stage: abandoned.append((operation["id"], stage))
@@ -164,7 +164,7 @@ class SettlementTests(unittest.TestCase):
                 return [{"id": g, "online": v} for g, v in self.online.items()]
             def set_institution_online(self, guardian, online):
                 if guardian not in self.online:
-                    raise ValueError("not a current institution")
+                    raise ValueError("not a current operator")
                 self.online[guardian] = online
                 return self.institution_status()
             def outside_address(self):
@@ -196,7 +196,7 @@ class SettlementTests(unittest.TestCase):
         self.authorize(transfer)
         working = self.chain.prepare
         def unavailable(*_):
-            raise AuthorizationUnavailable("Waiting for the institutions to authorize this transaction: "
+            raise AuthorizationUnavailable("Waiting for the operators to authorize this transaction: "
                                            "2 of 5 reachable, 3 needed")
         self.chain.prepare = unavailable
         result = self.store.execute(self.users["approver"], transfer["id"])

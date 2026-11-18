@@ -95,7 +95,7 @@ describe("wallet movement boundaries", () => {
 });
 
 describe("operator work", () => {
-  it("counts only requests with this institution's remaining approval action", () => {
+  it("counts only requests with this operator's remaining approval action", () => {
     expect(
       needsInstitutionApproval(op({ allowed_actions: ["guardian-approve"] })),
     ).toBe(true);
@@ -117,7 +117,7 @@ describe("operator work", () => {
       isActiveException(op({ state: "bank_unknown", error: "timeout" })),
     ).toBe(true);
   });
-  it("shows the institution's available action while a separate user review is pending", () => {
+  it("shows the operator's available action while a separate user review is pending", () => {
     expect(
       viewerNextAction(
         op({ allowed_actions: ["guardian-approve"], user_approved: false }),

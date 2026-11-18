@@ -2,7 +2,7 @@
 
 Run --phase seed, restart the sandbox if desired, --phase stage, restart again
 with incoming chain policy active, then --phase finish. Fixture credentials are
-read by this operator/test driver, not by the web application.
+read by this test driver, not by the web application.
 """
 
 import argparse
@@ -170,7 +170,7 @@ class RotationPilot(Pilot):
             except RuntimeError:
                 pass
             else:
-                raise AssertionError('retired institution session remained active')
+                raise AssertionError('retired operator session remained active')
         for oid, outcome in ((state['payout_case'], 'settled'), (state['refund_case'], 'failed')):
             self.call('bank-admin', '/api/bank/events', {'event_id': 'post-rotation-' + oid, 'kind': 'payout_result',
                       'currency': 'EUR', 'operation_id': oid, 'outcome': outcome})

@@ -77,23 +77,21 @@ interface InstitutionStatus {
 
 const REASONS: Record<string, string> = {
   "bad-tx-authorization-missing":
-    "it carries no authorization from the institutions",
+    "it carries no authorization from the operators",
   "bad-tx-authorization-expired": "its authorization has expired",
   "bad-tx-authorization-signature":
-    "its authorization is not signed by the institutions",
+    "its authorization is not signed by the operators",
   "bad-tx-authorization-malformed": "its authorization is malformed",
   "bad-tx-authorization-unexpected": "this chain does not use authorizations",
 };
 
 const names = (list: string[]) =>
   list.length
-    ? list.map((m) => memberName(m).replace(/^Institution /, "")).join(", ")
+    ? list.map((m) => memberName(m).replace(/^Operator /, "")).join(", ")
     : "";
 
 function signedBy(list: string[]) {
-  return list.length === 1
-    ? memberName(list[0])
-    : `Institutions ${names(list)}`;
+  return list.length === 1 ? memberName(list[0]) : `Operators ${names(list)}`;
 }
 
 function whatItWas(item: LedgerTransaction) {
@@ -148,8 +146,8 @@ function Institutions() {
   const halted = online < needed;
   return (
     <Panel
-      title="The institutions"
-      subtitle="Demo only: switch an institution off to stop its whole service, as if it went offline."
+      title="The operators"
+      subtitle="Demo only: switch an operator off to stop its whole service, as if it went offline."
       actions={
         <Badge status={halted ? "blocked" : "healthy"}>
           {online} of {list.length} online
@@ -188,7 +186,7 @@ function Institutions() {
         role="status"
       >
         {halted
-          ? `Only ${online} online. No transaction can be authorized and no block can be confirmed, so nothing moves and nobody can force it through. It resumes when a third institution is back.`
+          ? `Only ${online} online. No transaction can be authorized and no block can be confirmed, so nothing moves and nobody can force it through. It resumes when a third operator is back.`
           : online === list.length
             ? `Every transaction and every block needs ${needed} of them. Any ${list.length - needed} can be offline and payments still settle.`
             : `${list.length - online} offline. The remaining ${online} still authorize transactions and confirm blocks.`}
@@ -207,8 +205,8 @@ function TryWithout() {
   const r = attempt.data;
   return (
     <Panel
-      title="Try to go around the institutions"
-      subtitle="A bank wallet signs a valid payment to itself, then offers it to the ledger without asking any institution."
+      title="Try to go around the operators"
+      subtitle="A bank wallet signs a valid payment to itself, then offers it to the ledger without asking any operator."
       actions={
         <Button
           className="primary"
@@ -216,7 +214,7 @@ function TryWithout() {
           disabled={attempt.isPending}
           data-testid="unauthorized-attempt"
         >
-          {attempt.isPending ? "Trying…" : "Send without the institutions"}
+          {attempt.isPending ? "Trying…" : "Send without the operators"}
         </Button>
       }
     >
@@ -226,7 +224,7 @@ function TryWithout() {
             <Icon name={r.without.accepted ? "check" : "close"} />
             <div>
               <strong>
-                Without the institutions:{" "}
+                Without the operators:{" "}
                 {r.without.accepted ? "accepted" : "refused by the ledger"}
               </strong>
               {!r.without.accepted && (
@@ -244,7 +242,7 @@ function TryWithout() {
             <Icon name={r.with.accepted ? "check" : "close"} />
             <div>
               <strong>
-                The same payment, authorized by the institutions:{" "}
+                The same payment, authorized by the operators:{" "}
                 {r.with.accepted ? "accepted" : "not authorized"}
               </strong>
               <p>
@@ -289,7 +287,7 @@ export function LedgerPage() {
         }
       >
         Read from the shared ledger itself. Amounts and parties are hidden; the
-        institutions’ authorization of every transaction is not.
+        operators’ authorization of every transaction is not.
       </Heading>
       <ErrorNote error={query.error} />
       {l && (
@@ -300,13 +298,13 @@ export function LedgerPage() {
           <div>
             <strong>
               {l.policy.threshold
-                ? `Every transaction needs ${l.policy.threshold} of ${l.policy.authorizers.length} institutions`
+                ? `Every transaction needs ${l.policy.threshold} of ${l.policy.authorizers.length} operators`
                 : "No authorization rule is in force"}
             </strong>
             <p>
               {l.policy.threshold
                 ? "Every node rejects a transaction without an unexpired authorization signed by enough of them. It is a rule of the ledger, not of this service."
-                : "This chain accepts transactions without the institutions’ authorization."}
+                : "This chain accepts transactions without the operators’ authorization."}
             </p>
           </div>
           {l.latest_block && (
@@ -330,7 +328,7 @@ export function LedgerPage() {
         title="Recent transactions"
         subtitle={
           l
-            ? `The latest ${l.transactions.length} transactions in the last ${l.blocks_scanned} blocks. Signatures are checked against the institutions’ keys.`
+            ? `The latest ${l.transactions.length} transactions in the last ${l.blocks_scanned} blocks. Signatures are checked against the operators’ keys.`
             : undefined
         }
       >
