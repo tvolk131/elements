@@ -499,7 +499,9 @@ class GuardianCluster:
         policy = Policy(key.committee.binding(), key.committee.threshold, config.identities)
         request = Request(policy.binding(), statement.binding(), digest(b'packet', packet.to_bytes()),
                           secrets.token_bytes(32) if case_reference is None else case_reference, recipient_key,
-                          int(time.time()) + 120 if expires_at is None else expires_at)
+                          # Each guardian's partial decryption is pure Python and they run
+                          # one after another; on a loaded host 120 s expired mid-recovery.
+                          int(time.time()) + 600 if expires_at is None else expires_at)
         payload = {'key_version': version,
                    'policy': {'committee_binding': policy.committee_binding.hex(), 'threshold': policy.threshold,
                               'approvers': [(i, public.hex()) for i, public in policy.approvers]},
