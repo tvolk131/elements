@@ -389,6 +389,7 @@ class Verifier:
                  ('native-assets', 'feature_threshold_audit_assets.py', '--descriptors'),
                  ('native-guardians', 'feature_threshold_audit_guardians.py', '--descriptors'),
                  ('native-authorization', 'feature_threshold_audit_authorization.py', '--descriptors'),
+                 ('native-recovery', 'feature_threshold_audit_recovery.py', '--descriptors'),
                  ('baseline-dynafed', 'feature_dynafed.py', '--legacy-wallet'),
                  ('baseline-psbt', 'rpc_psbt.py', '--descriptors')]
         for offset, (name, filename, wallet) in enumerate(tests):

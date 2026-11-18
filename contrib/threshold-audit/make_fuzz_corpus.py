@@ -19,7 +19,8 @@ from governance import AuditConfig, AuditKey, PreparedTransition, Transition, ma
 from native_governance import policy_binding, prepared_to_bytes
 from recovery import Opening, Statement
 from threshold import simulate_handoff, simulate_keygen
-from settlement.authorization import MAX_LIFETIME, authorization_digest, encode
+from settlement.authorization import (MAX_LIFETIME, authorization_digest, encode, encode_recovery, recovery_bitmap,
+                                      recovery_digest)
 from test_framework import messages
 
 
@@ -82,7 +83,19 @@ def authorization_seeds(curve):
         result.wit.vchAuthorization = encode(expiry, {index: curve.sign(secrets[index], digest) for index in signers})
         return b'TXAU' + number(height) + blob(policy) + result.serialize_with_witness()
 
-    return {'authorization': authorized(height + 5),
+    def recovered(indexes, domain='recovery'):
+        result = messages.CTransaction(tx)
+        bitmap = recovery_bitmap(indexes)
+        digest = (recovery_digest('00' * 32, policy, tx, bitmap, height + 5) if domain == 'recovery'
+                  else authorization_digest('00' * 32, policy, tx, height + 5))
+        result.wit.vchAuthorization = encode_recovery(bitmap, height + 5,
+                                                      {index: curve.sign(secrets[index], digest) for index in (0, 2)})
+        return b'TXAU' + number(height) + blob(policy) + result.serialize_with_witness()
+
+    return {'recovery': recovered([0]),
+            'recovery-out-of-range': recovered([1]),
+            'recovery-ordinary-domain': recovered([0], domain='ordinary'),
+            'authorization': authorized(height + 5),
             'authorization-last-height': authorized(height + MAX_LIFETIME - 1),
             'authorization-too-far': authorized(height + MAX_LIFETIME),
             'authorization-expired': authorized(height - 1),

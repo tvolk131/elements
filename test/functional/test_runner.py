@@ -126,6 +126,7 @@ BASE_SCRIPTS = [
     'feature_threshold_audit_assets.py --descriptors',
     'feature_threshold_audit_authorization.py --descriptors',
     'feature_threshold_audit_guardians.py --descriptors',
+    'feature_threshold_audit_recovery.py --descriptors',
     # Longest test should go first, to favor running tests in parallel
     # vv Tests less than 5m vv
     'feature_taproot.py',

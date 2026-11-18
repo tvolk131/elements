@@ -4,12 +4,14 @@
 
 #include <threshold_audit_validation.h>
 
+#include <coins.h>
 #include <consensus/params.h>
 #include <consensus/validation.h>
 #include <crypto/common.h>
 #include <crypto/sha256.h>
 #include <hash.h>
 #include <primitives/transaction.h>
+#include <script/script.h>
 #include <threshold_audit.h>
 
 #include <algorithm>
@@ -184,11 +186,88 @@ uint256 AuthorizationDigest(const uint256& genesis, std::span<const unsigned cha
     return digest;
 }
 
+namespace {
+struct ParsedAuthorization {
+    bool recovery{false};
+    RecoveryBitmap bitmap{};
+    uint32_t expiry{0};
+    size_t signatures_offset{0};
+    size_t signatures{0};
+};
+
+constexpr size_t RECOVERY_PREFIX{1 + RECOVERY_BITMAP_BYTES};
+
+// Ordinary: expiry, signatures (4 mod 65). Recovery: marker, bitmap, expiry,
+// signatures (37 mod 65). The lengths alone tell the two apart.
+std::optional<ParsedAuthorization> ParseAuthorization(const std::vector<unsigned char>& bytes)
+{
+    ParsedAuthorization parsed;
+    if (bytes.size() >= 4 + 65 && (bytes.size() - 4) % 65 == 0) {
+        parsed.signatures_offset = 4;
+    } else if (bytes.size() >= RECOVERY_PREFIX + 4 + 65 && (bytes.size() - RECOVERY_PREFIX - 4) % 65 == 0 &&
+               bytes[0] == RECOVERY_MARKER) {
+        parsed.recovery = true;
+        std::copy_n(bytes.begin() + 1, RECOVERY_BITMAP_BYTES, parsed.bitmap.begin());
+        parsed.signatures_offset = RECOVERY_PREFIX + 4;
+    } else {
+        return std::nullopt;
+    }
+    parsed.expiry = ReadLE32(bytes.data() + parsed.signatures_offset - 4);
+    parsed.signatures = (bytes.size() - parsed.signatures_offset) / 65;
+    return parsed;
+}
+
+bool BitSet(const RecoveryBitmap& bitmap, size_t index)
+{
+    return index < RECOVERY_BITMAP_BYTES * 8 && (bitmap[index / 8] >> (index % 8)) & 1;
+}
+
+// "QUARANTINE-CASE1": 16 bytes, so the push opcode is 0x10.
+constexpr unsigned char QUARANTINE_TAG[16]{'Q', 'U', 'A', 'R', 'A', 'N', 'T', 'I', 'N', 'E', '-', 'C', 'A', 'S', 'E', '1'};
+} // namespace
+
+uint256 RecoveryDigest(const uint256& genesis, std::span<const unsigned char> policy,
+                       const uint256& template_hash, const RecoveryBitmap& bitmap, uint32_t expiry_height)
+{
+    static constexpr unsigned char domain[] = "Elements/tx-recovery/v1";
+    unsigned char policy_hash[32];
+    CSHA256().Write(policy.data(), policy.size()).Finalize(policy_hash);
+    unsigned char expiry[4];
+    WriteBE32(expiry, expiry_height);
+    uint256 digest;
+    CSHA256().Write(domain, sizeof(domain) - 1).Write(genesis.begin(), 32).Write(policy_hash, 32)
+             .Write(template_hash.begin(), 32).Write(bitmap.data(), bitmap.size()).Write(expiry, 4)
+             .Finalize(digest.begin());
+    return digest;
+}
+
 std::optional<uint32_t> AuthorizationExpiry(const CTransaction& tx)
 {
-    const auto& bytes = tx.witness.vchAuthorization;
-    if (bytes.size() < 4 + 65 || (bytes.size() - 4) % 65 != 0) return std::nullopt;
-    return ReadLE32(bytes.data());
+    const auto parsed = ParseAuthorization(tx.witness.vchAuthorization);
+    if (!parsed) return std::nullopt;
+    return parsed->expiry;
+}
+
+std::vector<bool> RecoveredInputs(const CTransaction& tx)
+{
+    const auto parsed = ParseAuthorization(tx.witness.vchAuthorization);
+    if (!parsed || !parsed->recovery) return {};
+    std::vector<bool> recovered(tx.vin.size());
+    for (size_t i = 0; i < tx.vin.size(); ++i) recovered[i] = BitSet(parsed->bitmap, i);
+    return recovered;
+}
+
+CScript QuarantineScript(const uint256& case_reference)
+{
+    return CScript() << std::vector<unsigned char>(std::begin(QUARANTINE_TAG), std::end(QUARANTINE_TAG))
+                     << std::vector<unsigned char>(case_reference.begin(), case_reference.end()) << OP_2DROP << OP_0;
+}
+
+bool IsQuarantineScript(const CScript& script)
+{
+    return script.size() == 1 + 16 + 1 + 32 + 2 && script[0] == 16 &&
+           std::equal(std::begin(QUARANTINE_TAG), std::end(QUARANTINE_TAG), script.begin() + 1) &&
+           script[17] == 32 && script[50] == OP_2DROP && script[51] == OP_0;
 }
 
 bool CheckAuthorization(const CTransaction& tx, const Consensus::Params& consensus,
@@ -213,9 +292,28 @@ bool CheckAuthorization(const CTransaction& tx, const Consensus::Params& consens
         // Unreachable for a policy accepted by header validation.
         return state.Invalid(TxValidationResult::TX_WITNESS_MUTATED, "bad-tx-authorization-policy");
     }
-    const auto expiry = AuthorizationExpiry(tx);
-    if (!expiry || bytes.size() != 4 + 65 * static_cast<size_t>(threshold)) {
+    const auto parsed = ParseAuthorization(bytes);
+    if (!parsed || parsed->signatures != threshold) {
         return state.Invalid(TxValidationResult::TX_WITNESS_MUTATED, "bad-tx-authorization-malformed");
+    }
+    const uint32_t* expiry = &parsed->expiry;
+    if (parsed->recovery) {
+        // Name at least one input, only real ones, never a peg-in; and no
+        // issuance, so a recovery can move money but never create it.
+        bool any{false};
+        for (size_t index = 0; index < RECOVERY_BITMAP_BYTES * 8; ++index) {
+            if (!BitSet(parsed->bitmap, index)) continue;
+            if (index >= tx.vin.size() || tx.vin[index].m_is_pegin) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-tx-recovery-inputs");
+            }
+            any = true;
+        }
+        if (!any) return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-tx-recovery-inputs");
+        for (const auto& input : tx.vin) {
+            if (!input.assetIssuance.IsNull()) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-tx-recovery-issuance");
+            }
+        }
     }
     if (*expiry < height) {
         return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-tx-authorization-expired");
@@ -225,10 +323,13 @@ bool CheckAuthorization(const CTransaction& tx, const Consensus::Params& consens
         // is premature rather than invalid forever.
         return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-tx-authorization-lifetime");
     }
-    const uint256 digest = AuthorizationDigest(consensus.hashGenesisBlock, policy, TransactionTemplateHash(tx), *expiry);
+    const uint256 template_hash = TransactionTemplateHash(tx);
+    const uint256 digest = parsed->recovery
+        ? RecoveryDigest(consensus.hashGenesisBlock, policy, template_hash, parsed->bitmap, *expiry)
+        : AuthorizationDigest(consensus.hashGenesisBlock, policy, template_hash, *expiry);
     int previous{-1};
     for (unsigned n = 0; n < threshold; ++n) {
-        const unsigned char* entry = bytes.data() + 4 + 65 * n;
+        const unsigned char* entry = bytes.data() + parsed->signatures_offset + 65 * n;
         const int index = entry[0];
         if (index <= previous || static_cast<size_t>(index) >= keys.size()) {
             return state.Invalid(TxValidationResult::TX_WITNESS_MUTATED, "bad-tx-authorization-malformed");
@@ -237,6 +338,31 @@ bool CheckAuthorization(const CTransaction& tx, const Consensus::Params& consens
         if (!keys[index].VerifySchnorr(digest, Span<const unsigned char>{entry + 1, 64})) {
             return state.Invalid(TxValidationResult::TX_WITNESS_MUTATED, "bad-tx-authorization-signature");
         }
+    }
+    return true;
+}
+
+bool CheckRecovery(const CTransaction& tx, const CCoinsViewCache& inputs, TxValidationState& state)
+{
+    if (tx.IsCoinBase()) return true;
+    const auto recovered = RecoveredInputs(tx);
+    bool takes_unquarantined{false};
+    for (size_t i = 0; i < tx.vin.size(); ++i) {
+        if (tx.vin[i].m_is_pegin) continue;
+        const bool quarantined = IsQuarantineScript(inputs.AccessCoin(tx.vin[i].prevout).out.scriptPubKey);
+        const bool recovering = i < recovered.size() && recovered[i];
+        // Explicit, rather than relying on the script failing: script checks
+        // can be skipped (assumevalid), this rule cannot.
+        if (quarantined && !recovering) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-tx-quarantine-spend");
+        }
+        takes_unquarantined |= recovering && !quarantined;
+    }
+    if (!takes_unquarantined) return true;
+    // First hop: fence the funds before anyone decides where they go.
+    for (const auto& out : tx.vout) {
+        if (out.IsFee() || out.scriptPubKey.IsUnspendable() || IsQuarantineScript(out.scriptPubKey)) continue;
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-tx-recovery-destination");
     }
     return true;
 }

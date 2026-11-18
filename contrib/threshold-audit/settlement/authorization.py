@@ -77,3 +77,42 @@ def registration_digest(genesis_hash, script):
 def needs_registration(script):
     """Fee outputs and burns have no recipient."""
     return script not in (b'', b'\x6a')
+
+
+# Recovery: the same quorum moves named outputs without their owners'
+# signatures, first only into quarantine or a burn, then from quarantine
+# anywhere. Mirrors RECOVERY_* and QuarantineScript in the node.
+RECOVERY_DOMAIN = b'Elements/tx-recovery/v1'
+RECOVERY_MARKER = 0x52
+RECOVERY_BITMAP_BYTES = 32
+QUARANTINE_TAG = b'QUARANTINE-CASE1'
+
+
+def recovery_bitmap(indexes):
+    bitmap = bytearray(RECOVERY_BITMAP_BYTES)
+    for index in indexes:
+        if not 0 <= index < RECOVERY_BITMAP_BYTES * 8:
+            raise ValueError('recovered input index out of range')
+        bitmap[index // 8] |= 1 << (index % 8)
+    return bytes(bitmap)
+
+
+def recovery_digest(genesis_hash, policy, transaction, bitmap, expiry_height):
+    return hashlib.sha256(RECOVERY_DOMAIN + bytes.fromhex(genesis_hash)[::-1] + hashlib.sha256(policy).digest()
+                          + template_hash(transaction) + bitmap + expiry_height.to_bytes(4, 'big')).digest()
+
+
+def encode_recovery(bitmap, expiry_height, signatures):
+    return bytes([RECOVERY_MARKER]) + bitmap + encode(expiry_height, signatures)
+
+
+def quarantine_script(case_reference):
+    """Spendable by no key: tag, 32-byte case reference, OP_2DROP OP_FALSE."""
+    if len(case_reference) != 32:
+        raise ValueError('quarantine case reference must be 32 bytes')
+    return bytes([len(QUARANTINE_TAG)]) + QUARANTINE_TAG + bytes([32]) + case_reference + b'\x6d\x00'
+
+
+def is_quarantine_script(script):
+    return (len(script) == 52 and script[:17] == bytes([16]) + QUARANTINE_TAG and script[17] == 32
+            and script[50:] == b'\x6d\x00')

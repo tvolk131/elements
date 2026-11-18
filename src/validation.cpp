@@ -1116,6 +1116,10 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     if (!Consensus::CheckTxInputs(tx, state, m_view, m_active_chainstate.m_chain.Height() + 1, fee_map, setPeginsSpent, nullptr, true, true, fedpegscripts)) {
         return false; // state filled in by CheckTxInputs
     }
+    if (m_active_chainstate.m_chainman.GetConsensus().threshold_audit &&
+        !threshold_audit::CheckRecovery(tx, m_view, state)) {
+        return false;
+    }
 
     // ELEMENTS: extra policy check for consistency between issuances and their rangeproof
     if (m_pool.m_opts.require_standard) {
@@ -2488,7 +2492,13 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
     }
     assert(txdata.m_spent_outputs.size() == tx.vin.size());
 
+    // A recovery authorization waives the owner's signature on the inputs it
+    // names. Every path that runs these checks also runs CheckAuthorization
+    // (quorum signature) and CheckRecovery (destinations) on the same tx.
+    const std::vector<bool> recovered = threshold_audit::RecoveredInputs(tx);
+
     for (unsigned int i = 0; i < tx.vin.size(); i++) {
+        if (i < recovered.size() && recovered[i]) continue;
         // We very carefully only pass in things to CScriptCheck which
         // are clearly committed to by tx' witness hash. This provides
         // a sanity check that our caching is not introducing consensus
@@ -3085,6 +3095,11 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
                 break;
             }
             control.Add(vChecks);
+            if (m_chainman.GetConsensus().threshold_audit && !threshold_audit::CheckRecovery(tx, view, tx_state)) {
+                state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, tx_state.GetRejectReason(),
+                              "in transaction " + tx.GetHash().ToString());
+                break;
+            }
 
             if (!MoneyRange(fee_map)) {
                 state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-txns-accumulated-fee-outofrange",

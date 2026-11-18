@@ -37,6 +37,7 @@ EXTRA_NATIVE = {'src/threshold_audit.cpp', 'src/threshold_audit.h',
 EXTRA_TEST = {'src/test/fuzz/threshold_audit.cpp', 'test/functional/feature_threshold_audit.py',
               'test/functional/feature_threshold_audit_assets.py',
               'test/functional/feature_threshold_audit_authorization.py',
+              'test/functional/feature_threshold_audit_recovery.py',
               'test/functional/feature_threshold_audit_guardians.py'}
 SOURCE_SUFFIXES = {'.py', '.cpp', '.h', '.md', '.html', '.css', '.js', '.ts', '.tsx', '.sh', '.txt'}
 # Exact project files that the general rules below would refuse: ignore files and

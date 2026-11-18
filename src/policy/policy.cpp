@@ -16,6 +16,7 @@
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/pegins.h>
+#include <threshold_audit_validation.h>
 #include <script/script.h>
 #include <script/solver.h>
 #include <serialize.h>
@@ -161,6 +162,8 @@ bool IsStandardTx(const CTransaction& tx, const std::optional<unsigned>& max_dat
     unsigned int nDataOut = 0;
     TxoutType whichType;
     for (const CTxOut& txout : tx.vout) {
+        // Recovery quarantine: consensus-defined, spendable only by recovery.
+        if (threshold_audit::IsQuarantineScript(txout.scriptPubKey)) continue;
         if (!::IsStandard(txout.scriptPubKey, max_datacarrier_bytes, whichType)) {
             reason = "scriptpubkey";
             return false;
@@ -220,6 +223,7 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
         }
 
         const CTxOut& prev = mapInputs.AccessCoin(tx.vin[i].prevout).out;
+        if (threshold_audit::IsQuarantineScript(prev.scriptPubKey)) continue;
 
         std::vector<std::vector<unsigned char> > vSolutions;
         TxoutType whichType = Solver(prev.scriptPubKey, vSolutions);

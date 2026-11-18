@@ -5,6 +5,7 @@
 #ifndef BITCOIN_THRESHOLD_AUDIT_VALIDATION_H
 #define BITCOIN_THRESHOLD_AUDIT_VALIDATION_H
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -14,6 +15,8 @@
 #include <threshold_audit.h>
 #include <vector>
 
+class CCoinsViewCache;
+class CScript;
 class CTransaction;
 class CMutableTransaction;
 class TxValidationState;
@@ -70,18 +73,48 @@ bool DecodeAuthorizationPolicy(std::span<const unsigned char> policy, unsigned& 
 uint256 AuthorizationDigest(const uint256& genesis, std::span<const unsigned char> policy,
                             const uint256& template_hash, uint32_t expiry_height);
 
+/** Recovery: the same quorum may move named outputs without their owners'
+ * signatures, first into quarantine (or a burn), and from quarantine anywhere.
+ * A recovery authorization is the marker byte, a 32-byte bitmap of recovered
+ * input indexes (bit i of byte i / 8), the expiry and the signatures; it is
+ * signed in its own domain, so an ordinary authorization can never be replayed
+ * as one. Its length is 37 mod 65, an ordinary one's 4 mod 65. */
+inline constexpr unsigned char RECOVERY_MARKER{0x52};
+inline constexpr size_t RECOVERY_BITMAP_BYTES{32};
+using RecoveryBitmap = std::array<unsigned char, RECOVERY_BITMAP_BYTES>;
+
+/** Signed by the quorum to recover the inputs in `bitmap`. */
+uint256 RecoveryDigest(const uint256& genesis, std::span<const unsigned char> policy,
+                       const uint256& template_hash, const RecoveryBitmap& bitmap, uint32_t expiry_height);
+
 /** Last height at which the authorization allows confirmation, if it parses. */
 std::optional<uint32_t> AuthorizationExpiry(const CTransaction& tx);
+
+/** Inputs whose owner signature a well-formed recovery authorization waives;
+ * empty for ordinary transactions. Parsing only: CheckAuthorization verifies
+ * the quorum signature on every path that relies on this. */
+std::vector<bool> RecoveredInputs(const CTransaction& tx);
+
+/** Quarantine output: tag, 32-byte case reference, OP_2DROP OP_FALSE. No key
+ * can spend it (the script always fails); only a recovery may move it. */
+bool IsQuarantineScript(const CScript& script);
+CScript QuarantineScript(const uint256& case_reference);
 
 /** Require a quorum authorization on every non-coinbase transaction while the
  * candidate block's policy is set, and none while it is empty. The expiry must
  * fall within MAX_AUTHORIZATION_LIFETIME heights of `height`. The witness
  * holds a little-endian expiry height followed by exactly `threshold` pairs of
- * key index and BIP340 signature, in increasing index order. Consensus-critical
- * independently of script checks and assumevalid. */
+ * key index and BIP340 signature, in increasing index order, optionally after
+ * a recovery marker and bitmap. Consensus-critical independently of script
+ * checks and assumevalid. */
 bool CheckAuthorization(const CTransaction& tx, const Consensus::Params& consensus,
                         const std::vector<unsigned char>& policy, uint32_t height,
                         TxValidationState& state);
+
+/** Rules that need the spent coins: a quarantine output can be spent only by
+ * recovering it, and a recovery that takes anything other than quarantined
+ * funds may pay only into quarantine, a burn or the fee. */
+bool CheckRecovery(const CTransaction& tx, const CCoinsViewCache& inputs, TxValidationState& state);
 
 } // namespace threshold_audit
 #endif // BITCOIN_THRESHOLD_AUDIT_VALIDATION_H

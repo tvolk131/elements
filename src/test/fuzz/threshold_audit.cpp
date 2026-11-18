@@ -55,6 +55,17 @@ void CheckAuthorizationInput(std::span<const unsigned char> bytes)
             TxValidationState state;
             if (threshold_audit::CheckAuthorization(tx, consensus, policy, height, state) && !policy.empty() && !tx.IsCoinBase()) {
                 assert(expiry && *expiry >= height && *expiry - height < threshold_audit::MAX_AUTHORIZATION_LIFETIME);
+                // An accepted recovery waives signatures only on real,
+                // non-peg-in inputs, at least one, and never issues.
+                const auto recovered = threshold_audit::RecoveredInputs(tx);
+                if (!recovered.empty()) {
+                    assert(recovered.size() == tx.vin.size());
+                    assert(std::find(recovered.begin(), recovered.end(), true) != recovered.end());
+                    for (size_t i = 0; i < tx.vin.size(); ++i) {
+                        assert(!(recovered[i] && tx.vin[i].m_is_pegin));
+                        assert(tx.vin[i].assetIssuance.IsNull());
+                    }
+                }
             }
         }
     } catch (const std::ios_base::failure&) {
