@@ -115,6 +115,8 @@ export interface Activity {
   actor: string;
   actor_name: string;
   event: string;
+  /** Who or what the event concerns, when it is not the request. */
+  subject?: string;
   entry_hash: string;
 }
 export interface Institution {

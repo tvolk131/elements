@@ -30,6 +30,7 @@ import {
   transferNeedsInstitutions,
   tokenName,
   operatorsNeeded,
+  requestBadge,
 } from "./domain";
 import { Quorum, Receive } from "./wallet";
 import { ApprovalProgress } from "./approval-progress";
@@ -563,8 +564,8 @@ function OperationDetail({ id }: { id: string }) {
             <div className="detail-amount number">
               {money(op.amount_minor)} <span>{tokenName(op.currency)}</span>
             </div>
-            <Badge status={op.state}>
-              {op.declined_by === "institutions" ? "Declined" : undefined}
+            <Badge status={requestBadge(op).status}>
+              {requestBadge(op).label}
             </Badge>
             {["awaiting_approval", "ready"].includes(op.state) ? (
               op.incoming ? (

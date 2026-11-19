@@ -23,8 +23,9 @@ export const human = (value?: string): string =>
     bankapprover: "Bank payment approver",
     corporatemaker: "Corporate payment maker",
     corporateapprover: "Corporate payment approver",
-    institutionguardian: "Operator",
-    awaiting_approval: "Payment approvals needed",
+    institutionguardian: "Network operator",
+    awaiting_approval: "Approvals needed",
+    burn_pending: "Finishing payout",
     payment_failed: "Bank payout failed",
     refund_requested: "Escrow return requested",
     // Activity log events.
@@ -187,6 +188,22 @@ export const waitingForInstitutions = (op: Operation) =>
  * the institutions is not one: it continues on its own when they are back. */
 export const retryable = (op: Operation) =>
   !!op.error && !waitingForInstitutions(op);
+/** The status pill for a request: its state, worded for what the viewer
+ * sees happening. */
+export function requestBadge(op: Operation): {
+  status: string;
+  label?: string;
+} {
+  if (op.declined_by === "institutions")
+    return { status: op.state, label: "Declined" };
+  if (waitingForInstitutions(op))
+    return { status: "pending", label: "Waiting for operators" };
+  if (op.kind === "quarantine")
+    return { status: "pending", label: "Quarantined" };
+  if (op.kind === "receipt" && op.recovery_order)
+    return { status: op.state, label: "Returned" };
+  return { status: op.state };
+}
 export function requestSummary(op: Operation): string {
   if (op.declined_by === "institutions") return "Declined by the operators";
   if (waitingForInstitutions(op)) return "Waiting for the operators";
@@ -203,7 +220,7 @@ export function requestSummary(op: Operation): string {
       bank_pending: "Waiting for bank payout",
       escrow_confirmed: "Tokens locked for payout",
       bank_unknown: "Bank result needs reconciliation",
-      burn_pending: "Finishing token burn",
+      burn_pending: "Paid out; retiring the tokens",
       payment_failed: "Bank payout failed",
       refund_requested: "Return request in progress",
       settled: "Confirmed",

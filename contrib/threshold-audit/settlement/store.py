@@ -307,8 +307,13 @@ class Settlement:
                         "operation_id": operation["id"], "kind": operation["kind"], "stage": stage,
                         "amount_minor": operation["amount_minor"], "currency": operation["currency"],
                         "from": account.get("name", account["id"]), "authority": operation.get("authority")}
+        # The coins the operators create to pay a recovery's fee: network
+        # housekeeping, not any bank's customer.
+        fees = {record["plan"]["fee"]["txid"] for record in self.freezes.records()
+                if (record.get("plan") or {}).get("fee")} if self.freezes is not None else set()
         for item in view["transactions"]:
             item["known"] = known.get(item["txid"])
+            item["recovery_fee"] = item["txid"] in fees
         return view
 
     def independent_node(self, user):
@@ -1252,9 +1257,14 @@ class Settlement:
             names.setdefault("chain-observer", "Wallet monitor")
             for row in self.db.execute("SELECT * FROM evidence ORDER BY seq DESC LIMIT 300"):
                 if row["operation_id"] in operation_ids or (row["operation_id"] is None and "view_bank" in ROLES[user["role"]]):
-                    activity.append({"id": row["seq"], "created_at": row["created"], "operation_id": row["operation_id"],
-                                     "actor": row["actor"], "actor_name": names.get(row["actor"], row["actor"]),
-                                     "event": row["event"], "entry_hash": row["entry_hash"]})
+                    entry = {"id": row["seq"], "created_at": row["created"], "operation_id": row["operation_id"],
+                             "actor": row["actor"], "actor_name": names.get(row["actor"], row["actor"]),
+                             "event": row["event"], "entry_hash": row["entry_hash"]}
+                    # Say which operator the demo switched off or on.
+                    if row["event"].startswith("demo_institution_"):
+                        operator = json.loads(row["data"]).get("institution")
+                        entry["subject"] = names.get(operator, operator)
+                    activity.append(entry)
             safe_accounts = [{"id": account["id"], "name": account.get("name", account["id"]),
                               "tenant": account["tenant"], "bank_id": account.get('bank_tenant'),
                               "payment_reference": self.directory.reference(account) if self.directory else None,

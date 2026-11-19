@@ -391,7 +391,7 @@ class FederationRotation:
     @staticmethod
     def _describe(policy, audit_members, audit_threshold):
         epoch = policy_epoch(policy['policy_version'])
-        return {'label': 'Federation ' + chr(64 + epoch), 'epoch': epoch, 'policy_version': policy['policy_version'],
+        return {'label': 'Operator set ' + chr(64 + epoch), 'epoch': epoch, 'policy_version': policy['policy_version'],
                 'audit': {'threshold': audit_threshold, 'count': len(audit_members), 'members': audit_members},
                 'treasury': {'threshold': policy['threshold'], 'count': len(policy['guardian_order']), 'members': policy['guardian_order'], 'script': policy['treasury_script']},
                 'block_signing': {'threshold': policy['threshold'], 'count': len(policy['guardian_order']), 'members': policy['guardian_order'], 'script': policy.get('block_signing_script')},

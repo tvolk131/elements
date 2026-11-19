@@ -24,6 +24,7 @@ import {
   short,
   thresholdLabel,
   tokenName,
+  operatorsNeeded,
 } from "./domain";
 import { OperationPanel } from "./wallet";
 import type {
@@ -120,10 +121,23 @@ export function GuardianOverview({
   const app = useApp();
   const ops = app.data.operations;
   const mine = ops.filter(needsInstitutionApproval);
+  // The bank's oversight role sees the network but approves nothing.
+  const operator = app.can("guardian_approve");
+  const withOperators = ops.filter(
+    (o) =>
+      o.state === "awaiting_approval" &&
+      o.guardian_approvals < o.guardian_threshold,
+  );
   return (
     <>
       <Heading
-        title={approvals ? "Approval queue" : "Federation overview"}
+        title={
+          approvals
+            ? "Approval queue"
+            : operator
+              ? "Operator overview"
+              : "Network overview"
+        }
         actions={
           <Button
             symbol="refresh"
@@ -149,8 +163,9 @@ export function GuardianOverview({
               organization
             </strong>
             <p>
-              Review the exact amount and destination. Operator certificates and
-              user approvals are separate requirements.
+              Review the exact amount and destination before signing. The
+              operators’ approval and the customer’s own approval are separate
+              requirements.
             </p>
           </div>
           <WorkspaceLink page="overview" className="link-button">
@@ -159,12 +174,21 @@ export function GuardianOverview({
         </div>
       ) : (
         <div className="metrics">
-          <Metric
-            title="Awaiting your organization"
-            value={mine.length}
-            detail="Review before providing an operator certificate"
-            symbol="shield"
-          />
+          {operator ? (
+            <Metric
+              title="Awaiting your approval"
+              value={mine.length}
+              detail="Review the amount and destination, then sign"
+              symbol="shield"
+            />
+          ) : (
+            <Metric
+              title="Waiting for the operators"
+              value={withOperators.length}
+              detail="Requests the operators have yet to approve"
+              symbol="shield"
+            />
+          )}
           <Metric
             title="Active settlement requests"
             value={ops.filter(isPending).length}
@@ -189,7 +213,7 @@ export function GuardianOverview({
           />
         </div>
       )}
-      {!approvals && (
+      {!approvals && operator && (
         <div className="guardian-queue-link">
           <WorkspaceLink page="approvals" className="button primary">
             Open your approval queue{" "}
@@ -210,7 +234,7 @@ export function GuardianOverview({
             }
             emptyDetail={
               approvals
-                ? "No requests currently need a certificate from your organization. Completed and other requests remain in the overview."
+                ? "No requests currently need your approval. Completed and other requests remain in the overview."
                 : undefined
             }
           />
@@ -234,8 +258,8 @@ export function GuardianOverview({
         >
           <p className="small-note">
             {app.data.network.disclosure_available
-              ? "Disclosure cases use separate compliance and audit-guardian accounts. Each required guardian explicitly approves access for a named recipient. Payment approval accounts do not grant disclosure authority."
-              : "The native guardian disclosure workflow is separate. This console does not request decryption shares or hold audit keys. Connect its case API before exposing disclosure actions here."}
+              ? `Each case names one recipient, and ${operatorsNeeded(app.data.network.operational_threshold)} must approve before that recipient can open the payment. Approving payments grants no disclosure authority.`
+              : "The operators’ disclosure service is not connected to this console, so no case can be opened here."}
           </p>
         </Panel>
       )}
@@ -278,8 +302,8 @@ export function ReservesPage() {
               <thead>
                 <tr>
                   <th>Currency</th>
-                  <th>Reserve balance</th>
-                  <th>Token liabilities</th>
+                  <th>Cash held at the bank</th>
+                  <th>Tokens in circulation</th>
                   <th>Reconciliation</th>
                 </tr>
               </thead>
@@ -291,17 +315,17 @@ export function ReservesPage() {
                         {tokenName(r.currency)}
                       </span>
                       <span className="cell-secondary">
-                        Sandbox issuer · Local test ledger
+                        Simulated reserve account
                       </span>
                     </td>
                     <td className="number">
-                      {money(r.cash_minor)} {tokenName(r.currency)}
+                      {money(r.cash_minor)} {r.currency}
                     </td>
                     <td className="number">
                       {money(r.token_liability_minor)} {tokenName(r.currency)}
                       <span className="cell-secondary">
-                        Deposit payable {money(r.deposit_payable_minor)} ·
-                        Redemption payable {money(r.redemption_payable_minor)}
+                        Funding in progress {money(r.deposit_payable_minor)} ·
+                        Payouts in progress {money(r.redemption_payable_minor)}
                       </span>
                     </td>
                     <td>
@@ -326,8 +350,7 @@ export function ReservesPage() {
                             : undefined}
                       </Badge>
                       <span className="cell-secondary">
-                        Escrow {money(r.escrow_minor)} · Test payout mode:{" "}
-                        {human(r.payout_mode)}
+                        Locked for payouts {money(r.escrow_minor)}
                       </span>
                     </td>
                   </tr>

@@ -32,6 +32,7 @@ import {
   short,
   waitingForInstitutions,
   tokenName,
+  requestBadge,
 } from "./domain";
 import { NetworkCard, RotationNotice } from "./guardian";
 import type { Activity, Currency, Operation } from "./types";
@@ -386,7 +387,7 @@ export function Quorum({ operation: op }: { operation: Operation }) {
         ))}
       </span>
       <span>
-        {op.guardian_approvals} / {op.guardian_threshold || "—"}
+        {op.guardian_approvals} of {op.guardian_threshold || "—"}
       </span>
     </div>
   );
@@ -437,8 +438,12 @@ export function OperationPanel({
     if (op.kind === "receipt" && op.recovery_order)
       return `Returned from quarantine · ${op.authority || "regulator"} order`;
     if (op.kind === "receipt") return "Received from external wallet";
+    // Another bank's customer is named as the sender saw it, not by its
+    // internal reference.
     if (app.guardian && op.kind === "transfer")
-      return `${app.accountName(op.account_id)} → ${app.accountName(op.to_account_id)}`;
+      return `${op.source_name || app.accountName(op.account_id)} → ${op.destination_name || app.accountName(op.to_account_id)}`;
+    if (op.kind === "deposit")
+      return `Funding for ${app.accountName(op.account_id)}`;
     if (!app.guardian && op.kind === "transfer")
       return op.to_account_id === app.account && op.account_id !== app.account
         ? `${op.state === "settled" ? "Received" : "Incoming transfer"} from ${op.source_name || app.accountName(op.account_id)}`
@@ -594,7 +599,9 @@ export function OperationPanel({
                     </span>
                   </td>
                   <td>
-                    <Badge status={op.state} />
+                    <Badge status={requestBadge(op).status}>
+                      {requestBadge(op).label}
+                    </Badge>
                     {!app.guardian && (
                       <span className="cell-secondary wallet-next-summary">
                         {requestSummary(op)}
@@ -738,12 +745,6 @@ export function RecipientsPage() {
     </>
   );
 }
-const SYSTEM_ACTORS: Record<string, string> = {
-  chain: "Elements network",
-  worker: "Settlement service",
-  "bank-simulator": "Bank (simulated)",
-  federation: "Federation",
-};
 const ACTIVITY_FILTERS = [
   ["requests", "Requests"],
   ["sign-ins", "Sign-ins"],
@@ -760,8 +761,10 @@ export function ActivityPage() {
         ? e.event === "login"
         : e.event !== "login",
   );
-  const actor = (e: Activity) =>
-    SYSTEM_ACTORS[e.actor] || e.actor_name || e.actor;
+  // The server names system actors the same way as a request's timeline.
+  const actor = (e: Activity) => e.actor_name || e.actor;
+  const event = (e: Activity) =>
+    human(e.event) + (e.subject ? ` · ${e.subject}` : "");
   const request = (id: string | null) =>
     id ? app.data.operations.find((op) => op.id === id) : undefined;
   return (
@@ -789,7 +792,7 @@ export function ActivityPage() {
                 csv([
                   ["Event", "By", "Request ID", "Recorded UTC"],
                   ...rows.map((e) => [
-                    human(e.event),
+                    event(e),
                     actor(e),
                     e.operation_id,
                     new Date(e.created_at * 1000).toISOString(),
@@ -834,7 +837,7 @@ export function ActivityPage() {
                   const op = request(e.operation_id);
                   return (
                     <tr key={e.id}>
-                      <td>{human(e.event)}</td>
+                      <td>{event(e)}</td>
                       <td>{actor(e)}</td>
                       <td>
                         {e.operation_id ? (

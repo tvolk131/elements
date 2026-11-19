@@ -64,7 +64,9 @@ serial-numbered note.
    €500,000 request under **Needs your attention** and confirm the deposit;
    that confirmation is the bank's approval. **Switch to Operator 1** and
    sign in its own approval window, then **Add the other operators'
-   approvals**. The tokens are issued within seconds: show Acme's balance.
+   approvals**. The tokens are issued within seconds. Then **Switch user →
+   Acme · creates payments**: its UNITED EUR balance is up €500,000, and step
+   2 starts from here.
    *Point:* tokens are created only when five independent operators
    co-sign the issuing transaction, after the bank confirms the money arrived.
 2. **Send (2 min).** As *Acme · creates payments*, choose
@@ -88,26 +90,29 @@ serial-numbered note.
    ledger; it says it would accept these bytes.
    *Point:* the operators can't tell this from a real payment. The signature
    is valid and the destination is a registered account at a member bank.
-   Note the authorization's expiry block: about a minute away.
+   Note the authorization's expiry block: about 80 seconds away, so it will
+   usually have lapsed by the time the freeze is in place.
 4. **Trace and freeze (3 min).** Switch to *Regulator · disclosures and
    freezes*, enter the key password and open the case. The amount is
    decrypted in the regulator's browser and checked against the chain. Fill
    in **Freeze these funds** (a reason, and the key password again) and send
-   it. **Freeze orders** shows each operator applying it: "Applied by 7 of 7".
+   it. **Freeze orders** shows each operator applying it: "Applied by 7 of 7
+   operators".
    *Point:* payment details are not public, yet a named authority sees exactly
    the payment it needs, with five operators approving. The regulator signs
    the freeze in its own browser and each operator checks that signature
    itself.
-5. **The thief broadcasts (1 min).** Back on **Ledger** as the bank, click
-   **Broadcast as the thief** (it stays disabled until the freeze is in
-   place). What happens depends on how long the freeze took, and both are
-   real:
-   - within the authorization's minute, the demo node takes the bytes into
-     its waiting pool, but no operator will sign a block containing them, so
-     they never confirm and drop out when the authorization lapses;
-   - after it, the node refuses them as expired, and the operators refuse
-     the thief's request for a fresh authorization because the funds are
-     frozen.
+5. **The thief broadcasts (1 min).** Switch back to *Bank · reserves and
+   oversight*; it returns to the **Ledger**. Click **Broadcast as the thief**
+   (it stays disabled until the freeze is in place). What happens depends on
+   how long the freeze took, and both are real:
+   - usually the authorization has lapsed: the node refuses the bytes as
+     expired, the thief asks the operators for a fresh authorization, and
+     all 7 refuse because the funds are frozen;
+   - if the freeze was quicker than the authorization's 20 blocks, the demo
+     node takes the bytes into its waiting pool, but no operator will sign a
+     block containing them, so they never confirm and drop out when the
+     authorization lapses.
 6. **Quarantine (2 min).** As the regulator, on the freeze, open
    **Quarantine…**, give a reason and the key password, and send it. Within
    a minute the card reads **Quarantined**: the operators opened the hidden
@@ -124,8 +129,9 @@ serial-numbered note.
    *Point:* this is not the demo's own say-so. A node that checks every block
    itself turns down the thief's signed, once-authorized transaction for good.
 8. **Restore (2 min).** As the regulator, open **Restore…**, enter
-   `initech-main@bank-b`, a reason and the password. The funds return to a
-   fresh Initech address and show in its history as "Returned from
+   `initech-main@bank-b`, a reason and the password. Once it confirms, the
+   order closes as **Restored**, "Returned to initech-main@bank-b". The funds
+   are at a fresh Initech address and show in its history as "Returned from
    quarantine · Financial Regulator order"; Initech's balance is back and
    still matches the chain.
    *Point:* recovery is a rule of the ledger. Five of seven operators must
@@ -152,9 +158,9 @@ only the drill.
    - Click **Send without the operators**: a bank wallet signs a valid
      payment, the ledger refuses it, and the same payment with the
      operators' authorization would be accepted.
-   - Switch two operators off and make a payment as Acme (any destination).
-     It settles in a few seconds; back on **Ledger** it shows the other five
-     signing. Switch a third off: the next payment waits ("4 of 7 reachable,
+   - Switch Operators 1 and 2 off and make a payment as Acme (any
+     destination). It settles in a few seconds; back on **Ledger** it shows
+     Operators 3–7 signing. Switch a third off: the next payment waits ("4 of 7 reachable,
      5 needed") and the block height stops on both nodes. Switch one back on
      and the waiting payment settles by itself. Turn them all back on.
    - As Acme, **Send on-chain → A wallet address**, click **Demo: use an

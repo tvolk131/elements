@@ -22,12 +22,12 @@ async function initialize() {
     ? {Action:'Hand over to new network operators',From:operation.source_policy_version,To:operation.target_policy_version,
        'Funds to move':operation.manifest.migrations.length,
        'Approval valid until':new Date(operation.expires_at*1000).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'UTC'})+' UTC',
-       Case:operation.id}
+       Request:operation.id}
     : {Action:{deposit:'Issue tokens for a bank deposit',transfer:'Payment',redemption:'Withdraw to bank',refund:'Return locked tokens'}[operation.kind]||operation.kind,
        From:operation.display?.from||operation.account_id,
        To:operation.display?.to||operation.destination_name||operation.account_id,
        'Approval valid until':new Date(operation.expires_at*1000).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'UTC'})+' UTC',
-       Case:operation.id};
+       Request:operation.id};
   for (const [label, value] of Object.entries(fields)) {
     const dt=document.createElement('dt'), dd=document.createElement('dd'); dt.textContent=label; dd.textContent=value; terms.append(dt,dd);
   }

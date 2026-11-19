@@ -41,6 +41,8 @@ interface LedgerTransaction {
   quarantine_outputs?: number;
   authorization: Authorization | null;
   block_signers: string[] | null;
+  /** The operators funding a recovery's fee. */
+  recovery_fee?: boolean;
   known: null | {
     operation_id: string;
     kind: string;
@@ -451,7 +453,9 @@ export function LedgerPage() {
                           <span className="cell-secondary">
                             {t.authorization?.recovery
                               ? "A regulator-ordered recovery of funds this bank does not hold"
-                              : "Not this bank’s: another bank’s customers, network set-up or fees"}
+                              : t.recovery_fee
+                                ? "The operators funding the fee for a regulator-ordered recovery"
+                                : "Not this bank’s: another bank’s customers, network set-up or fees"}
                           </span>
                         )}
                       </td>

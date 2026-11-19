@@ -264,6 +264,10 @@ class FreezeRelayTests(unittest.TestCase):
         self.assertEqual([k and (k['stage'], k['from'], k['authority'], k['amount_minor']) for k in known],
                          [('quarantine', 'A Customer', 'Regulator', 1_275_000),
                           ('restore', 'A Customer', 'Regulator', 1_275_000), None])
+        # The coin the operators made to pay the recovery's fee is named as such.
+        self.store.freezes.records = lambda: [{'plan': {'fee': {'txid': '00' * 32}}}, {'plan': {}}]
+        self.assertEqual([t['recovery_fee'] for t in self.store.ledger(self.users['bank-admin'])['transactions']],
+                         [False, False, True])
 
     def test_spent_outputs_and_reused_ids_are_refused(self):
         self.node.spent.add((FROZEN_TXID, 1))

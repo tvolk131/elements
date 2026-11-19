@@ -446,7 +446,7 @@ function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
       {!released && (
         <p className="small-note" data-testid={`freeze-applied-${o.id}`}>
           {all
-            ? `Applied by all ${o.operators.length} operators`
+            ? `Applied by ${o.operators.length} of ${o.operators.length} operators`
             : `Applied by ${o.applied_by.length} of ${o.operators.length} operators` +
               (o.applied_by.length
                 ? ` (${o.applied_by.map(memberName).join(", ")})`

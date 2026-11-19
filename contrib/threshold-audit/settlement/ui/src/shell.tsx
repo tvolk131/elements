@@ -36,7 +36,10 @@ export function Shell() {
   const items: [Page, string, string][] = app.guardian
     ? [
         ["overview", "Overview", "grid"],
-        ["approvals", "Approvals", "shield"],
+        // Only operators approve; the bank's oversight role has no queue.
+        ...(app.can("guardian_approve")
+          ? [["approvals", "Approvals", "shield"] as [Page, string, string]]
+          : []),
         ["reserves", "Reserves", "bank"],
         ["network", "Network", "network"],
       ]
@@ -129,6 +132,7 @@ export function Shell() {
                 <div className="user-role">
                   {human(app.user.role)}
                   {app.user.institution_id &&
+                    memberName(app.user.institution_id) !== app.user.name &&
                     ` · ${memberName(app.user.institution_id)}`}
                 </div>
               </div>
