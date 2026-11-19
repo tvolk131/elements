@@ -198,14 +198,28 @@ function BroadcastResult({ drill }: { drill: Drill }) {
               : "The demo node took them into its waiting pool, but the operators refused to sign any block that contained them, so they never confirmed. The node has since dropped them."}
       </p>
     );
+  const again = last.reauthorization;
+  // "7 of 7 operators refused to authorize this transaction: funds frozen…"
+  const count = again?.reason?.match(/^(\d+ of \d+) operators refused/)?.[1];
+  const refusedBy = count ? `${count} refused` : "they refused";
   return (
-    <p>
-      The demo node refused them because {whyRefused(last.reason)}.
-      {last.reauthorization &&
-        (last.reauthorization.refused
-          ? ` The thief asked the operators to authorize them again and was refused: ${last.reauthorization.reason}`
-          : " The operators would have authorized them again; the freeze has not reached them.")}
-    </p>
+    <>
+      <p>
+        The demo node refused them because {whyRefused(last.reason)}.
+        {again &&
+          (again.refused
+            ? again.reason?.includes("frozen")
+              ? ` The thief asked the operators for a fresh authorization: ${refusedBy}, because the funds are frozen by the regulator’s order.`
+              : ` The thief asked the operators for a fresh authorization: ${refusedBy}.`
+            : " The operators would have authorized them again; the freeze has not reached them.")}
+      </p>
+      {again?.refused && again.reason && (
+        <details className="wallet-technical">
+          <summary>The operators’ reason</summary>
+          <code>{again.reason}</code>
+        </details>
+      )}
+    </>
   );
 }
 
@@ -268,10 +282,11 @@ function DrillSteps({
         </p>
         {before && (
           <p>
-            Independent node:{" "}
+            Checked when signed, at block {drill.stolen.height}, the independent
+            node{" "}
             {before.accepted
-              ? "would accept these bytes."
-              : `would refuse them (${before.reason}).`}
+              ? "would have accepted these bytes."
+              : `would have refused them (${before.reason}).`}
           </p>
         )}
         <details className="wallet-technical">
@@ -308,7 +323,14 @@ function DrillSteps({
         title="The thief broadcasts the signed bytes"
         testid="drill-broadcast"
       >
-        <BroadcastResult drill={drill} />
+        {drill.broadcasts.length ? (
+          <BroadcastResult drill={drill} />
+        ) : (
+          <p>
+            Once the freeze is in place, the thief sends the signed bytes to the
+            demo node, valid until block {drill.authorized_until}.
+          </p>
+        )}
         {!quarantined && (
           <Button
             onClick={broadcast}
@@ -356,10 +378,23 @@ function DrillSteps({
         title="The same bytes go to the independent node"
         testid="drill-replay"
       >
-        {lastReplay && <ReplayResult replay={lastReplay} />}
+        {lastReplay ? (
+          <ReplayResult replay={lastReplay} />
+        ) : (
+          <p>
+            {independent
+              ? "After the quarantine, send the thief’s signed bytes to a second node that checks every block itself."
+              : "This runtime runs no independent node."}
+          </p>
+        )}
         <Button
           onClick={replay}
-          disabled={!independent}
+          disabled={!independent || quarantined !== "confirmed"}
+          title={
+            quarantined === "confirmed"
+              ? undefined
+              : "Available once the quarantine confirms"
+          }
           data-testid="drill-replay-button"
         >
           Submit to the independent node

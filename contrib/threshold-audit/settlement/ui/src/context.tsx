@@ -248,8 +248,8 @@ function Login({ guardian }: { guardian: boolean }) {
             <Icon name="info" />
             <span>
               <strong>Local sandbox only.</strong> Reserve accounts and bank
-              payments are simulated. Test tokens have no real-world redemption
-              promise.
+              payments are simulated. The tokens here have no real-world
+              redemption promise.
             </span>
           </div>
           <p className="login-switch">

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, refreshData } from "./api";
 import { useApp } from "./context";
 import {
@@ -336,7 +336,12 @@ function CreateForm({
           ? "Turn a bank deposit into tokens in this wallet."
           : kind === "redemption"
             ? "Turn tokens back into money in a bank account."
-            : "Pay another account. A second person approves before it is sent."
+            : transferNeedsInstitutions(
+                  app.data.transfer_institution_approval,
+                  Math.round(Number(amount || 0) * 100),
+                )
+              ? `Pay another account. A second person and ${operatorsNeeded(app.data.network.operational_threshold)} approve before it is sent.`
+              : "Pay another account. A second person at your company approves before it is sent."
       }
       close={() => app.setDialog(null)}
     >
@@ -347,20 +352,17 @@ function CreateForm({
         }}
       >
         <div className="dialog-body">
-          <div className="form-context">
-            {kind === "deposit"
-              ? app.data.deposit_issuance === "automatic"
-                ? `Once the bank confirms the deposit arrived, ${operatorsNeeded(app.data.network.operational_threshold)} approve and the tokens are issued automatically.`
-                : `After the bank confirms the deposit, a second person and ${operatorsNeeded(app.data.network.operational_threshold)} approve before tokens are issued.`
-              : kind === "redemption"
-                ? `Tokens are locked while the bank pays out, then destroyed once the payment is confirmed. A second person and ${operatorsNeeded(app.data.network.operational_threshold)} approve first.`
-                : transferNeedsInstitutions(
-                      app.data.transfer_institution_approval,
-                      Math.round(Number(amount || 0) * 100),
-                    )
-                  ? "A second person and three independent operators approve before the payment is sent."
-                  : "A second person at your company approves before the payment is sent."}
-          </div>
+          {/* A transfer says who approves in the description above, which
+              keeps the receiving bank's confirmation in view. */}
+          {kind !== "transfer" && (
+            <div className="form-context">
+              {kind === "deposit"
+                ? app.data.deposit_issuance === "automatic"
+                  ? `Once the bank confirms the deposit arrived, ${operatorsNeeded(app.data.network.operational_threshold)} approve and the tokens are issued automatically.`
+                  : `After the bank confirms the deposit, a second person and ${operatorsNeeded(app.data.network.operational_threshold)} approve before tokens are issued.`
+                : `Tokens are locked while the bank pays out, then destroyed once the payment is confirmed. A second person and ${operatorsNeeded(app.data.network.operational_threshold)} approve first.`}
+            </div>
+          )}
           <Field
             label={kind === "deposit" ? "Add tokens to" : "From wallet account"}
           >
@@ -716,7 +718,9 @@ function OperationDetail({ id }: { id: string }) {
               )
             }
           >
-            Receipt
+            {["settled", "confirmed"].includes(op.state)
+              ? "Receipt"
+              : "Download record"}
           </Button>
           {actions
             .filter((action) => action in REVIEW)
@@ -766,6 +770,7 @@ function ReviewForm({
   action: string;
 }) {
   const app = useApp();
+  const cache = useQueryClient();
   const [reason, setReason] = useState("");
   const [checked, setChecked] = useState(false);
   const guardian = action === "guardian-approve";
@@ -789,9 +794,13 @@ function ReviewForm({
         reject ? { reason } : {},
       );
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       if (!guardian) {
         app.notify(copy.done);
+        // The server answers with the updated request; show it straight
+        // away rather than the stale copy while the drawer refetches.
+        if (result && typeof result === "object" && "state" in result)
+          cache.setQueryData(["operation", app.user.id, op.id], result);
         // Return to the request so its progress stays in view.
         app.setDialog({ type: "operation", id: op.id });
         await refreshData();

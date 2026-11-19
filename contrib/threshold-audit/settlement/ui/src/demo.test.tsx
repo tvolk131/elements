@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { DemoNext, type Persona } from "./demo";
+import { DemoNext, DemoSignIn, type Persona } from "./demo";
 
 const operator = (n: number): Persona => ({
   username: `institution-${n}`,
@@ -43,4 +43,29 @@ it("offers one operator to sign live, not all seven", async () => {
   expect(await screen.findByText("Switch to Operator 2")).toBeVisible();
   expect(screen.getByText("Switch to Acme Approver")).toBeVisible();
   expect(screen.getAllByRole("button")).toHaveLength(2);
+});
+
+it("groups the operators on one card with a button each", async () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <DemoSignIn guardian={false} />
+    </QueryClientProvider>,
+  );
+  const group = await screen.findByRole("group", {
+    name: "Operators · signs approvals",
+  });
+  const buttons = within(group).getAllByRole("button");
+  expect(buttons.map((b) => b.textContent)).toEqual([
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+  ]);
+  expect(buttons[2]).toHaveAccessibleName("Operator 3 · signs approvals");
+  expect(
+    screen.getByRole("button", { name: /Acme · approves payments/ }),
+  ).toBeVisible();
 });

@@ -104,10 +104,12 @@ it("steals the chosen output with the customer's key", async () => {
     { txid: target.txid, vout: 1 },
   ]);
   expect(await screen.findByTestId("drill-stolen")).toHaveTextContent(
-    "Independent node: would accept these bytes.",
+    /the independent node would have accepted these bytes\./,
   );
   // Broadcasting before the freeze would simply complete the theft.
   expect(screen.getByTestId("drill-broadcast-button")).toBeDisabled();
+  // Before the quarantine the independent node would only say "accepted".
+  expect(screen.getByTestId("drill-replay-button")).toBeDisabled();
   expect(screen.getByTestId("drill-freeze")).toHaveTextContent(
     "open the disclosure case for this payment",
   );
@@ -162,7 +164,7 @@ it("tells the story once the regulator has frozen, quarantined and returned the 
     "their authorization from the operators has lapsed",
   );
   expect(screen.getByTestId("drill-broadcast")).toHaveTextContent(
-    "was refused: 7 of 7 operators refused",
+    "a fresh authorization: 7 of 7 refused, because the funds are frozen by the regulator’s order.",
   );
   expect(screen.queryByTestId("drill-broadcast-button")).toBeNull();
   expect(screen.getByTestId("drill-replay")).toHaveTextContent(

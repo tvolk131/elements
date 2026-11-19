@@ -313,7 +313,7 @@ function Balances() {
                 </span>
                 <strong>{tokenName(b.currency)}</strong>
               </div>
-              <span className="wallet-asset-label">Test token</span>
+              <span className="wallet-asset-label">Tokenized deposit</span>
             </div>
             <span className="balance-available-label">
               Available to send or withdraw

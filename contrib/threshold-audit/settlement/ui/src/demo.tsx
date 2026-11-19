@@ -36,6 +36,9 @@ function useSignInAs(currentWorkspace: "wallet" | "guardian") {
   });
 }
 
+// "Operator 3 · signs approvals" → ["3", "signs approvals"]
+const OPERATOR = /^Operator (\d+) · (.+)$/;
+
 function PersonaList({
   personas,
   workspace,
@@ -47,7 +50,7 @@ function PersonaList({
   workspace: "wallet" | "guardian";
   current?: string;
   onPick: (persona: Persona) => void;
-  pending?: string;
+  pending?: Persona;
 }) {
   // The console the viewer is in comes first.
   const order =
@@ -57,37 +60,84 @@ function PersonaList({
   const groups = order
     .map((w) => [w, personas.filter((p) => p.workspace === w)] as const)
     .filter(([, list]) => list.length);
+  // Two personas can be the same account (the bank administrator confirms
+  // deposits and oversees reserves), so the one clicked is matched by label.
+  const isPending = (p: Persona) =>
+    pending?.username === p.username && pending.label === p.label;
   return (
     <div className="persona-groups">
-      {groups.map(([w, list]) => (
-        <div key={w}>
-          <h3>{w === "wallet" ? "Institutional wallet" : "Network console"}</h3>
-          <ul className="persona-list">
-            {list.map((p) => (
-              <li key={p.username}>
-                <button
-                  type="button"
-                  className="persona"
-                  aria-current={p.username === current ? "true" : undefined}
-                  disabled={!!pending || p.username === current}
-                  onClick={() => onPick(p)}
-                  data-testid={`persona-${p.username}`}
-                >
-                  <strong>{p.label}</strong>
-                  <span>{p.name}</span>
-                  {pending === p.username ? (
-                    <small>Signing in…</small>
-                  ) : p.username === current ? (
-                    <small>Signed in</small>
-                  ) : (
-                    <Icon name="arrow" />
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      {groups.map(([w, list]) => {
+        // The operators share one card with a button each, so seven of them
+        // don't push the other personas off the screen.
+        const operators = list.filter((p) => OPERATOR.test(p.label));
+        const others = list.filter((p) => !operators.includes(p));
+        const operatorRole = operators[0]?.label.match(OPERATOR)?.[2];
+        return (
+          <div key={w}>
+            <h3>
+              {w === "wallet" ? "Institutional wallet" : "Network console"}
+            </h3>
+            <ul className="persona-list">
+              {others.map((p) => (
+                <li key={p.username + p.label}>
+                  <button
+                    type="button"
+                    className="persona"
+                    aria-current={p.username === current ? "true" : undefined}
+                    disabled={!!pending || p.username === current}
+                    onClick={() => onPick(p)}
+                    data-testid={`persona-${p.username}`}
+                  >
+                    <strong>{p.label}</strong>
+                    <span>{p.name}</span>
+                    {isPending(p) ? (
+                      <small>Signing in…</small>
+                    ) : p.username === current ? (
+                      <small>Signed in</small>
+                    ) : (
+                      <Icon name="arrow" />
+                    )}
+                  </button>
+                </li>
+              ))}
+              {operators.length > 0 && (
+                <li>
+                  <div
+                    className="persona persona-operators"
+                    role="group"
+                    aria-label={`Operators · ${operatorRole}`}
+                  >
+                    <strong>Operators · {operatorRole}</strong>
+                    <span>
+                      {operators.some(isPending)
+                        ? "Signing in…"
+                        : "Each runs its own approval service"}
+                    </span>
+                    <div className="operator-picks">
+                      {operators.map((p) => (
+                        <button
+                          key={p.username}
+                          type="button"
+                          aria-label={p.label}
+                          title={p.name}
+                          aria-current={
+                            p.username === current ? "true" : undefined
+                          }
+                          disabled={!!pending || p.username === current}
+                          onClick={() => onPick(p)}
+                          data-testid={`persona-${p.username}`}
+                        >
+                          {p.label.match(OPERATOR)?.[1]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </li>
+              )}
+            </ul>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -103,7 +153,7 @@ export function DemoSignIn({ guardian }: { guardian: boolean }) {
         personas={personas.data}
         workspace={workspace}
         onPick={(p) => signIn.mutate(p)}
-        pending={signIn.isPending ? signIn.variables?.username : undefined}
+        pending={signIn.isPending ? signIn.variables : undefined}
       />
       <ErrorNote error={signIn.error} />
     </section>
@@ -144,9 +194,7 @@ export function DemoSwitcher({
               workspace={workspace}
               current={current}
               onPick={(p) => signIn.mutate(p)}
-              pending={
-                signIn.isPending ? signIn.variables?.username : undefined
-              }
+              pending={signIn.isPending ? signIn.variables : undefined}
             />
             <ErrorNote error={signIn.error} />
           </div>

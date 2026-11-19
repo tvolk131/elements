@@ -332,16 +332,22 @@ export function LedgerPage() {
           )}
         </div>
       )}
+      {/* Two columns: the recovery test (drill, then the ledger's own rule)
+          on the left; the nodes and operators it relies on on the right. */}
       <div className="ledger-controls">
-        <TryWithout />
-        <IndependentNode />
-        {l && (
-          <Institutions
-            needed={l.policy.threshold || l.policy.authorizers.length}
-          />
-        )}
+        <div className="ledger-column">
+          {demo && <TheftDrill />}
+          <TryWithout />
+        </div>
+        <div className="ledger-column">
+          <IndependentNode />
+          {l && (
+            <Institutions
+              needed={l.policy.threshold || l.policy.authorizers.length}
+            />
+          )}
+        </div>
       </div>
-      {demo && <TheftDrill />}
       <Panel
         title="Recent transactions"
         subtitle={

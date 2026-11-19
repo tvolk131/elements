@@ -1129,6 +1129,38 @@ tbody tr:hover {
   width: 15px;
   height: 15px;
 }
+.persona.persona-operators,
+.persona.persona-operators:hover {
+  grid-template-columns: minmax(0, 1fr);
+  border-color: var(--line);
+  background: var(--white);
+}
+.operator-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.operator-picks button {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--white);
+  color: var(--teal-deep);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.operator-picks button:hover:not(:disabled) {
+  border-color: var(--teal);
+  background: var(--teal-wash);
+}
+.operator-picks button[aria-current="true"] {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: var(--white);
+}
 .switch-user {
   white-space: nowrap;
 }
@@ -1274,6 +1306,9 @@ dialog::backdrop {
   font-weight: 550;
   letter-spacing: -1px;
   margin: 4px 0;
+}
+.detail-amount + .badge {
+  margin-bottom: 14px;
 }
 .detail-type {
   font-size: var(--text-sm);
@@ -3398,14 +3433,21 @@ td,
   margin-bottom: 18px;
   align-items: start;
 }
-.ledger-controls > .panel + .panel {
-  margin-top: 0;
+.ledger-column {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  min-width: 0;
+}
+.ledger-column > .panel,
+.ledger-column > .panel + .panel {
+  margin: 0;
 }
 /* Panel bodies are unpadded; line the card contents up with the header. */
-.ledger-controls > .panel {
+.ledger-column > .panel {
   padding-bottom: 20px;
 }
-.ledger-controls > .panel > :not(.panel-header) {
+.ledger-column > .panel > :not(.panel-header) {
   margin-left: 21px;
   margin-right: 21px;
 }
@@ -3615,6 +3657,9 @@ td,
 .drill-step > div {
   min-width: 0;
 }
+.drill-step > div > strong {
+  display: block;
+}
 .drill-mark {
   width: 26px;
   height: 26px;
@@ -3773,4 +3818,19 @@ td,
 .freeze-order form {
   display: grid;
   gap: 12px;
+}
+.freeze-action-form {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+}
+.freeze-action-form h4 {
+  font-size: var(--text-base);
+}
+.freeze-action-form > p {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin-top: -6px;
 }

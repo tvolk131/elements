@@ -54,6 +54,13 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
   const personStep = institutionsNeeded ? 2 : 1;
   const sendStep = personStep + 1;
   const earlier = institutionsNeeded ? "steps 1 and 2" : "step 1";
+  // The steps still open, for the Send step's badge.
+  const open = [
+    institutionsNeeded && approved < required ? 1 : null,
+    op.user_approved ? null : personStep,
+  ].filter((n) => n !== null);
+  const waitingFor =
+    open.length === 1 ? `step ${open[0]}` : open.length ? earlier : "approvals";
   const kind =
     op.kind === "transfer"
       ? "transfer"
@@ -289,7 +296,7 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                     ? "Ready"
                     : approved >= required && !op.user_approved
                       ? `Together with step ${personStep}`
-                      : `Waiting for ${earlier}`}
+                      : `Waiting for ${waitingFor}`}
                 </Badge>
               </div>
               {workflow?.submitters.length === 0 ? (

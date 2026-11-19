@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import { useApp } from "./context";
@@ -558,6 +558,15 @@ function CaseDetail({
   const [ack, setAck] = useState(false);
   const [password, setPassword] = useState("");
   const [results, setResults] = useState<RecoveredOutput[] | null>(null);
+  // Bring the opened details into view once, when they appear.
+  const revealed = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (results)
+      revealed.current?.scrollIntoView?.({
+        block: "nearest",
+        behavior: "smooth",
+      });
+  }, [results]);
   const action = useMutation({
     mutationFn: (name: string) =>
       api<DisclosureCase>(`/api/disclosures/${c.id}/${name}`, {}),
@@ -718,47 +727,52 @@ function CaseDetail({
             >
               Download encrypted package and evidence
             </Button>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                open.mutate();
-              }}
-            >
-              <Field
-                label="Recipient key password"
-                detail="Unlocks your key locally. Your password, private key and recovered details are not sent to the server."
+            {!results && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  open.mutate();
+                }}
               >
-                <input
-                  type="password"
-                  autoComplete="off"
-                  required
-                  maxLength={256}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  data-testid="recipient-unlock-password"
-                />
-              </Field>
-              <Button
-                type="submit"
-                className="primary"
-                disabled={open.isPending}
-                data-testid="open-disclosure"
-              >
-                {open.isPending
-                  ? "Verifying and opening locally…"
-                  : "Open in this browser"}
-              </Button>
-            </form>
+                <Field
+                  label="Recipient key password"
+                  detail="Unlocks your key locally. Your password, private key and recovered details are not sent to the server."
+                >
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    required
+                    maxLength={256}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    data-testid="recipient-unlock-password"
+                  />
+                </Field>
+                <Button
+                  type="submit"
+                  className="primary"
+                  disabled={open.isPending}
+                  data-testid="open-disclosure"
+                >
+                  {open.isPending
+                    ? "Verifying and opening locally…"
+                    : "Open in this browser"}
+                </Button>
+              </form>
+            )}
           </div>
-        )}
-        {user_is_recipient(app.user.id, c) && (
-          <FreezeCaseOutputs caseId={c.id} outputs={c.outputs} />
         )}
         <ErrorNote
           error={action.error || open.error || exportPackage.error || c.error}
         />
+        {/* The details appear where the unlock form was, above the freeze
+            form, so opening the case visibly does something. */}
         {results && (
-          <div className="disclosure-results" data-testid="disclosure-result">
+          <div
+            className="disclosure-results"
+            data-testid="disclosure-result"
+            ref={revealed}
+          >
             <h3>Revealed payment details</h3>
             {results.length < c.outputs.length && (
               <p className="inline-warning">
@@ -815,6 +829,9 @@ function CaseDetail({
               Export revealed details
             </Button>
           </div>
+        )}
+        {user_is_recipient(app.user.id, c) && (
+          <FreezeCaseOutputs caseId={c.id} outputs={c.outputs} />
         )}
         <details className="wallet-technical">
           <summary>Technical details</summary>

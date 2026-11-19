@@ -268,39 +268,40 @@ const OUTPUT_STATUS = {
 /** A signed regulator action on a freeze: release, quarantine or restore. */
 function ActionForm({
   name,
-  label,
+  title,
+  explain,
   submitLabel,
   withDestination = false,
   build,
+  close,
 }: {
   name: string;
-  label: string;
+  title: string;
+  explain: string;
   submitLabel: string;
   withDestination?: boolean;
   build: (reason: string, destination: string) => OrderBody;
+  close: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [destination, setDestination] = useState("");
   const [password, setPassword] = useState("");
-  const submit = useSubmitOrder(() => setOpen(false));
-  if (!open)
-    return (
-      <Button onClick={() => setOpen(true)} data-testid={name}>
-        {label}…
-      </Button>
-    );
+  const submit = useSubmitOrder(close);
+  const field = name.split("-")[0];
   return (
     <form
+      className="freeze-action-form"
       onSubmit={(e) => {
         e.preventDefault();
         submit.mutate({ password, body: build(reason, destination) });
       }}
     >
+      <h4>{title}</h4>
+      <p>{explain}</p>
       {withDestination && (
         <Field
           label="Destination bank reference"
-          detail="The member bank account to return the funds to, such as acme-main@bank."
+          detail="The member bank account to return the funds to, written account@bank."
         >
           <input
             required
@@ -309,7 +310,7 @@ function ActionForm({
             onChange={(e) =>
               setDestination(e.target.value.trim().toLowerCase())
             }
-            data-testid={`${name.split("-")[0]}-destination`}
+            data-testid={`${field}-destination`}
           />
         </Field>
       )}
@@ -320,7 +321,7 @@ function ActionForm({
           maxLength={1000}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          data-testid={`${name.split("-")[0]}-reason`}
+          data-testid={`${field}-reason`}
         />
       </Field>
       <Field label="Recipient key password">
@@ -331,12 +332,22 @@ function ActionForm({
           maxLength={256}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          data-testid={`${name.split("-")[0]}-password`}
+          data-testid={`${field}-password`}
         />
       </Field>
-      <Button type="submit" className="primary" disabled={submit.isPending}>
-        {submitLabel}
-      </Button>
+      <div className="freeze-actions">
+        <Button
+          type="submit"
+          className="primary"
+          disabled={submit.isPending}
+          data-testid={`${field}-submit`}
+        >
+          {submit.isPending ? "Signing and sending…" : submitLabel}
+        </Button>
+        <Button type="button" onClick={close} disabled={submit.isPending}>
+          Cancel
+        </Button>
+      </div>
       <ErrorNote error={submit.error} />
     </form>
   );
@@ -372,6 +383,11 @@ function RecoveryStatus({
 
 function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
   const app = useApp();
+  // One action form at a time, across the card's full width.
+  const [acting, setActing] = useState<
+    "quarantine" | "release" | "restore" | null
+  >(null);
+  const close = () => setActing(null);
   const released = Boolean(o.released_by);
   const moved =
     o.quarantine && ["broadcast", "confirmed"].includes(o.quarantine.state);
@@ -415,9 +431,11 @@ function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
             <span>
               {released
                 ? "No longer frozen"
-                : moved
-                  ? "Moved into quarantine"
-                  : OUTPUT_STATUS[x.status]}
+                : returned
+                  ? `Returned to ${o.restore!.destination}`
+                  : moved
+                    ? "Moved into quarantine"
+                    : OUTPUT_STATUS[x.status]}
             </span>
             <code title={`${x.txid}:${x.vout}`}>
               {x.txid.slice(0, 12)}…:{x.vout}
@@ -452,38 +470,70 @@ function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
           step={o.restore}
         />
       )}
-      {regulator && !released && !o.quarantine && (
+      {regulator && !released && !o.quarantine && !acting && (
         <div className="freeze-actions">
-          <ActionForm
-            name={`quarantine-${o.id}`}
-            label="Quarantine"
-            submitLabel="Sign and send quarantine order"
-            build={(reason) => ({
-              kind: "quarantine",
-              case_reference: o.case_reference,
-              reason,
-              freeze: o.id,
-            })}
-          />
-          <ActionForm
-            name={`release-${o.id}`}
-            label="Release"
-            submitLabel="Sign and send release"
-            build={(reason) => ({
-              kind: "release",
-              case_reference: o.case_reference,
-              reason,
-              releases: o.id,
-            })}
-          />
+          <Button
+            onClick={() => setActing("quarantine")}
+            data-testid={`quarantine-${o.id}`}
+          >
+            Quarantine…
+          </Button>
+          <Button
+            onClick={() => setActing("release")}
+            data-testid={`release-${o.id}`}
+          >
+            Release…
+          </Button>
         </div>
       )}
-      {regulator && moved && !o.restore && (
+      {acting === "quarantine" && (
+        <ActionForm
+          name={`quarantine-${o.id}`}
+          title="Quarantine these funds"
+          explain="The operators open the hidden amount with their disclosure key and move the funds into quarantine, without the holder's key. Only a later restore order can move them out."
+          submitLabel="Sign and send quarantine order"
+          close={close}
+          build={(reason) => ({
+            kind: "quarantine",
+            case_reference: o.case_reference,
+            reason,
+            freeze: o.id,
+          })}
+        />
+      )}
+      {acting === "release" && (
+        <ActionForm
+          name={`release-${o.id}`}
+          title="Release the freeze"
+          explain="The operators stop holding these funds, and the holder can spend them again."
+          submitLabel="Sign and send release"
+          close={close}
+          build={(reason) => ({
+            kind: "release",
+            case_reference: o.case_reference,
+            reason,
+            releases: o.id,
+          })}
+        />
+      )}
+      {regulator && moved && !o.restore && !acting && (
+        <div className="freeze-actions">
+          <Button
+            onClick={() => setActing("restore")}
+            data-testid={`restore-${o.id}`}
+          >
+            Restore…
+          </Button>
+        </div>
+      )}
+      {acting === "restore" && !o.restore && (
         <ActionForm
           name={`restore-${o.id}`}
-          label="Restore"
+          title="Restore the funds"
+          explain={`The operators move the quarantined funds to a new address of the member bank account you name. ${o.threshold} of the ${o.operators.length} must sign.`}
           submitLabel="Sign and send restore order"
           withDestination
+          close={close}
           build={(reason, destination) => ({
             kind: "restore",
             case_reference: o.case_reference,
@@ -523,11 +573,14 @@ export function FreezeOrders() {
           </ul>
         ) : (
           <Empty title="Nothing is frozen">
-            Funds frozen by the regulator will appear here.
+            {released.length
+              ? "Closed orders, including restored funds, are listed below."
+              : "Funds frozen by the regulator will appear here."}
           </Empty>
         )}
         {released.length > 0 && (
-          <details className="freeze-history">
+          // Open while nothing else is, so a restore's outcome stays in view.
+          <details className="freeze-history" open={!active.length}>
             <summary>Closed ({released.length})</summary>
             <ul className="freeze-orders">
               {released.map((o) => (
