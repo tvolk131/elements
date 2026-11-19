@@ -1,11 +1,6 @@
 export type Currency = "EUR" | "USD";
 export type Kind =
-  | "deposit"
-  | "transfer"
-  | "redemption"
-  | "refund"
-  | "receipt"
-  | "quarantine";
+  "deposit" | "transfer" | "redemption" | "refund" | "receipt" | "quarantine";
 export interface User {
   id: string;
   name: string;
@@ -139,6 +134,8 @@ export interface Network {
   audit_threshold: number;
   audit_guardians: number;
   disclosure_available: boolean;
+  /** Operators needed to approve a request (the approval quorum). */
+  operational_threshold?: number;
 }
 export interface Reserve {
   currency: Currency;

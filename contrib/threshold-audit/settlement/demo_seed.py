@@ -5,8 +5,8 @@ the demo conveniences (persona sign-in and operator passphrase prefill),
 then drives realistic history and three pre-staged cases through the real API:
 
 * a funding request waiting for the bank's credit (demo flow: add funds),
-* a withdrawal approved by Acme and two of three operators (demo flow:
-  the last operator signs and the payout completes), and
+* a withdrawal approved by Acme and four of the seven operators (demo flow:
+  the fifth operator signs and the payout completes), and
 * a delivered disclosure of an Acme to Initech payment for the regulator
   persona to open in the browser.
 
@@ -138,7 +138,7 @@ def configure(directory, mesh):
     # payments between customers need only the customer's own approvals.
     config['transfer_institution_approval'] = 'never'
     # The bank's deposit confirmation is its approval; tokens are issued as
-    # soon as three institutions approve.
+    # soon as five operators approve.
     config['deposit_issuance'] = 'automatic'
     config['demo_sign_in'] = [{'username': u, 'workspace': w, 'label': label} for u, w, label in PERSONAS]
     # Lets the console's demo shortcut sign as the remaining institutions.

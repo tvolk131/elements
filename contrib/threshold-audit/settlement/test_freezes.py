@@ -247,7 +247,7 @@ class FreezeRelayTests(unittest.TestCase):
         self.assertEqual((moved['kind'], moved['amount_minor'], moved['destination'], moved['recovery_order']),
                          ('quarantine', 1_275_000, 'Quarantine', quarantine['id']))
         self.assertEqual((moved['authority'], moved['case_reference']), ('Regulator', 'case-7'))
-        self.assertIn('case-7', moved['reference'])
+        self.assertEqual(moved['reference'], 'Moved to quarantine by order of Regulator')
         self.assertEqual((returned['kind'], returned['recovery_order'], returned['amount_minor']),
                          ('receipt', restore['id'], 1_275_000))
         self.assertTrue(returned['reference'].startswith('Returned from quarantine'))
@@ -257,6 +257,13 @@ class FreezeRelayTests(unittest.TestCase):
         # Nobody outside the holder's own tenant sees the account's history.
         regulator = self.store.dashboard({'user': self.users['regulator']})
         self.assertFalse([op for op in regulator['operations'] if op.get('recovery_order')])
+        # The bank's ledger view names both moves beside what the chain shows.
+        self.store.ledger_view = type('Ledger', (), {'recent': lambda _: {
+            'transactions': [{'txid': 'ee' * 32}, {'txid': 'ff' * 32}, {'txid': '00' * 32}]}})()
+        known = [t['known'] for t in self.store.ledger(self.users['bank-admin'])['transactions']]
+        self.assertEqual([k and (k['stage'], k['from'], k['authority'], k['amount_minor']) for k in known],
+                         [('quarantine', 'A Customer', 'Regulator', 1_275_000),
+                          ('restore', 'A Customer', 'Regulator', 1_275_000), None])
 
     def test_spent_outputs_and_reused_ids_are_refused(self):
         self.node.spent.add((FROZEN_TXID, 1))

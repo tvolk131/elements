@@ -3579,7 +3579,20 @@ td,
   min-width: 0;
 }
 .drill-start select {
+  width: 100%;
   max-width: 100%;
+  border: 1px solid #dce4dc;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+  min-height: 41px;
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+.drill-start select:focus {
+  border-color: #8bbca4;
+  outline: 2px solid #e3f1e7;
+  outline-offset: 0;
 }
 .drill-steps {
   list-style: none;

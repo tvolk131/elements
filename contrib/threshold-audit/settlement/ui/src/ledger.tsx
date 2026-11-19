@@ -49,6 +49,7 @@ interface LedgerTransaction {
     currency: string;
     from: string;
     to?: string;
+    authority?: string;
   };
 }
 interface Ledger {
@@ -114,6 +115,12 @@ function whatItWas(item: LedgerTransaction) {
       return `Withdrawal · ${amount} destroyed after payout · ${k.from}`;
     case "refund":
       return `Refund · ${amount} · to ${k.from}`;
+    case "quarantine":
+      return `Quarantine · ${amount} · from ${k.from} · ${k.authority || "regulator"} order`;
+    case "restore":
+      return `Returned from quarantine · ${amount} · to ${k.from} · ${k.authority || "regulator"} order`;
+    case "receipt":
+      return `Received · ${amount} · to ${k.from}`;
     default:
       return `${human(k.kind)} · ${amount}`;
   }

@@ -12,7 +12,7 @@ import {
   Heading,
   Panel as BasePanel,
 } from "./components";
-import { baseUnits, date, download, human, money } from "./domain";
+import { baseUnits, date, download, human, money, tokenName } from "./domain";
 import {
   newRecipientKey,
   unlockRecipientKey,
@@ -429,8 +429,8 @@ function NewCase({
                   </option>
                   {choices.map((o) => (
                     <option key={o.id} value={o.id}>
-                      {money(o.amount_minor)} Test{o.currency} · {human(o.kind)}{" "}
-                      · {o.id.slice(0, 8)}
+                      {money(o.amount_minor)} {tokenName(o.currency)} ·{" "}
+                      {human(o.kind)} · {o.id.slice(0, 8)}
                     </option>
                   ))}
                 </select>
@@ -625,8 +625,8 @@ function CaseDetail({
           <div>
             <dt>Operator approvals</dt>
             <dd>
-              {c.approved_members.length} of {c.threshold} required (
-              {c.guardian_count} operators)
+              {c.approved_members.length} approved · {c.threshold} of{" "}
+              {c.guardian_count} required
             </dd>
           </div>
         </dl>

@@ -568,7 +568,10 @@ export function OperationPanel({
                       <div>
                         <span className="cell-primary">{titleFor(op)}</span>
                         <span className="cell-secondary">
-                          {human(op.kind)} · {short(op.id)}
+                          {op.kind === "receipt" && op.recovery_order
+                            ? "Returned from quarantine"
+                            : human(op.kind)}{" "}
+                          · {short(op.id)}
                         </span>
                       </div>
                     </div>

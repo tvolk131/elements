@@ -189,14 +189,13 @@ function BroadcastResult({ drill }: { drill: Drill }) {
   if (last.accepted)
     return (
       <p>
-        The demo node took them into its waiting pool. They are validly signed
-        and still authorized, but the operators refuse to sign any block that
-        contains them.{" "}
         {drill.thief_transaction === "confirmed"
-          ? "They confirmed."
+          ? "The demo node took them and they confirmed: the freeze came too late."
           : drill.thief_transaction === "in_mempool"
-            ? `They are waiting, unconfirmed; the node drops them when their authorization lapses after block ${drill.authorized_until}.`
-            : "They are no longer waiting: the node dropped them."}
+            ? `The demo node took them into its waiting pool: they are validly signed and still authorized. But the operators refuse to sign any block that contains them, so they wait unconfirmed until their authorization lapses after block ${drill.authorized_until}.`
+            : drill.quarantine?.txid
+              ? "The demo node took them into its waiting pool, but the operators refused to sign any block that contained them, so they never confirmed. The quarantine then spent the same output and replaced them."
+              : "The demo node took them into its waiting pool, but the operators refused to sign any block that contained them, so they never confirmed. The node has since dropped them."}
       </p>
     );
   return (
@@ -228,7 +227,11 @@ function ReplayResult({ replay }: { replay: Replay }) {
           ` The quarantine spent it (${short(replay.spent_by.txid)}, ${replay.spent_by.confirmations} confirmations on that node).`}
         {replay.submission && " Submitting them was refused too."}
       </p>
-      {replay.reason && <code>{replay.reason}</code>}
+      {replay.reason && (
+        <p className="small-note">
+          The node’s reason: <code>{replay.reason}</code>
+        </p>
+      )}
     </>
   );
 }
@@ -273,7 +276,8 @@ function DrillSteps({
         )}
         <details className="wallet-technical">
           <summary>
-            Signed transaction {short(drill.txid)} · {drill.raw_size} bytes
+            Signed transaction {short(drill.txid)} ·{" "}
+            {drill.raw_size.toLocaleString("en-GB")} bytes
           </summary>
           <CopyField label="Transaction ID" value={drill.txid} />
         </details>

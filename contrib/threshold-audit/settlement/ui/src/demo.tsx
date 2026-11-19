@@ -207,10 +207,16 @@ export function DemoNext({
       );
     },
   );
-  if (!choices.length) return null;
+  // One operator is enough to show signing live; the demo shortcut then
+  // collects the rest, so offer only the first operator who can sign.
+  const firstOperator = choices.find((p) => p.role === "institutionguardian");
+  const shown = choices.filter(
+    (p) => p.role !== "institutionguardian" || p === firstOperator,
+  );
+  if (!shown.length) return null;
   return (
     <div className="demo-next">
-      {choices.map((p) => (
+      {shown.map((p) => (
         <button
           key={p.username}
           type="button"

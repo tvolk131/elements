@@ -258,7 +258,7 @@ class Freezes:
                      'amount_minor': item['amount_minor'], 'created_at': now, 'updated_at': now,
                      'maker': 'federation', 'txid': txid, 'output_index': index, 'stage': 'quarantine',
                      'policy_version': store.verifier.policy_version, 'expires_at': 0,
-                     'reference': f"Moved to quarantine by regulator order ({order['case_reference']})",
+                     'reference': f"Moved to quarantine by order of {order['authority']}",
                      'destination': output['address'], 'destination_name': 'Quarantine', 'to_account_id': None,
                      'recovery_order': order['id'], 'authority': order['authority'],
                      'case_reference': order['case_reference'], 'source_output': f"{item['txid']}:{item['vout']}"}
@@ -286,7 +286,7 @@ class Freezes:
                      'amount_minor': item['amount_minor'], 'created_at': now, 'updated_at': now,
                      'maker': 'federation', 'txid': txid, 'output_index': vout, 'stage': 'receipt',
                      'policy_version': store.verifier.policy_version, 'expires_at': 0,
-                     'reference': f"Returned from quarantine by regulator order ({order['case_reference']})",
+                     'reference': f"Returned from quarantine by order of {order['authority']}",
                      'destination': item['address'], 'destination_name': account['name'], 'to_account_id': None,
                      'external_receipt': False, 'recovery_order': order['id'], 'authority': order['authority'],
                      'case_reference': order['case_reference']}

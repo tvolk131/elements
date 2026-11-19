@@ -29,6 +29,7 @@ import {
   settlementHold,
   transferNeedsInstitutions,
   tokenName,
+  operatorsNeeded,
 } from "./domain";
 import { Quorum, Receive } from "./wallet";
 import { ApprovalProgress } from "./approval-progress";
@@ -349,10 +350,10 @@ function CreateForm({
           <div className="form-context">
             {kind === "deposit"
               ? app.data.deposit_issuance === "automatic"
-                ? "Once the bank confirms the deposit arrived, three independent operators approve and the tokens are issued automatically."
-                : "After the bank confirms the deposit, a second person and three independent operators approve before tokens are issued."
+                ? `Once the bank confirms the deposit arrived, ${operatorsNeeded(app.data.network.operational_threshold)} approve and the tokens are issued automatically.`
+                : `After the bank confirms the deposit, a second person and ${operatorsNeeded(app.data.network.operational_threshold)} approve before tokens are issued.`
               : kind === "redemption"
-                ? "Tokens are locked while the bank pays out, then destroyed once the payment is confirmed. A second person and three operators approve first."
+                ? `Tokens are locked while the bank pays out, then destroyed once the payment is confirmed. A second person and ${operatorsNeeded(app.data.network.operational_threshold)} approve first.`
                 : transferNeedsInstitutions(
                       app.data.transfer_institution_approval,
                       Math.round(Number(amount || 0) * 100),
@@ -896,7 +897,7 @@ function BankCreditForm({ operation: op }: { operation: Operation }) {
     onSuccess: async () => {
       app.notify(
         op.issues_automatically
-          ? "Deposit confirmed. Tokens are issued once three operators approve."
+          ? `Deposit confirmed. Tokens are issued once ${operatorsNeeded(op.guardian_threshold)} approve.`
           : "Bank deposit recorded. The request now needs approvals.",
       );
       app.setDialog({ type: "operation", id: op.id });
@@ -925,8 +926,8 @@ function BankCreditForm({ operation: op }: { operation: Operation }) {
           <KV label="For">{app.accountName(op.account_id)}</KV>
           <p className="small-note">
             {op.issues_automatically
-              ? "Simulated bank: no real money moves. Confirming is the bank’s approval; tokens are issued once three operators approve."
-              : "Simulated bank: no real money moves. Tokens are issued only after a second person and three operators approve."}
+              ? `Simulated bank: no real money moves. Confirming is the bank’s approval; tokens are issued once ${operatorsNeeded(op.guardian_threshold)} approve.`
+              : `Simulated bank: no real money moves. Tokens are issued only after a second person and ${operatorsNeeded(op.guardian_threshold)} approve.`}
           </p>
           <ErrorNote error={mutation.error} />
         </div>

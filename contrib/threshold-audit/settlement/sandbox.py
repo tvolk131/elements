@@ -58,6 +58,13 @@ def private_json(path, value):
         atomic_write(path, value)
 
 
+def display_name(username):
+    """Operators sign in as institution-N; people know them as Operator N."""
+    if username.startswith('institution-'):
+        return 'Operator ' + username.rsplit('-', 1)[1]
+    return username.replace('-', ' ').title()
+
+
 def free_port():
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
@@ -271,7 +278,7 @@ class Sandbox:
         roles += [(guardian, 'institutionguardian', 'bank') for guardian in institutions]
         for username, role, tenant in roles:
             password = secrets.token_urlsafe(18)
-            users.append({'id': username, 'username': username, 'name': username.replace('-', ' ').title(),
+            users.append({'id': username, 'username': username, 'name': display_name(username),
                           'password': password, 'role': role, 'tenant': tenant,
                           **({'institution_id': username, 'audit_member': int(username.rsplit('-', 1)[1])}
                              if role == 'institutionguardian' else {})})
@@ -574,7 +581,7 @@ class Sandbox:
             private_json(self.directory / guardian / 'service.json', config)
             services[guardian] = self._launch_institution(guardian, port)
             login = next(value for value in credentials if value['username'] == guardian)
-            users.append({'id': guardian, 'username': guardian, 'name': guardian.replace('-', ' ').title(),
+            users.append({'id': guardian, 'username': guardian, 'name': display_name(guardian),
                           'password': login['password'], 'role': 'institutionguardian', 'institution_id': guardian, 'tenant': 'bank'})
         self.store.register_users(users)
         known = {user['id'] for user in self.store.config['users']}

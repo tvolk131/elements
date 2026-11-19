@@ -61,6 +61,9 @@ export const human = (value?: string): string =>
   (value || "Not available")
     .replace(/_/g, " ")
     .replace(/^./, (c) => c.toUpperCase());
+/** "5 operators", from the quorum a request or the network reports. */
+export const operatorsNeeded = (n?: number) =>
+  n ? `${n} operators` : "the required operators";
 /** Display name of the payment token for a currency, e.g. "UNITED EUR". */
 export const tokenName = (currency?: string) =>
   currency ? `UNITED ${currency}` : "UNITED";
@@ -224,7 +227,7 @@ export function viewerNextAction(op: Operation): string | undefined {
   if (SETTLING.includes(op.state) && !retryable(op)) return undefined;
   if (actions.includes("bank-credit"))
     return op.issues_automatically
-      ? "Confirm the bank deposit arrived. That is the bank’s approval; tokens are issued once three operators approve."
+      ? `Confirm the bank deposit arrived. That is the bank’s approval; tokens are issued once ${operatorsNeeded(op.guardian_threshold)} approve.`
       : "Record the bank deposit so the tokens can be issued.";
   if (actions.includes("approve"))
     return op.guardian_approvals >= op.guardian_threshold
@@ -277,7 +280,7 @@ export function nextStep(op: Operation): string {
     return "Review required. An authorized person must resolve the recorded issue before proceeding.";
   if (op.state === "awaiting_bank")
     return op.issues_automatically
-      ? "Next: the bank confirms the deposit arrived. Tokens are then issued as soon as three operators approve."
+      ? `Next: the bank confirms the deposit arrived. Tokens are then issued as soon as ${operatorsNeeded(op.guardian_threshold)} approve.`
       : "Next: a bank administrator records the matching simulated bank credit. Tokens have not been issued yet.";
   if (op.state === "awaiting_approval") {
     if (!op.user_approved) {

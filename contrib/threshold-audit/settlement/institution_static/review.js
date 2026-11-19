@@ -13,7 +13,7 @@ async function initialize() {
     const amount = document.createElement('div'), label = document.createElement('span'), value = document.createElement('strong');
     amount.className = 'amount';
     label.textContent = 'Amount';
-    value.textContent = (operation.amount_minor/100).toLocaleString('en-GB',{minimumFractionDigits:2}) + ' Test' + operation.currency;
+    value.textContent = (operation.amount_minor/100).toLocaleString('en-GB',{minimumFractionDigits:2}) + ' UNITED ' + operation.currency;
     amount.append(label, value);
     document.querySelector('#terms').append(amount);
   }

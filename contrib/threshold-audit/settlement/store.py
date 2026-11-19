@@ -298,6 +298,15 @@ class Settlement:
                             "amount_minor": operation["amount_minor"], "currency": operation["currency"],
                             "from": account.get("name", account["id"]),
                             "to": destination or operation.get("destination_name")}
+                if operation["kind"] in ("quarantine", "receipt") and operation.get("txid"):
+                    # Moves the bank only observed: receipts, and a regulator's
+                    # quarantine or return of a customer's funds.
+                    stage = ("restore" if operation.get("recovery_order") else "receipt") \
+                        if operation["kind"] == "receipt" else "quarantine"
+                    known[operation["txid"]] = {
+                        "operation_id": operation["id"], "kind": operation["kind"], "stage": stage,
+                        "amount_minor": operation["amount_minor"], "currency": operation["currency"],
+                        "from": account.get("name", account["id"]), "authority": operation.get("authority")}
         for item in view["transactions"]:
             item["known"] = known.get(item["txid"])
         return view
@@ -1237,6 +1246,10 @@ class Settlement:
             names = {row["id"]: json.loads(row["data"]).get("name", row["id"]) for row in self.db.execute("SELECT id,data FROM users")}
             names.setdefault("settlement", "Automatic, once approvals were complete")
             names.setdefault("federation", "The operators, automatically")
+            names.setdefault("chain", "Settlement service")
+            names.setdefault("worker", "Settlement service")
+            names.setdefault("bank-simulator", "Simulated bank")
+            names.setdefault("chain-observer", "Wallet monitor")
             for row in self.db.execute("SELECT * FROM evidence ORDER BY seq DESC LIMIT 300"):
                 if row["operation_id"] in operation_ids or (row["operation_id"] is None and "view_bank" in ROLES[user["role"]]):
                     activity.append({"id": row["seq"], "created_at": row["created"], "operation_id": row["operation_id"],
@@ -1262,4 +1275,4 @@ class Settlement:
                     "frozen_funds": self.freezes.frozen_funds(user) if self.freezes is not None else [],
                     "guardians": [{"id": guardian, "institution_id": guardian, "public_key": key,
                                    "approval_url": self.config.get("institution_approval_urls", {}).get(guardian),
-                                   "name": guardian} for guardian, key in self.verifier.public_keys.items()]}
+                                   "name": names.get(guardian, guardian)} for guardian, key in self.verifier.public_keys.items()]}

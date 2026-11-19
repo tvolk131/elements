@@ -287,16 +287,18 @@ export function ReservesPage() {
                 {app.data.reserves.map((r) => (
                   <tr key={r.currency}>
                     <td>
-                      <span className="cell-primary">Test{r.currency}</span>
+                      <span className="cell-primary">
+                        {tokenName(r.currency)}
+                      </span>
                       <span className="cell-secondary">
                         Sandbox issuer · Local test ledger
                       </span>
                     </td>
                     <td className="number">
-                      {money(r.cash_minor)} Test{r.currency}
+                      {money(r.cash_minor)} {tokenName(r.currency)}
                     </td>
                     <td className="number">
-                      {money(r.token_liability_minor)} Test{r.currency}
+                      {money(r.token_liability_minor)} {tokenName(r.currency)}
                       <span className="cell-secondary">
                         Deposit payable {money(r.deposit_payable_minor)} ·
                         Redemption payable {money(r.redemption_payable_minor)}
@@ -400,7 +402,7 @@ export function NetworkPage() {
           >
             {app.data.assets.map((asset) => (
               <div key={asset.asset_id} className="asset-detail">
-                <h3>Test{asset.currency}</h3>
+                <h3>{tokenName(asset.currency)}</h3>
                 <Badge status={asset.registered ? "active" : "unconfigured"}>
                   {asset.registered ? "Registered" : "Not registered"}
                 </Badge>
@@ -736,7 +738,7 @@ export function FederationPage() {
             To replace the operators, the bank prepares the incoming group, the
             current operators approve, and the network switches over while
             pending requests carry on. Past payments remain disclosable by the
-            new guardians.
+            new operators.
           </p>
         </Panel>
       )}
@@ -811,7 +813,7 @@ function CaseTable({ rows }: { rows: OutstandingCase[] }) {
                   {human(item.kind)} · {short(item.id)}
                 </button>
               </td>
-              <td>Test{item.currency}</td>
+              <td>{tokenName(item.currency)}</td>
               <td>{money(item.amount_minor)}</td>
               <td>
                 <Badge status={item.state} />

@@ -279,7 +279,9 @@ it("shows a regulator's quarantine and return in the holder's own history", asyn
   app.dialog = { type: "operation", id: "moved" };
   show();
   expect(
-    await screen.findByText("Moved to quarantine", { selector: ".detail-type" }),
+    await screen.findByText("Moved to quarantine", {
+      selector: ".detail-type",
+    }),
   ).toBeVisible();
   const record = screen.getByTestId("recovery-record");
   expect(record).toHaveTextContent("moved out of this account without its key");

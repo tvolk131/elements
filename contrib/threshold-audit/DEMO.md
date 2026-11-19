@@ -114,7 +114,9 @@ serial-numbered note.
    amount with their disclosure key and moved the funds into quarantine,
    without Initech's key. On **Ledger**, the drill's quarantine step turns
    green, and the transaction list shows it as a recovery that moves funds
-   into quarantine.
+   into quarantine. Optionally switch to *Initech*: its history shows
+   "Moved to quarantine · Financial Regulator order", naming the authority,
+   case and order, and its balance still matches the chain.
 7. **Replay the same bytes on the independent node (1 min).** On **Ledger**,
    click **Submit to the independent node**. It rejects them: the output they
    spend no longer exists on its own copy of the ledger, spent by the
@@ -123,8 +125,9 @@ serial-numbered note.
    itself turns down the thief's signed, once-authorized transaction for good.
 8. **Restore (2 min).** As the regulator, open **Restore…**, enter
    `initech-main@bank-b`, a reason and the password. The funds return to a
-   fresh Initech address and show in its history as "Returned by regulator
-   order"; Initech's balance is back and still matches the chain.
+   fresh Initech address and show in its history as "Returned from
+   quarantine · Financial Regulator order"; Initech's balance is back and
+   still matches the chain.
    *Point:* recovery is a rule of the ledger. Five of seven operators must
    sign it, the first move can only go into quarantine, and a regulator's
    signed order decides each step.
