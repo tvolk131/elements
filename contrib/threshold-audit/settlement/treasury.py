@@ -135,6 +135,13 @@ class Institution:
                     if order['kind'] == 'freeze':
                         self.db.executemany('INSERT OR IGNORE INTO frozen_outputs VALUES(?,?)',
                                             [(item, order['id']) for item in target])
+                    elif order['kind'] in ('quarantine', 'restore'):
+                        # A quarantine acts on a freeze still in force; a
+                        # restore on a quarantine this operator recorded.
+                        wanted = 'freeze' if order['kind'] == 'quarantine' else 'quarantine'
+                        acted = self.db.execute('SELECT kind,released_by FROM freeze_orders WHERE id=?', (target,)).fetchone()
+                        if acted is None or acted[0] != wanted or acted[1] is not None:
+                            raise ValueError(f'{order["kind"]} names no {wanted} in force at this operator')
                     else:
                         lifted = self.db.execute('SELECT kind,released_by FROM freeze_orders WHERE id=?', (target,)).fetchone()
                         if lifted is None or lifted[0] != 'freeze':
@@ -152,10 +159,84 @@ class Institution:
                 'signature': self.curve.sign(int(self.config['approval_secret'], 16),
                                              receipt_digest(order, self.config['guardian_id'])).hex()}
 
+    def authorize_recovery(self, request):
+        """Sign a recovery authorization, only for exactly what an order allows.
+
+        Quarantine: the named inputs are outputs of the order's freeze, and
+        every output is that order's quarantine or the fee. Restore: the named
+        inputs are that quarantine's outputs, and every destination is an
+        address a member bank registered. One transaction per order, so the
+        same order cannot be spent twice in different ways.
+        """
+        from .authorization import (WINDOW, decode_policy, is_quarantine_script, needs_registration,
+                                    quarantine_script, recovery_bitmap, recovery_digest, registration_digest)
+        from .freeze_orders import quarantine_case
+        transaction, expiry = tx_from_hex(request['rawtx']), request['expiry_height']
+        recovered = request['recovered']
+        info = self.rpc.getblockchaininfo()
+        policy = bytes.fromhex(info.get('tx_authorization') or '')
+        secret = int(self.config['approval_secret'], 16)
+        if not policy or self.curve.mul(secret)[1:] not in decode_policy(policy)[1]:
+            raise ValueError('operator is not an authorizer under the active chain policy')
+        if type(expiry) is not int or not info['blocks'] < expiry <= info['blocks'] + WINDOW:
+            raise ValueError('authorization must expire within the next %d blocks' % WINDOW)
+        if (not isinstance(recovered, list) or not recovered or len(set(recovered)) != len(recovered)
+                or any(type(i) is not int or not 0 <= i < len(transaction.vin) for i in recovered)):
+            raise ValueError('recovery must name existing inputs')
+        with self.lock:
+            row = self.db.execute('SELECT kind,data,released_by FROM freeze_orders WHERE id=?',
+                                  (request['order_id'],)).fetchone()
+        if row is None or row[0] not in ('quarantine', 'restore') or row[2] is not None:
+            raise ValueError('no quarantine or restore order in force here names this recovery')
+        order = json.loads(row[1])['order']
+        spent = [f'{inp.prevout.hash:064x}:{inp.prevout.n}' for inp in transaction.vin]
+        named = {spent[i] for i in recovered}
+        with self.lock:
+            if any(self.db.execute('SELECT 1 FROM frozen_outputs WHERE outpoint=?', (item,)).fetchone()
+                   for i, item in enumerate(spent) if i not in recovered):
+                raise ValueError('an input the recovery does not name is frozen')
+        if order['kind'] == 'quarantine':
+            with self.lock:
+                frozen = {r[0] for r in self.db.execute('SELECT outpoint FROM frozen_outputs WHERE order_id=?',
+                                                       (order['freeze'],))}
+            if not named <= frozen:
+                raise ValueError('quarantine may take only outputs of its freeze')
+            fence = quarantine_script(quarantine_case(order['id']))
+            if any(bytes(out.scriptPubKey) not in (b'', fence) for out in transaction.vout):
+                raise ValueError('quarantine may pay only into its own quarantine and the fee')
+        else:
+            fence = quarantine_script(quarantine_case(order['quarantine']))
+            for spent in named:
+                txid, vout = spent.split(':')
+                previous = self.rpc.gettxout(txid, int(vout), True)
+                if previous is None or bytes.fromhex(previous['scriptPubKey']['hex']) != fence:
+                    raise ValueError('restore may take only outputs of its quarantine')
+            genesis, registrations = self.config['genesis_hash'], request.get('registrations') or {}
+            bank = bytes.fromhex(self.config['bank_public_key'])
+            for output in transaction.vout:
+                script = bytes(output.scriptPubKey)
+                if not needs_registration(script) or is_quarantine_script(script):
+                    continue
+                signature = registrations.get(script.hex())
+                if not isinstance(signature, str) or not self.curve.verify_signature(
+                        bank, registration_digest(genesis, script), bytes.fromhex(signature)):
+                    raise ValueError('restore pays an address that no member bank has registered')
+        self._bind_signature('recovery:' + order['id'], template_hash(transaction))
+        bitmap = recovery_bitmap(recovered)
+        digest = recovery_digest(self.config['genesis_hash'], policy, transaction, bitmap, expiry)
+        return {'guardian_id': self.config['guardian_id'], 'signature': self.curve.sign(secret, digest).hex()}
+
     def frozen(self, transactions):
-        """The first input of these transactions that a freeze order covers, if any."""
+        """The first input of these transactions that a freeze order covers, if any.
+
+        A recovery (quarantining frozen funds) is exempt: it already carries
+        the quorum's recovery signatures, and consensus fences where it pays.
+        """
+        from .authorization import is_recovery
         with self.lock:
             for transaction in transactions:
+                if is_recovery(transaction):
+                    continue
                 for inp in transaction.vin:
                     spent = f'{inp.prevout.hash:064x}:{inp.prevout.n}'
                     row = self.db.execute('SELECT order_id FROM frozen_outputs WHERE outpoint=? LIMIT 1', (spent,)).fetchone()
@@ -564,7 +645,7 @@ def serve(config, rpc):
                         return
                     result = institution.approve(request['operation'])
                 elif (self.path == '/' and request.get('method') in {'sign_transaction', 'sign_migration', 'sign_block', 'authorize_transaction',
-                                                                  'apply_freeze_order'}
+                                                                  'apply_freeze_order', 'authorize_recovery'}
                       and hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + config['token'])):
                     result = getattr(institution, request['method'])(request)
                 else:

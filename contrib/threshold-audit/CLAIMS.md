@@ -22,6 +22,7 @@ and **UNITED USD**; in the sandbox these are test tokens with simulated backing.
 | Every transaction needs an authorization from 5 of 7 operators | Elements consensus | The policy can be re-keyed through DynaFed but never switched off |
 | An authorization is usable for at most 20 blocks | Elements consensus | Withholding new authorizations therefore takes effect within 20 blocks |
 | A regulator can freeze named outputs: no operator will authorize or confirm a spend of them | Each operator's own service, enforced through the ledger's authorization and block-signing rules | Holds while 3 of 7 operators honor the order. Takes effect from the next block, even for a spend authorized earlier, which every node rejects once its authorization expires. Checked live on the demo chain |
+| The operators can move frozen funds into quarantine and then return them to their owner, without the owner's key | Elements consensus: a recovery authorization from 5 of 7 operators, in its own signature domain; a first move may pay only into quarantine, a burn or the fee; a quarantine output can be moved only by another recovery. Each operator signs only what the regulator's signed quarantine or restore order allows | Every output is recoverable this way; there is no opt-out. Once quarantined, a spend the thief signed and had authorized fails on every node. The operators open the hidden amount with their disclosure key. Checked live on the demo chain |
 | The operators refuse payments to addresses no member bank registered | Each operator's signing service | Policy in the operators' software, not a ledger rule. The registration shows operators which member bank stands behind each destination, though not the customer or the amount. In the sandbox one simulated bank key signs every registration, for both banks |
 | Blocks need signatures from 5 of 7 operators | Elements consensus | Two quorums share at least three operators, so a fork takes three operators signing competing blocks |
 | Issuing or destroying tokens needs 5 of 7 operators to co-sign with their own keys | Elements consensus (5-of-7 treasury script) | Each operator's service checks the request before signing |
@@ -39,6 +40,7 @@ and **UNITED USD**; in the sandbox these are test tokens with simulated backing.
 | Seven operators each holding a disclosure key piece | Seven separate key services on the same machine. Their key setup is a simulated ceremony, not a secure distributed key generation |
 | Banks: deposits, payouts, reserves | A simulated bank in the application's database |
 | Bank-signed directory answers and address registrations | Real signatures, but every bank's key is held by the central application |
+| The operators opening a frozen output's amount for a recovery | The settlement server drives the operators' key services with fixture approval credentials; in production each operator's staff would approve |
 | The regulator's freeze key being trusted | Each operator's configuration lists it; in production it would come from the operator-signed member directory |
 | Customers controlling their money | Customer wallets live in the central node and are signed by the application. The two-person approval is an application login check, not a cryptographic signature by each person |
 | Independent reserve evidence | The simulated bank's own numbers |
@@ -46,9 +48,11 @@ and **UNITED USD**; in the sandbox these are test tokens with simulated backing.
 
 ## Not built: do not claim
 
-- **Moving frozen funds** (quarantine) and returning them to their owner;
-  **reversing or recovering stolen funds,** and serial-numbered notes (M1Coin).
-  A freeze today only stops the funds where they are.
+- **Replacing quarantined funds** (burn them, then issue to the owner): the
+  ledger allows the burn; there is no screen or order for it yet.
+- **Recovering funds the federation never froze in time:** if a theft confirms
+  and moves on before a freeze, each later output has to be traced and frozen.
+- **Serial-numbered notes (M1Coin).**
 - **Validation by an independent node or an outside observer,** and behavior
   across real network faults.
 - **Customer-held keys.**

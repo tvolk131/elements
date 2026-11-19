@@ -191,6 +191,35 @@ class FreezeRelayTests(unittest.TestCase):
         with self.assertRaisesRegex(Problem, 'already released'):
             self.submit(dict(release, id='e2' * 16))
 
+    def test_quarantine_and_restore_orders_follow_their_freeze(self):
+        freeze = self.order()
+        self.submit(freeze)
+        def follow(kind, order_id, **fields):
+            order = self.order(kind=kind, id=order_id, reason='Recover the frozen funds', **fields)
+            del order['outputs']
+            return order
+        with self.assertRaisesRegex(Problem, 'no freeze in force'):
+            self.submit(follow('quarantine', 'a1' * 16, freeze='00' * 16))
+        quarantine = follow('quarantine', 'a2' * 16, freeze=freeze['id'])
+        view = self.submit(quarantine)
+        self.assertEqual((view['state'], view['applied_by']), ('ordered', ['i1', 'i2', 'i3']))
+        # Operators recorded it, so each will sign only that quarantine.
+        self.assertEqual(self.operators['i1'].db.execute('SELECT kind FROM freeze_orders WHERE id=?',
+                                                          (quarantine['id'],)).fetchone()[0], 'quarantine')
+        with self.assertRaisesRegex(Problem, 'already quarantined'):
+            self.submit(follow('quarantine', 'a3' * 16, freeze=freeze['id']))
+        release = follow('release', 'a4' * 16, releases=freeze['id'])
+        with self.assertRaisesRegex(Problem, 'restore them instead'):
+            self.submit(release)
+        with self.assertRaisesRegex(Problem, 'not completed yet'):
+            self.submit(follow('restore', 'a5' * 16, quarantine=quarantine['id'], destination='acme-main@bank'))
+        self.assertEqual(self.freezes.public(self.users['regulator'], self.freezes.record(freeze['id']))['quarantine']['state'],
+                         'ordered')
+        # Still frozen until the quarantine is actually sent.
+        self.assertEqual(self.freezes.frozen_balance('a', 'EUR'), 1_275_000)
+        with self.assertRaisesRegex(Problem, 'bank reference'):
+            self.submit(follow('restore', 'a6' * 16, quarantine=quarantine['id'], destination='not a reference'))
+
     def test_spent_outputs_and_reused_ids_are_refused(self):
         self.node.spent.add((FROZEN_TXID, 1))
         with self.assertRaisesRegex(Problem, 'already spent'):

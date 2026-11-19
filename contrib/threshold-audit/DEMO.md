@@ -96,8 +96,19 @@ a withdrawal waits for a person at the company to release it.
    *Point:* the regulator signs the order in its own browser; each operator
    checks that signature itself, and from the next block no operator will
    authorize or confirm a spend of those funds, even one authorized earlier.
-   The freeze stops the funds where they are; moving them back to their owner
-   is the next step and is not built yet.
+   The freeze stops the funds where they are.
+
+   **Quarantine and restore (3 min).** On the same freeze, open **Quarantine…**,
+   give a reason and the key password, and send it. Within a minute the card
+   reads **Quarantined**: the operators opened the hidden amount with their
+   disclosure key and moved the funds into quarantine, without Initech's key.
+   Initech's balance drops by €12,750 and still matches the chain. Then open
+   **Restore…**, enter `initech-main@bank-b`, a reason and the password: the
+   funds return to a fresh Initech address and show in its history as
+   "Returned by regulator order".
+   *Point:* recovery is a rule of the ledger. Five of seven operators must sign
+   it, the first move can only go into quarantine, and once quarantined any
+   spend a thief signed earlier is invalid on every node.
 5. **Backing (1 min).** Switch to *Bank · reserves and oversight* and open
    **Reserves**: cash held equals tokens in circulation, per currency.
 6. **Optional: who runs it (1 min).** In the same console, **Operators** shows
@@ -153,10 +164,11 @@ created the request, a second bank person must still approve. If issuing
 cannot start (for example, the wallet does not reconcile), the request shows
 why and an approver can issue it by hand.
 
-Intervention means disclosure and freezing. A freeze stops the named funds
-where they are, from the next block, including a spend someone had already
-authorized. Moving frozen funds back to their owner is not built yet, and
-nothing reverses a payment that has confirmed. The simulated bank can hold
+Intervention means disclosure, freezing and recovery. A freeze stops the named
+funds where they are, from the next block, including a spend someone had
+already authorized. A quarantine then moves them, without the holder's key,
+where only another recovery can move them, and a restore returns them. Funds
+that moved on before a freeze must be traced and frozen where they went. The simulated bank can hold
 issuance and payouts.
 
 The **Add the other operators' approvals** shortcut is demo-only. It asks

@@ -212,3 +212,100 @@ it("shows which operators applied a freeze and signs its release", async () => {
     releases: "f".repeat(32),
   });
 });
+
+it("signs a quarantine for an active freeze, then a restore to a bank reference", async () => {
+  const freeze = {
+    id: "f".repeat(32),
+    kind: "freeze",
+    authority: "Financial Regulator",
+    case_reference: caseId,
+    reason: "Proceeds of a reported theft",
+    issued_at: 1795000000,
+    applied_by: ["institution-1"],
+    errors: {},
+    operators: ["institution-1"],
+    threshold: 1,
+    released_by: null,
+    outputs: [{ txid, vout: 0, status: "unspent" }],
+  };
+  orders = [freeze];
+  setup();
+  await userEvent.click(
+    await screen.findByTestId("quarantine-" + "f".repeat(32)),
+  );
+  await userEvent.type(
+    screen.getByTestId("quarantine-reason"),
+    "Fence the stolen funds now",
+  );
+  await userEvent.type(
+    screen.getByTestId("quarantine-password"),
+    "concord-demo",
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "Sign and send quarantine order" }),
+  );
+  await waitFor(() =>
+    expect(
+      vi.mocked(api).mock.calls.some(([p, b]) => p === "/api/freezes" && b),
+    ).toBe(true),
+  );
+  const sent = vi
+    .mocked(api)
+    .mock.calls.find(([p, b]) => p === "/api/freezes" && b)![1] as {
+    order: Record<string, unknown>;
+  };
+  expect(sent.order).toMatchObject({
+    kind: "quarantine",
+    freeze: "f".repeat(32),
+    case_reference: caseId,
+  });
+
+  cleanupAndShow({
+    ...freeze,
+    quarantine: {
+      id: "q".repeat(32),
+      state: "confirmed",
+      txid: "e".repeat(64),
+      error: null,
+      reason: "Fence",
+    },
+  });
+  expect(await screen.findByText("Quarantined")).toBeVisible();
+  await userEvent.click(screen.getByTestId("restore-" + "f".repeat(32)));
+  await userEvent.type(
+    screen.getByTestId("restore-destination"),
+    "acme-main@bank",
+  );
+  await userEvent.type(
+    screen.getByTestId("restore-reason"),
+    "Owner verified with new keys",
+  );
+  await userEvent.type(screen.getByTestId("restore-password"), "concord-demo");
+  await userEvent.click(
+    screen.getByRole("button", { name: "Sign and send restore order" }),
+  );
+  await waitFor(() =>
+    expect(
+      vi.mocked(api).mock.calls.filter(([p, b]) => p === "/api/freezes" && b)
+        .length,
+    ).toBe(1),
+  );
+  const restore = vi
+    .mocked(api)
+    .mock.calls.filter(([p, b]) => p === "/api/freezes" && b)[0][1] as {
+    order: Record<string, unknown>;
+  };
+  expect(restore.order).toMatchObject({
+    kind: "restore",
+    quarantine: "q".repeat(32),
+    destination: "acme-main@bank",
+  });
+});
+
+function cleanupAndShow(order: unknown) {
+  client.clear();
+  document.body.innerHTML = "";
+  vi.mocked(api).mockClear();
+  orders = [order];
+  setup();
+}

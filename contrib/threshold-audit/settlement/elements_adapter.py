@@ -189,6 +189,45 @@ class ElementsAdapter:
         transaction.wit.vchAuthorization = encode(expiry, signatures)
         return transaction.serialize().hex()
 
+    def authorize_recovery(self, rawtx, recovered, order_id, registrations=None):
+        """Attach a recovery authorization: a quorum waiving the named inputs' owners."""
+        from .authorization import encode_recovery, recovery_bitmap, recovery_digest
+        info = self.node.getblockchaininfo()
+        policy = bytes.fromhex(info.get('tx_authorization') or '')
+        if not policy:
+            raise ValueError('recovery needs the operators\' authorization rule in force')
+        transaction = tx_from_hex(rawtx)
+        transaction.wit.vchAuthorization = b''
+        threshold, keys = decode_policy(policy)
+        expiry = info['blocks'] + WINDOW
+        bitmap = recovery_bitmap(recovered)
+        digest = recovery_digest(self.node.getblockhash(0), policy, transaction, bitmap, expiry)
+        services, signatures, refusals = self.authorizer_services(), {}, {}
+        unsigned = transaction.serialize().hex()
+        for index, key in enumerate(keys):
+            if key.hex() not in services:
+                continue
+            guardian, service = services[key.hex()]
+            try:
+                result = InstitutionClient({guardian: service}).request(
+                    guardian, 'authorize_recovery', rawtx=unsigned, expiry_height=expiry, recovered=list(recovered),
+                    order_id=order_id, registrations=registrations or {})
+                signature = bytes.fromhex(result['signature'])
+            except InstitutionRefused as error:
+                refusals[guardian] = str(error)
+                continue
+            except (OSError, ValueError, KeyError):
+                continue
+            if self.curve.verify_signature(key, digest, signature):
+                signatures[index] = signature
+            if len(signatures) == threshold:
+                break
+        if len(signatures) != threshold:
+            reason = next(iter(refusals.values()), 'too few operators reachable')
+            raise AuthorizationUnavailable(f'{len(signatures)} of {threshold} recovery approvals: {reason}')
+        transaction.wit.vchAuthorization = encode_recovery(bitmap, expiry, signatures)
+        return transaction.serialize().hex()
+
     def authorizer_services(self):
         """Institution services by authorization key, across current and incoming groups."""
         services = {}

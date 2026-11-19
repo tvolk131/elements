@@ -33,7 +33,17 @@ export interface FreezeOrder {
   threshold: number;
   released_by: string | null;
   outputs?: FrozenOutput[];
-  releases?: string;
+  acts_on?: string;
+  /** Recovery progress, on a freeze. */
+  quarantine?: RecoveryStep;
+  restore?: RecoveryStep & { destination: string };
+}
+export interface RecoveryStep {
+  id: string;
+  state: "ordered" | "built" | "broadcast" | "confirmed";
+  txid: string | null;
+  error: string | null;
+  reason: string;
 }
 interface FreezeOverview {
   orders: FreezeOrder[];
@@ -66,6 +76,19 @@ type OrderBody =
       case_reference: string;
       reason: string;
       releases: string;
+    }
+  | {
+      kind: "quarantine";
+      case_reference: string;
+      reason: string;
+      freeze: string;
+    }
+  | {
+      kind: "restore";
+      case_reference: string;
+      reason: string;
+      quarantine: string;
+      destination: string;
     };
 
 /**
@@ -242,40 +265,62 @@ const OUTPUT_STATUS = {
   spent: "Spent",
 };
 
-function ReleaseForm({ order }: { order: FreezeOrder }) {
+/** A signed regulator action on a freeze: release, quarantine or restore. */
+function ActionForm({
+  name,
+  label,
+  submitLabel,
+  withDestination = false,
+  build,
+}: {
+  name: string;
+  label: string;
+  submitLabel: string;
+  withDestination?: boolean;
+  build: (reason: string, destination: string) => OrderBody;
+}) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const [destination, setDestination] = useState("");
   const [password, setPassword] = useState("");
   const submit = useSubmitOrder(() => setOpen(false));
   if (!open)
     return (
-      <Button onClick={() => setOpen(true)} data-testid={`release-${order.id}`}>
-        Release…
+      <Button onClick={() => setOpen(true)} data-testid={name}>
+        {label}…
       </Button>
     );
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        submit.mutate({
-          password,
-          body: {
-            kind: "release",
-            case_reference: order.case_reference,
-            reason,
-            releases: order.id,
-          },
-        });
+        submit.mutate({ password, body: build(reason, destination) });
       }}
     >
-      <Field label="Reason for release">
+      {withDestination && (
+        <Field
+          label="Destination bank reference"
+          detail="The member bank account to return the funds to, such as acme-main@bank."
+        >
+          <input
+            required
+            pattern="[a-z0-9._-]+@[a-z0-9._-]+"
+            value={destination}
+            onChange={(e) =>
+              setDestination(e.target.value.trim().toLowerCase())
+            }
+            data-testid={`${name.split("-")[0]}-destination`}
+          />
+        </Field>
+      )}
+      <Field label="Reason">
         <input
           required
           minLength={8}
           maxLength={1000}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          data-testid="release-reason"
+          data-testid={`${name.split("-")[0]}-reason`}
         />
       </Field>
       <Field label="Recipient key password">
@@ -286,21 +331,54 @@ function ReleaseForm({ order }: { order: FreezeOrder }) {
           maxLength={256}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          data-testid="release-password"
+          data-testid={`${name.split("-")[0]}-password`}
         />
       </Field>
       <Button type="submit" className="primary" disabled={submit.isPending}>
-        Sign and send release
+        {submitLabel}
       </Button>
       <ErrorNote error={submit.error} />
     </form>
   );
 }
 
+const STEP_STATE: Record<RecoveryStep["state"], string> = {
+  ordered: "Ordered; the operators are opening the funds",
+  built: "Waiting for the operators' recovery signatures",
+  broadcast: "Sent; waiting for the next block",
+  confirmed: "Confirmed on the ledger",
+};
+
+function RecoveryStatus({
+  label,
+  step,
+}: {
+  label: string;
+  step: RecoveryStep;
+}) {
+  return (
+    <p className="small-note" data-testid={`step-${step.id}`}>
+      <strong>{label}:</strong> {STEP_STATE[step.state]}
+      {step.txid && (
+        <>
+          {" "}
+          · <code title={step.txid}>{step.txid.slice(0, 12)}…</code>
+        </>
+      )}
+      {step.error && <span className="warning-text"> · {step.error}</span>}
+    </p>
+  );
+}
+
 function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
   const app = useApp();
   const released = Boolean(o.released_by);
+  const moved =
+    o.quarantine && ["broadcast", "confirmed"].includes(o.quarantine.state);
+  const returned =
+    o.restore && ["broadcast", "confirmed"].includes(o.restore.state);
   const all = o.applied_by.length === o.operators.length;
+  const regulator = app.can("order_freeze");
   const account = (id: string) =>
     app.data.accounts?.find((a) => a.id === id)?.name ?? id;
   return (
@@ -309,8 +387,14 @@ function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
       data-testid={`freeze-${o.id}`}
     >
       <div className="freeze-order-head">
-        <Badge status={released ? "complete" : "blocked"}>
-          {released ? "Released" : "Frozen"}
+        <Badge status={released || returned ? "complete" : "blocked"}>
+          {released
+            ? "Released"
+            : returned
+              ? "Restored"
+              : moved
+                ? "Quarantined"
+                : "Frozen"}
         </Badge>
         <strong>{o.reason}</strong>
         <small>
@@ -329,7 +413,11 @@ function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
               <strong>Output {x.vout}</strong>
             )}
             <span>
-              {released ? "No longer frozen" : OUTPUT_STATUS[x.status]}
+              {released
+                ? "No longer frozen"
+                : moved
+                  ? "Moved into quarantine"
+                  : OUTPUT_STATUS[x.status]}
             </span>
             <code title={`${x.txid}:${x.vout}`}>
               {x.txid.slice(0, 12)}…:{x.vout}
@@ -355,7 +443,56 @@ function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
             {memberName(guardian)}: {error}
           </p>
         ))}
-      {app.can("order_freeze") && !released && <ReleaseForm order={o} />}
+      {o.quarantine && (
+        <RecoveryStatus label="Quarantine" step={o.quarantine} />
+      )}
+      {o.restore && (
+        <RecoveryStatus
+          label={`Restore to ${o.restore.destination}`}
+          step={o.restore}
+        />
+      )}
+      {regulator && !released && !o.quarantine && (
+        <div className="freeze-actions">
+          <ActionForm
+            name={`quarantine-${o.id}`}
+            label="Quarantine"
+            submitLabel="Sign and send quarantine order"
+            build={(reason) => ({
+              kind: "quarantine",
+              case_reference: o.case_reference,
+              reason,
+              freeze: o.id,
+            })}
+          />
+          <ActionForm
+            name={`release-${o.id}`}
+            label="Release"
+            submitLabel="Sign and send release"
+            build={(reason) => ({
+              kind: "release",
+              case_reference: o.case_reference,
+              reason,
+              releases: o.id,
+            })}
+          />
+        </div>
+      )}
+      {regulator && moved && !o.restore && (
+        <ActionForm
+          name={`restore-${o.id}`}
+          label="Restore"
+          submitLabel="Sign and send restore order"
+          withDestination
+          build={(reason, destination) => ({
+            kind: "restore",
+            case_reference: o.case_reference,
+            reason,
+            quarantine: o.quarantine!.id,
+            destination,
+          })}
+        />
+      )}
     </li>
   );
 }
@@ -364,8 +501,11 @@ function FreezeOrderCard({ order: o }: { order: FreezeOrder }) {
 export function FreezeOrders() {
   const query = useFreezes();
   const orders = (query.data?.orders ?? []).filter((o) => o.kind === "freeze");
-  const active = orders.filter((o) => !o.released_by);
-  const released = orders.filter((o) => o.released_by);
+  const closed = (o: FreezeOrder) =>
+    Boolean(o.released_by) ||
+    (o.restore !== undefined && o.restore.state === "confirmed");
+  const active = orders.filter((o) => !closed(o));
+  const released = orders.filter(closed);
   return (
     <Panel
       title="Freeze orders"
@@ -388,7 +528,7 @@ export function FreezeOrders() {
         )}
         {released.length > 0 && (
           <details className="freeze-history">
-            <summary>Released ({released.length})</summary>
+            <summary>Closed ({released.length})</summary>
             <ul className="freeze-orders">
               {released.map((o) => (
                 <FreezeOrderCard key={o.id} order={o} />

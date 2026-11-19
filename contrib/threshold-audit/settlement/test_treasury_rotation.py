@@ -407,6 +407,69 @@ class TreasuryRotationTests(unittest.TestCase):
         self.assertIn('signature', signer.sign_block({'rawblock': block.serialize().hex()}))
         signer.db.close(); signer.curve.close()
 
+    def test_recovery_signed_only_as_the_order_allows(self):
+        from .authorization import quarantine_script, recovery_bitmap, recovery_digest
+        from .freeze_orders import quarantine_case, sign
+        policy = policy_bytes(self.source['approval_public_keys'], self.source['guardian_order'], 2)
+        self.rpc.native_authorization = policy.hex()
+        signer = Institution(dict(self.config, case_authority_keys={'Regulator': self.curve.mul(777)[1:].hex()}), self.rpc)
+        apply = lambda order: signer.apply_freeze_order({'order': order, 'signature': sign(self.curve, 777, order)})
+        freeze = self.freeze_order()
+        def follow(kind, order_id, **fields):
+            order = self.freeze_order(kind=kind, id=order_id, reason='Recover the frozen funds', **fields)
+            del order['outputs']
+            return order
+        quarantine = follow('quarantine', 'a1' * 16, freeze=freeze['id'])
+        with self.assertRaisesRegex(ValueError, 'no freeze in force'):
+            apply(quarantine)
+        apply(freeze); apply(quarantine)
+        frozen, fee = self.transaction.vin
+        def recovery(outputs, inputs=(frozen, fee)):
+            transaction = CTransaction()
+            transaction.vin = [CTxIn(i.prevout, nSequence=0xfffffffe) for i in inputs]
+            transaction.vout = outputs
+            return transaction
+        fence = quarantine_script(quarantine_case(quarantine['id']))
+        asset = CTxOutAsset(b'\x01' + bytes.fromhex(self.asset)[::-1])
+        fenced = recovery([CTxOut(1_000_000_000, fence, asset), CTxOut(1_000, b'', asset)])
+        request = lambda tx, recovered=(0,), order=quarantine, **extra: dict(
+            {'rawtx': tx.serialize().hex(), 'expiry_height': self.rpc.native_height + WINDOW,
+             'recovered': list(recovered), 'order_id': order['id']}, **extra)
+        for refused, pattern in (
+                (request(recovery([CTxOut(1_000_000_000, b'\x51', asset), CTxOut(1_000, b'', asset)])), 'only into its own quarantine'),
+                (request(fenced, recovered=(1,)), 'does not name is frozen'),
+                (request(recovery([CTxOut(1_000, fence, asset)], inputs=(fee,))), 'only outputs of its freeze'),
+                (request(fenced, recovered=(5,)), 'existing inputs'),
+                (dict(request(fenced), order_id='bb' * 16), 'no quarantine or restore order')):
+            with self.assertRaisesRegex(ValueError, pattern):
+                signer.authorize_recovery(refused)
+        signature = bytes.fromhex(signer.authorize_recovery(request(fenced))['signature'])
+        digest = recovery_digest('cc' * 32, policy, fenced, recovery_bitmap([0]), self.rpc.native_height + WINDOW)
+        self.assertTrue(self.curve.verify_signature(self.curve.mul(111)[1:], digest, signature))
+        # One transaction per order: a different one for the same order is refused.
+        other = recovery([CTxOut(999_999_000, fence, asset), CTxOut(1_000, b'', asset)])
+        with self.assertRaisesRegex(ValueError, 'bound to a different transaction'):
+            signer.authorize_recovery(request(other))
+
+        restore = follow('restore', 'a2' * 16, quarantine=quarantine['id'], destination='acme-main@bank')
+        apply(restore)
+        held = CTxIn(COutPoint(0xabc, 0))
+        self.rpc.gettxout = lambda txid, vout, mempool=True: {'scriptPubKey': {'hex': fence.hex()}}
+        destination = b'\x00\x14' + bytes(20)
+        back = recovery([CTxOut(1_000_000_000, destination, asset), CTxOut(1_000, b'', asset)], inputs=(held, fee))
+        with self.assertRaisesRegex(ValueError, 'no member bank has registered'):
+            signer.authorize_recovery(request(back, order=restore))
+        registrations = {destination.hex(): self.curve.sign(999, registration_digest('cc' * 32, destination)).hex()}
+        self.assertIn('signature', signer.authorize_recovery(request(back, order=restore, registrations=registrations)))
+        self.rpc.gettxout = lambda txid, vout, mempool=True: {'scriptPubKey': {'hex': '51'}}
+        stranger = recovery([CTxOut(1_000_000_000, destination, asset), CTxOut(1_000, b'', asset)],
+                            inputs=(CTxIn(COutPoint(0xdef, 0)), fee))
+        restore_two = follow('restore', 'a3' * 16, quarantine=quarantine['id'], destination='acme-main@bank')
+        apply(restore_two)
+        with self.assertRaisesRegex(ValueError, 'only outputs of its quarantine'):
+            signer.authorize_recovery(request(stranger, order=restore_two, registrations=registrations))
+        signer.db.close(); signer.curve.close()
+
     def test_block_proposal_requires_exact_independent_rotation_approval(self):
         source, target = self.block_policy(self.source, (41, 42, 43)), self.block_policy(self.target, (51, 52, 53))
         signer = Institution(dict(self.config, **source, block_secret=f'{41:064x}'), self.rpc)

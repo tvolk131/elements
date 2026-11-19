@@ -116,3 +116,9 @@ def quarantine_script(case_reference):
 def is_quarantine_script(script):
     return (len(script) == 52 and script[:17] == bytes([16]) + QUARANTINE_TAG and script[17] == 32
             and script[50:] == b'\x6d\x00')
+
+
+def is_recovery(transaction):
+    """Carries a recovery authorization (marker, bitmap, expiry, signatures)."""
+    data = bytes(transaction.wit.vchAuthorization)
+    return len(data) >= 1 + RECOVERY_BITMAP_BYTES + 4 + 65 and data[0] == RECOVERY_MARKER and len(data) % 65 == 37

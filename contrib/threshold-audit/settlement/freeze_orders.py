@@ -26,6 +26,12 @@ MAX_OUTPUTS = 16
 BASE_FIELDS = {'format', 'kind', 'id', 'genesis_hash', 'authority', 'authority_key', 'case_reference', 'reason', 'issued_at'}
 HEX32 = re.compile('[0-9a-f]{64}')
 HEX16 = re.compile('[0-9a-f]{32}')
+REFERENCE = re.compile('[a-z0-9._-]{1,64}@[a-z0-9._-]{1,64}')
+# Fields beyond the base, by kind. A quarantine moves every output of one
+# active freeze into quarantine; a restore pays one quarantine to the account
+# a member bank's reference names.
+KIND_FIELDS = {'freeze': {'outputs'}, 'release': {'releases'}, 'quarantine': {'freeze'},
+               'restore': {'quarantine', 'destination'}}
 
 
 def tagged_hash(tag, data):
@@ -52,8 +58,7 @@ def validate(order, genesis_hash, *, now=None):
     if not isinstance(order, dict):
         raise ValueError('freeze order must be an object')
     kind = order.get('kind')
-    expected = BASE_FIELDS | ({'outputs'} if kind == 'freeze' else {'releases'} if kind == 'release' else set())
-    if kind not in ('freeze', 'release') or set(order) != expected:
+    if kind not in KIND_FIELDS or set(order) != BASE_FIELDS | KIND_FIELDS[kind]:
         raise ValueError('freeze order has unknown kind or fields')
     if order['format'] != FORMAT or order['genesis_hash'] != genesis_hash:
         raise ValueError('freeze order is for another format or chain')
@@ -67,10 +72,14 @@ def validate(order, genesis_hash, *, now=None):
     issued = order['issued_at']
     if type(issued) is not int or issued <= 0 or issued > (now if now is not None else time.time()) + 300:
         raise ValueError('freeze order has an invalid issue time')
-    if kind == 'release':
-        if not isinstance(order['releases'], str) or HEX16.fullmatch(order['releases']) is None:
-            raise ValueError('release order must name the freeze it lifts')
-        return order['releases']
+    if kind in ('release', 'quarantine', 'restore'):
+        named = order[{'release': 'releases', 'quarantine': 'freeze', 'restore': 'quarantine'}[kind]]
+        if not isinstance(named, str) or HEX16.fullmatch(named) is None:
+            raise ValueError(f'{kind} order must name the order it acts on')
+        if kind == 'restore' and (not isinstance(order['destination'], str)
+                                  or REFERENCE.fullmatch(order['destination']) is None):
+            raise ValueError('restore order needs a destination bank reference, such as acme-main@bank')
+        return named
     outputs = order['outputs']
     if not isinstance(outputs, list) or not 1 <= len(outputs) <= MAX_OUTPUTS:
         raise ValueError(f'freeze order must name 1 to {MAX_OUTPUTS} outputs')
@@ -110,3 +119,8 @@ def receipt_digest(order, guardian_id):
 
 def sign(curve, secret, order):
     return curve.sign(secret, order_digest(order)).hex()
+
+
+def quarantine_case(order_id):
+    """The 32-byte case reference a quarantine order's outputs carry."""
+    return hashlib.sha256(b'CEND/quarantine/' + order_id.encode()).digest()

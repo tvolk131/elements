@@ -3630,3 +3630,13 @@ td,
 .freeze-history[open] > .freeze-orders {
   margin-top: 12px;
 }
+
+.freeze-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.freeze-order form {
+  display: grid;
+  gap: 12px;
+}

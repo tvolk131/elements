@@ -93,7 +93,33 @@ operator does not take its word for one (`settlement/freeze_orders.py`,
   derivations are pinned to the same test vector). In the sandbox each
   operator's configuration lists the trusted key; in production it would come
   from the operator-signed member directory.
-- **Not built:** moving frozen funds (quarantine) and returning them.
+
+## Recovery
+
+The same quorum can sign a *recovery* authorization: the marker byte `0x52`,
+a 32-byte bitmap of input indexes whose owner signature it waives, the expiry
+and the signatures, signed in its own domain (`Elements/tx-recovery/v1`), so
+an ordinary authorization can never be replayed as one. Consensus
+(`CheckAuthorization`, `CheckRecovery` in `src/threshold_audit_validation.cpp`)
+requires that:
+
+- it names at least one real input, never a peg-in, and the transaction
+  issues nothing;
+- a recovery that takes ordinary funds pays only into quarantine, a burn or
+  the fee, so funds are fenced before anyone decides where they go;
+- a quarantine output (`QUARANTINE-CASE1`, a 32-byte case reference,
+  `OP_2DROP OP_FALSE`) is spent only by another recovery, which may pay
+  anywhere.
+
+Script checks skip only the named inputs. In the sandbox each operator signs
+a recovery only for what a regulator's signed order allows: a quarantine takes
+exactly the outputs of a freeze in force into that order's quarantine, and a
+restore takes that quarantine's outputs to addresses a member bank
+registered, one transaction per order (`Institution.authorize_recovery`). The
+settlement server opens the amounts with the operators' disclosure key,
+builds and blinds the transaction, pays the fee from a federation coin and
+keeps the holder's and recipient's ledgers reconciled
+(`settlement/freezes.py`). See `feature_threshold_audit_recovery.py`.
 
 ## In the settlement sandbox
 
