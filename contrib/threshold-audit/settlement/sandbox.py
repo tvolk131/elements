@@ -46,6 +46,9 @@ ROOT = Path(__file__).resolve().parents[3]
 # payments from outside the app. The sandbox's one simulated bank key stands
 # in for that bank's.
 OTHER_MEMBER_BANK_WALLET = 'other-member-bank'
+# One federation: the operators sign blocks, authorize transactions, co-sign
+# issuance and hold the disclosure key, all at the same threshold.
+OPERATORS, QUORUM = 7, 5
 
 
 def private_json(path, value):
@@ -148,9 +151,10 @@ class Sandbox:
         port = port or free_port()
         curve = Curve(self.library)
         program = b'\x00\x20' + hashlib.sha256(b'\x51').digest()
-        self.cluster = GuardianCluster(self.directory / 'audit-guardians', tuple(range(1, 11)), self.library, curve,
-                                       curve.mul(random_scalar()))
-        genesis_config, plans = self.cluster.bootstrap_genesis(tuple(range(1, 11)), 7,
+        # Operator N holds disclosure key piece N (a separate key and service).
+        self.cluster = GuardianCluster(self.directory / 'audit-guardians', tuple(range(1, OPERATORS + 1)), self.library,
+                                       curve, curve.mul(random_scalar()))
+        genesis_config, plans = self.cluster.bootstrap_genesis(tuple(range(1, OPERATORS + 1)), QUORUM,
                                       policy_binding(program, 108, program, b'\x51', [b'']))
         datadir = self.directory / 'node'
         datadir.mkdir(mode=0o700)
@@ -181,16 +185,16 @@ class Sandbox:
         assets = bootstrap_assets(node, sponsor, self.cluster, genesis_config, curve)
         institutions = {}
         public_keys, spending_public, secrets_by_guardian, block_public_keys = {}, [], {}, {}
-        for number in range(1, 6):
+        for number in range(1, OPERATORS + 1):
             guardian = f'institution-{number}'
             spending, approval, block_secret = random_scalar(), random_scalar(), random_scalar()
             public_keys[guardian] = curve.mul(approval)[1:].hex()
             spending_public.append(curve.mul(spending).hex())
             block_public_keys[guardian] = curve.mul(block_secret).hex()
             secrets_by_guardian[guardian] = (spending, approval, block_secret)
-        block_witness = bytes(CScript([3, *[bytes.fromhex(key) for key in block_public_keys.values()], 5, OP_CHECKMULTISIG]))
+        block_witness = bytes(CScript([QUORUM, *[bytes.fromhex(key) for key in block_public_keys.values()], OPERATORS, OP_CHECKMULTISIG]))
         block_script = (b'\x00\x20' + hashlib.sha256(block_witness).digest()).hex()
-        multisig = sponsor.addmultisigaddress(3, spending_public, 'federation-treasury', 'bech32')
+        multisig = sponsor.addmultisigaddress(QUORUM, spending_public, 'federation-treasury', 'bech32')
         treasury = sponsor.getaddressinfo(multisig['address'])
         base_address = treasury.get('unconfidential', multisig['address'])
         sponsor.importaddress(base_address, 'federation-treasury', False)
@@ -214,7 +218,7 @@ class Sandbox:
             token = secrets.token_hex(32)
             institution_passphrases[guardian] = secrets.token_urlsafe(24)
             config = {'guardian_id': guardian, 'spending_secret': f'{spending:064x}', 'approval_secret': f'{approval:064x}',
-                      'approval_public_keys': public_keys, 'threshold': 3, 'genesis_hash': node.getblockhash(0),
+                      'approval_public_keys': public_keys, 'threshold': QUORUM, 'genesis_hash': node.getblockhash(0),
                       'assets': assets, 'treasury_address': treasury_address,
                       'treasury_script': treasury_script, 'witness_script': witness_script,
                       'bank_public_key': bank_public, 'policy_asset': node.getblockchaininfo()['audit_assets'][0],
@@ -251,11 +255,13 @@ class Sandbox:
         adapter_config = {'rpc_url': rpc_url, 'sponsor_rpc_url': sponsor_url, 'wallets': wallets, 'addresses': addresses,
                           'library': self.library, 'assets': assets, 'institutions': institutions,
                           'treasury_address': treasury_address, 'treasury_script': treasury_script,
-                          'witness_script': witness_script, 'guardian_order': list(institutions), 'threshold': 3,
+                          'witness_script': witness_script, 'guardian_order': list(institutions), 'threshold': QUORUM,
                           'approval_public_keys': public_keys,
                           'policy_version': 'sandbox-v1', 'block_public_keys': block_public_keys,
                           'block_witness_script': block_witness.hex(), 'block_signing_script': block_script,
-                          'audit_pool_members': list(range(1, 11)),
+                          'audit_pool_members': list(range(1, OPERATORS + 1)),
+                          # Which operator holds each disclosure key piece.
+                          'audit_operators': {str(n): f'institution-{n}' for n in range(1, OPERATORS + 1)},
                           'database': str(self.directory / 'prepared.sqlite')}
         users, credentials = [], []
         roles = [('bank-admin', 'bankadmin', 'bank'), ('bank-maker', 'bankmaker', 'bank'),
@@ -267,7 +273,8 @@ class Sandbox:
             password = secrets.token_urlsafe(18)
             users.append({'id': username, 'username': username, 'name': username.replace('-', ' ').title(),
                           'password': password, 'role': role, 'tenant': tenant,
-                          **({'institution_id': username} if role == 'institutionguardian' else {})})
+                          **({'institution_id': username, 'audit_member': int(username.rsplit('-', 1)[1])}
+                             if role == 'institutionguardian' else {})})
             credentials.append({'username': username, 'password': password, 'role': role,
                                 **({'institution_approval_passphrase': institution_passphrases[username]} if role == 'institutionguardian' else {})})
         config = {'accounts': accounts, 'users': users, 'min_confirmations': 1,
@@ -484,7 +491,7 @@ class Sandbox:
     def create_incoming(self, epoch):
         """Create/reload independent fixture identities; keep keys out of web config."""
         label = chr(96 + epoch)
-        ids = [f'institution-{label}-{number}' for number in range(1, 6)]
+        ids = [f'institution-{label}-{number}' for number in range(1, OPERATORS + 1)]
         curve = self.cluster.curve
         source = public_policy(self.adapter.config)
         history = dict(self.adapter.config.get('historical_approval_policies', {}))
@@ -523,7 +530,7 @@ class Sandbox:
         public_keys = {guardian: curve.mul(int(config['approval_secret'], 16))[1:].hex() for guardian, config in configs.items()}
         block_keys = {guardian: curve.mul(int(config['block_secret'], 16)).hex() for guardian, config in configs.items()}
         spend_keys = [curve.mul(int(configs[guardian]['spending_secret'], 16)).hex() for guardian in ids]
-        multisig = self.adapter.sponsor.addmultisigaddress(3, spend_keys, f'federation-{label}', 'bech32')
+        multisig = self.adapter.sponsor.addmultisigaddress(QUORUM, spend_keys, f'federation-{label}', 'bech32')
         address = self.adapter.sponsor.getaddressinfo(multisig['address'])
         base = address.get('unconfidential', multisig['address'])
         self.adapter.sponsor.importaddress(base, f'federation-{label}', False)
@@ -535,8 +542,8 @@ class Sandbox:
             view = random_scalar(); private_json(view_path, {'secret': f'{view:064x}'})
         blinded = self.adapter.sponsor.createblindedaddress(base, curve.mul(view).hex())
         self.adapter.sponsor.importblindingkey(blinded, f'{view:064x}')
-        block_witness = bytes(CScript([3, *[bytes.fromhex(block_keys[guardian]) for guardian in ids], 5, OP_CHECKMULTISIG]))
-        policy = {'policy_version': f'sandbox-v{epoch}', 'approval_public_keys': public_keys, 'guardian_order': ids, 'threshold': 3,
+        block_witness = bytes(CScript([QUORUM, *[bytes.fromhex(block_keys[guardian]) for guardian in ids], OPERATORS, OP_CHECKMULTISIG]))
+        policy = {'policy_version': f'sandbox-v{epoch}', 'approval_public_keys': public_keys, 'guardian_order': ids, 'threshold': QUORUM,
                   'treasury_script': self.adapter.sponsor.validateaddress(blinded)['scriptPubKey'],
                   'witness_script': multisig.get('redeemScript') or address['hex'], 'treasury_address': blinded,
                   'block_signing_script': (b'\x00\x20' + hashlib.sha256(block_witness).digest()).hex(),
@@ -655,8 +662,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--directory', help='new private runtime directory; must be empty')
     parser.add_argument('--resume', type=Path, help='resume an existing sandbox with its original chain and keys')
-    parser.add_argument('--daemon', default='/tmp/elements-audit-native-build/bin/elementsd')
-    parser.add_argument('--library', default='/tmp/elements-audit-secp/lib/libsecp256k1.so')
+    # Prefer binaries kept beside the runtimes; /tmp is cleared at boot.
+    kept = state_directory()
+    daemon = kept / 'bin' / 'elementsd'
+    library = kept / 'secp' / 'lib' / 'libsecp256k1.so'
+    parser.add_argument('--daemon', default=str(daemon) if daemon.exists() else '/tmp/elements-audit-native-build/bin/elementsd')
+    parser.add_argument('--library', default=str(library) if library.exists() else '/tmp/elements-audit-secp/lib/libsecp256k1.so')
     parser.add_argument('--port', type=int, default=0)
     options = parser.parse_args()
     if options.resume and options.directory:

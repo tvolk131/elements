@@ -28,7 +28,8 @@ ROLES = {
     "corporatemaker": {"create_transfer", "create_redemption", "create_refund"},
     "corporateapprover": {"approve", "execute"},
     "auditor": {"view_bank", "reconcile", "receive_disclosure"},
-    "institutionguardian": {"guardian_approve", "view_bank"},
+    # Operators: approve operations and, holding the disclosure key, cases.
+    "institutionguardian": {"guardian_approve", "view_bank", "review_disclosure"},
     "bankcompliance": {"view_bank", "request_disclosure", "receive_disclosure"},
     "federationcompliance": {"view_bank", "request_disclosure", "receive_disclosure", "network_disclosures"},
     "auditguardian": {"review_disclosure"},

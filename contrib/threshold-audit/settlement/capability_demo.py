@@ -57,7 +57,12 @@ def enroll(sandbox, config, adapter_config):
              ('bank-b-admin', 'bankadmin', 'bank-b'),
              ('initech-maker', 'corporatemaker', 'initech'), ('initech-approver', 'corporateapprover', 'initech')]
     members = sandbox.audit.current_config().active_key.committee.members
-    roles += [(f'audit-guardian-{member}', 'auditguardian', 'federation') for member in members]
+    # Runtimes from before one federation had separate guardian logins; now
+    # each operator's own staff approve with the key piece it holds.
+    operators_hold_key = any(json.loads(row[0]).get('audit_member') is not None
+                             for row in store.db.execute("SELECT data FROM users WHERE data LIKE '%institutionguardian%'"))
+    if not operators_hold_key:
+        roles += [(f'audit-guardian-{member}', 'auditguardian', 'federation') for member in members]
     users = []
     for username, role, tenant in roles:
         known = next((c for c in credentials if c['username'] == username), None)

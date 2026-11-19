@@ -188,7 +188,7 @@ class Seeder:
             'passphrase': self.pilot.credentials[institution]['institution_approval_passphrase']})
         return self.call(institution, f'/api/operations/{oid}/certificates', {'signature': signature})
 
-    def authorize(self, operation, checker, institutions=('institution-1', 'institution-2', 'institution-3')):
+    def authorize(self, operation, checker, institutions=tuple(f'institution-{n}' for n in range(1, 6))):
         if not operation['user_approved']:
             operation = self.call(checker, f"/api/operations/{operation['id']}/approve", {})
         if not operation['guardian_threshold']:  # the payment policy asks for no institutions
@@ -245,10 +245,14 @@ class Seeder:
             self.state['disclosure'] = case['id']
             self.save()
         case = self.call('bank-compliance', '/api/disclosures/' + self.state['disclosure'])
-        members = self.call('bank-compliance', '/api/disclosures')['members']
-        for member in members[:case['threshold']]:
+        overview = self.call('bank-compliance', '/api/disclosures')
+        holders = overview.get('member_operators', {})
+        for member in overview['members'][:case['threshold']]:
             if member not in case['approved_members']:
-                case = self.call(f'audit-guardian-{member}', f"/api/disclosures/{case['id']}/approve", {})
+                # The operator holding that key piece approves; older runtimes
+                # had separate guardian logins.
+                login = holders.get(str(member), f'audit-guardian-{member}')
+                case = self.call(login, f"/api/disclosures/{case['id']}/approve", {})
         if case['state'] != 'delivered':
             case = self.call('bank-compliance', f"/api/disclosures/{case['id']}/release", {})
         return case
@@ -277,7 +281,8 @@ class Seeder:
             self.withdraw('withdraw-usd', 'USD', '25000.00')
             print('pre-staging demo cases…', flush=True)
             self.deposit('staged-funding', 'acme-main', 'EUR', '500000.00', finish=False)
-            self.withdraw('staged-withdrawal', 'USD', '75000.00', institutions=('institution-1', 'institution-2'))
+            # One approval short of the operators' 5-of-7 threshold.
+            self.withdraw('staged-withdrawal', 'USD', '75000.00', institutions=tuple(f'institution-{n}' for n in range(1, 5)))
             case = self.disclose(initech['id'], self.recipient_key(curve))
             self.state['complete'] = True
             self.save()

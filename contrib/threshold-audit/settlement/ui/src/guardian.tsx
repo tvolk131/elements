@@ -453,7 +453,7 @@ const STEP_COPY: Record<string, string> = {
   preparing: "Prepare the new operators",
   awaiting_approval: "Current operators approve the handover",
   voting: "The network switches to the new operators",
-  audit_activated: "New guardians take over disclosure keys",
+  audit_activated: "New operators take over the disclosure key",
   migrating: "Move held funds to the new operators",
   activating: "New operators start approving settlements",
   retiring: "Retire the previous operators",
@@ -462,7 +462,7 @@ const STEP_COPY: Record<string, string> = {
 const READINESS_COPY: Record<string, [string, string]> = {
   audit: [
     "Past payments stay disclosable",
-    "The new guardians proved they hold the keys for earlier payments.",
+    "The new operators proved they hold the keys for earlier payments.",
   ],
 };
 function OperatorGroup({

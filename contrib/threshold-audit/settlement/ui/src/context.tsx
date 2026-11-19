@@ -118,8 +118,8 @@ function Login({ guardian }: { guardian: boolean }) {
         <p className="intro">
           Banks issue tokenized deposits that their customers can pay with in
           seconds, across banks. Payment details stay private, and a named
-          authority can be shown a specific payment when independent guardians
-          agree.
+          authority can be shown a specific payment when a quorum of the
+          independent operators agrees.
         </p>
         <div className="login-points">
           <span>

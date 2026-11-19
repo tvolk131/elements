@@ -226,7 +226,13 @@ class Disclosures:
         cases = [json.loads(row[0]) for row in self.db.execute('SELECT data FROM disclosure_cases ORDER BY rowid DESC')]
         return {'cases': [self.public(user, case) for case in cases if self.visible(user, case)],
                 'recipients': self.recipients(), 'my_keys': [r for r in self.recipients() if r['id'] == user['id']],
-                'members': list(self.audit.current_config().active_key.committee.members)}
+                'members': list(self.audit.current_config().active_key.committee.members),
+                # Which operator holds each key piece (empty for older runtimes).
+                'member_operators': self.member_operators()}
+
+    def member_operators(self):
+        mapping = getattr(self.store.chain, 'config', {}).get('audit_operators', {})
+        return {str(member): operator for member, operator in mapping.items()}
 
     def approve(self, user, case_id, decline=False):
         self.permission(user, 'review_disclosure')

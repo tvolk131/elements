@@ -110,6 +110,20 @@ class FederationRotation:
                 self.store.evidence(user['id'], 'federation_handover_started', {'rotation_id': self.state['id']})
             return self._prepare_or_resume(user)
 
+    def _assign_audit_members(self, operators, members):
+        """Record which incoming operator holds which disclosure key piece."""
+        mapping = self.adapter.config.setdefault('audit_operators', {})
+        mapping.update({str(member): operator for operator, member in zip(operators, members)})
+        self.sandbox.persist_adapter()
+        with self.store.transaction():
+            for operator, member in zip(operators, members):
+                row = self.store.db.execute('SELECT data FROM users WHERE id=?', (operator,)).fetchone()
+                if row:
+                    data = json.loads(row[0])
+                    if data.get('audit_member') != member:
+                        data['audit_member'] = member
+                        self.store.db.execute('UPDATE users SET data=? WHERE id=?', (self.store.encode(data), operator))
+
     def _prepare_or_resume(self, user):
         try:
             if self.state['stage'] != 'preparing':
@@ -139,9 +153,12 @@ class FederationRotation:
             # the exact prepared transactions cannot age into a different vote.
             config = AuditConfig.from_bytes(bytes.fromhex(self.sandbox.node.getblockchaininfo()['audit_config']), self.store.verifier.curve)
             current_ids = [member for member, _ in config.identities]
-            new_members = list(range(max(current_ids) + 1, max(current_ids) + 16))
-            # The incoming institutions also become the transaction authorizers.
-            audit = self.sandbox.audit.prepare_handoff(new_members, 11, target['block_signing_script'],
+            # One federation: the incoming operators also take over the
+            # disclosure key, one piece each, at their own threshold.
+            new_members = list(range(max(current_ids) + 1, max(current_ids) + 1 + len(target['guardian_order'])))
+            self._assign_audit_members(target['guardian_order'], new_members)
+            # The incoming operators also become the transaction authorizers.
+            audit = self.sandbox.audit.prepare_handoff(new_members, target['threshold'], target['block_signing_script'],
                                                        rotation_id=self.state['id'],
                                                        tx_authorization=policy_bytes(target['approval_public_keys'], target['guardian_order'],
                                                                                      target['threshold']).hex())
@@ -159,7 +176,8 @@ class FederationRotation:
                                       'audit_prepared_hash': hashlib.sha256(bytes.fromhex(audit['audit_prepared'])).hexdigest(),
                                       'proposal_hash': self.sandbox.audit.proposal_hash(audit),
                                       'activation_height': audit['activation_height'],
-                                      'incoming_audit_members': audit['target_members'], 'incoming_audit_threshold': 11,
+                                      'incoming_audit_members': audit['target_members'],
+                                      'incoming_audit_threshold': target['threshold'],
                                       'migrations': [packet_summary(packet) for packet in packets]}}
             self.state.update(operation=operation, stage='awaiting_approval', error=None)
             self._save()
@@ -318,7 +336,10 @@ class FederationRotation:
 
     def status(self, user):
         config = self.sandbox.audit.current_config()
-        current = self._describe(public_policy(self.adapter.config), [member for member, _ in config.identities], config.active_key.committee.threshold)
+        holders = self.adapter.config.get('audit_operators', {})
+        named = lambda members: [holders.get(str(member), member) for member in members]
+        current = self._describe(public_policy(self.adapter.config), named(member for member, _ in config.identities),
+                                 config.active_key.committee.threshold)
         result = {'id': self.adapter.config.get('policy_version', 'sandbox-v1'), 'genesis_hash': self.sandbox.node.getblockhash(0),
                   'current': current, 'incoming': None, 'rotation': None, 'history': self._history_summaries(), 'allowed_actions': []}
         admin = user['role'] == 'bankadmin' and user['tenant'] == self.store.config.get('bank_tenant', 'bank')
@@ -331,7 +352,8 @@ class FederationRotation:
             result['allowed_actions'] = ['prepare']
         target = state.get('target')
         if target:
-            incoming = self._describe(target['policy'], state.get('audit', {}).get('target_members', []), 11)
+            incoming = self._describe(target['policy'], named(state.get('audit', {}).get('target_members', [])),
+                                      target['policy']['threshold'])
             result['incoming'] = incoming if self.held else None
             if state.get('audit') and config.binding().hex() == state['audit']['target_hash']:
                 # The native signing/audit policy activates before treasury

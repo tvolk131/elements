@@ -57,13 +57,13 @@ stop being valid at the activation boundary and are issued again.
 ## What it does not do
 
 - It adds accountability, not a new trust assumption: in the sandbox the same
-  five operators sign blocks and authorize transactions, with separate keys.
+  seven operators sign blocks and authorize transactions, with separate keys.
 - Authorizers see what the chain shows. They are not given amounts.
 - A node wallet does not request authorizations. `sendtoaddress` on a chain
   with the rule on creates a transaction the node will not relay.
 - The ledger has no freeze list of its own. Freezes are orders each operator
   keeps (see [Freeze orders](#freeze-orders)); a single operator's refusal
-  does not block a 3-of-5 quorum.
+  does not block a 5-of-7 quorum.
 - Proposals that replace the authorizer keys need block signers' votes, not
   the outgoing authorizers' signatures.
 
@@ -79,7 +79,7 @@ operator does not take its word for one (`settlement/freeze_orders.py`,
 `Institution.apply_freeze_order` in `settlement/treasury.py`).
 
 - **Effect.** A freeze holds while enough operators honor it that the rest
-  can't reach the threshold: 3 of 5 here. It takes effect from the next block,
+  can't reach the threshold: 3 of 7 here. It takes effect from the next block,
   including for a spend that was authorized before the freeze: the operators
   won't sign a block containing it, and once its authorization expires (at
   most 20 blocks) every node rejects it with `bad-tx-authorization-expired`.
@@ -98,7 +98,7 @@ operator does not take its word for one (`settlement/freeze_orders.py`,
 ## In the settlement sandbox
 
 The rule is activated together with federation block signing at startup, with
-the five operators' approval keys and a threshold of three. A handover
+the seven operators' approval keys and a threshold of five. A handover
 proposes the incoming operators' keys in the same DynaFed transition.
 
 Each operator's service signs automatically. It refuses unless
@@ -127,7 +127,7 @@ apart:
   answered. The request waits ("2 of 5 reachable, 3 needed") and the worker
   retries the same transaction until enough are back.
 
-The guardian console's **Ledger** page reads recent blocks from the node and
+The network console's **Ledger** page reads recent blocks from the node and
 shows, per transaction, what the chain recorded (hidden amounts, sealed
 recovery records, token issuance or burns), which operators authorized it
 and until which block, and which operators confirmed its block. The

@@ -123,7 +123,7 @@ def run(directory):
             members=pilot.call('bank-compliance','/api/disclosures')['members']
             for member in members[:case['threshold']]:
                 if member not in case['approved_members']:
-                    case=pilot.call(f'audit-guardian-{member}','/api/disclosures/'+case['id']+'/approve',{})
+                    case=pilot.call(pilot.call('bank-compliance','/api/disclosures').get('member_operators',{}).get(str(member),f'audit-guardian-{member}'),'/api/disclosures/'+case['id']+'/approve',{})
             if case['state']!='delivered':case=pilot.call('bank-compliance','/api/disclosures/'+case['id']+'/release',{})
             assert case['state']=='delivered',case
             try:pilot.call('bank-compliance','/api/disclosures/'+case['id']+'/bundle')

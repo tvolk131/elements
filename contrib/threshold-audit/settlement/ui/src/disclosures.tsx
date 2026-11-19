@@ -23,6 +23,7 @@ import {
 } from "./recipient-crypto";
 import type { ComponentProps } from "react";
 import { FreezeCaseOutputs, FreezeOrders, recipientKeyStore } from "./freezes";
+import { memberName } from "./guardian";
 function Panel({ children, ...props }: ComponentProps<typeof BasePanel>) {
   return (
     <BasePanel {...props}>
@@ -66,6 +67,8 @@ interface Overview {
   recipients: Recipient[];
   my_keys: Recipient[];
   members: number[];
+  /** Which operator holds each disclosure key piece. */
+  member_operators?: Record<string, string>;
 }
 const keyStore = recipientKeyStore;
 export function DisclosuresPage() {
@@ -122,7 +125,7 @@ export function DisclosuresPage() {
                   </span>
                   <Badge status={c.state}>{human(c.state)}</Badge>
                   <small>
-                    {c.approved_members.length} of {c.threshold} guardian
+                    {c.approved_members.length} of {c.threshold} operator
                     approvals
                   </small>
                 </button>
@@ -135,11 +138,16 @@ export function DisclosuresPage() {
           )}
         </Panel>
         {current ? (
-          <CaseDetail key={current.id} value={current} refresh={refresh} />
+          <CaseDetail
+            key={current.id}
+            value={current}
+            refresh={refresh}
+            holders={query.data?.member_operators ?? {}}
+          />
         ) : (
           <Panel title="Case details">
             <p className="muted">
-              Select a case to review its scope, recipient and guardian
+              Select a case to review its scope, recipient and operator
               approvals.
             </p>
           </Panel>
@@ -497,7 +505,7 @@ function NewCase({
               placeholder="Explain why these outputs should be disclosed to this recipient."
             />
           </Field>
-          <Field label="Time allowed for guardian approvals and release">
+          <Field label="Time allowed for operator approvals and release">
             <select
               value={ttl}
               onChange={(e) => setTtl(Number(e.target.value))}
@@ -522,7 +530,7 @@ function NewCase({
             }
             data-testid="create-disclosure"
           >
-            {create.isPending ? "Preparing case…" : "Request guardian approval"}
+            {create.isPending ? "Preparing case…" : "Request operator approval"}
           </Button>
         </form>
       </details>
@@ -534,10 +542,17 @@ const user_is_recipient = (user: string, c: DisclosureCase) =>
 function CaseDetail({
   value: c,
   refresh,
+  holders,
 }: {
   value: DisclosureCase;
   refresh: () => unknown;
+  holders: Record<string, string>;
 }) {
+  // Key piece N belongs to an operator; older runtimes had numbered guardians.
+  const holder = (member: number) =>
+    holders[String(member)]
+      ? memberName(holders[String(member)])
+      : `Guardian ${member}`;
   const app = useApp(),
     cache = useQueryClient();
   const [ack, setAck] = useState(false);
@@ -608,17 +623,17 @@ function CaseDetail({
             <dd>{date(c.expires_at, true)}</dd>
           </div>
           <div>
-            <dt>Guardian approvals</dt>
+            <dt>Operator approvals</dt>
             <dd>
               {c.approved_members.length} of {c.threshold} required (
-              {c.guardian_count} guardians)
+              {c.guardian_count} operators)
             </dd>
           </div>
         </dl>
         {c.state === "membership_changed" && (
           <p className="inline-warning">
             Federation recovery policy changed. Create a new case so the current
-            guardians can approve this historical output.
+            operators can approve this historical output.
           </p>
         )}
         {c.state === "recipient_unavailable" && (
@@ -644,7 +659,7 @@ function CaseDetail({
                 data-testid="disclosure-consent"
               />
               I reviewed the reason, exact outputs and recipient key. I
-              authorize releasing my guardian contribution to this recipient.
+              authorize releasing my key share's contribution to this recipient.
             </label>
             <Button
               className="primary"
@@ -661,7 +676,7 @@ function CaseDetail({
               Decline my approval
             </Button>
             <p className="small-note">
-              A decline does not give one guardian a veto. A different quorum
+              A decline does not give one operator a veto. A different quorum
               may still approve.
             </p>
           </div>
@@ -669,7 +684,7 @@ function CaseDetail({
         {c.allowed_actions.includes("release") && (
           <div className="disclosure-consent">
             <p>
-              The guardian quorum approved this case. Send their encrypted
+              The operator quorum approved this case. Send their encrypted
               contributions to {c.recipient.name}; the recipient combines them
               using their private key.
             </p>
@@ -752,7 +767,7 @@ function CaseDetail({
               </p>
             )}
             <p>
-              Decrypted in this browser from independent guardian contributions,
+              Decrypted in this browser from independent operator contributions,
               and checked against the payment recorded on chain. Only the named
               recipient can do this.
             </p>
@@ -770,7 +785,7 @@ function CaseDetail({
                   )}
                 </strong>
                 <small>
-                  Confirmed by {r.verified_guardians} guardians · Output{" "}
+                  Confirmed by {r.verified_guardians} operators · Output{" "}
                   {r.output_index}
                 </small>
                 <details className="wallet-technical">
@@ -818,7 +833,7 @@ function CaseDetail({
                   {o.key_version}
                 </span>
                 <span>
-                  {o.released_partials} encrypted guardian contributions
+                  {o.released_partials} encrypted operator contributions
                   retained
                 </span>
               </li>
@@ -826,8 +841,12 @@ function CaseDetail({
           </ul>
           <details>
             <summary>Approval and case evidence</summary>
-            <p>Approved guardians: {c.approved_members.join(", ") || "None"}</p>
-            <p>Declined guardians: {c.declined_members.join(", ") || "None"}</p>
+            <p>
+              Approved by: {c.approved_members.map(holder).join(", ") || "None"}
+            </p>
+            <p>
+              Declined by: {c.declined_members.map(holder).join(", ") || "None"}
+            </p>
             <CopyField label="Approved case binding" value={c.manifest_hash} />
           </details>
         </details>
