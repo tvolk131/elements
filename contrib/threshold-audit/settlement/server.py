@@ -241,6 +241,10 @@ class Handler(BaseHTTPRequestHandler):
                     self.respond(200, store.dashboard(session))
                 elif path == "/api/ledger":
                     self.respond(200, store.ledger(session["user"]))
+                elif path == "/api/demo/theft":
+                    self.respond(200, store.demo_theft(session["user"]))
+                elif path == "/api/independent-node":
+                    self.respond(200, store.independent_node(session["user"]))
                 elif path == "/api/demo/institutions":
                     self.respond(200, store.demo_institutions(session["user"]))
                 elif path.startswith("/api/operations/") and len(path.split("/")) == 4:
@@ -294,6 +298,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 5 and parts[1:4] == ["api", "demo", "institutions"]:
                 self.respond(200, store.demo_institutions(user, parts[4], body.get("online")))
+                return
+            if len(parts) == 5 and parts[1:4] == ["api", "demo", "theft"]:
+                self.respond(200, store.demo_theft(user, parts[4], body))
                 return
             if path == "/api/demo/outside-address":
                 self.respond(200, store.demo_outside_address(user))

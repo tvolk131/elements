@@ -41,9 +41,11 @@ an unrelated process merely because it reuses an old PID. Concurrent manager
 start/stop commands on one runtime are refused. Failed startup retains a private
 `manager.log` and cleans up only the process tree it just launched.
 
-A rotated demo normally has 22 processes: one Python settlement coordinator,
-one Elements node, 15 audit guardians and five operator signers. The isolated
-guardians and signers deliberately retain separate key custody. The coordinator
+A demo runtime normally has 17 processes: one Python settlement coordinator,
+the Elements node, the independent node, seven disclosure key services and
+seven operator signers (one of each per operator); a handover adds the
+incoming operators' services. The isolated key services and signers
+deliberately retain separate key custody. The coordinator
 serves the wallet and guardian consoles and their API from one loopback port.
 Additional stacks are needed only for explicit
 test scenarios; stop superseded demos rather than keeping every milestone live.
@@ -140,15 +142,22 @@ compensation or general external payment provenance service.
 * One actual Elements daemon, with Bitcoin peg-in verification disabled. Its
   bootstrap OP_TRUE policy upgrades to real federation P2WSH block signatures
   before serving the GUI. It normally mines a block about every three seconds.
-* Ten isolated audit guardian processes, with research distributed key generation
-  and 7-of-10 recovery. Historical handoff remains available through the existing
-  guardian service protocol. The disclosure workspace requests sealed recovery;
-  federation lifecycle manages the local handover fixture.
-* Five operator services. Each has its own ECDSA spending key, separate
+* In demo runtimes, an independent node (`observer.py`): a second elementsd
+  with its own data directory and the same chain parameters, which the demo
+  node dials over loopback peer-to-peer. It validates every block itself, has
+  no wallet and holds no keys. The Ledger page shows its tip and, in the theft
+  drill, its verdict on the thief's bytes.
+* Seven isolated disclosure key services, one per operator, with research
+  distributed key generation and 5-of-7 recovery. Historical handoff remains
+  available through the existing guardian service protocol. The disclosure
+  workspace requests sealed recovery; federation lifecycle manages the local
+  handover fixture.
+* Seven operator services. Each has its own ECDSA spending key, separate
   BIP340 approval identity, durable signing bindings and independent approval
-  passphrase. Three signatures authorize treasury spends in this fixture.
+  passphrase. Five signatures authorize treasury spends, transactions and
+  blocks.
 * The full reissuance-token balance for each currency is held in a real
-  3-of-5 P2WSH output. The coordinator wallet imports the script and blinding
+  5-of-7 P2WSH output. The coordinator wallet imports the script and blinding
   key for observation; it has no federation spending private keys.
 * Bank-managed customer wallets hold the test currency and a separate policy
   asset for transaction fees. Customer transfers/escrows use those wallet keys;
@@ -156,9 +165,9 @@ compensation or general external payment provenance service.
 * A SQLite workflow, double-entry reserve journal, transaction outbox, hash-linked
   evidence and explicitly simulated bank payment gateway.
 
-The 3-of-5 operational fixture does not change the 7-of-10 audit threshold.
-Operational spending membership is separate from DynaFed block-signing and
-audit-key membership. The [same-chain handover](FEDERATION-ROTATION.md) coordinates
+One federation, one threshold: the same seven operators, at 5 of 7, sign
+blocks, authorize every transaction, co-sign treasury spends and hold the
+disclosure key. The [same-chain handover](FEDERATION-ROTATION.md) coordinates
 these policies, migrates treasury authority and pending escrows, and revokes
 outgoing sessions through an explicit, quorum-approved staged procedure.
 

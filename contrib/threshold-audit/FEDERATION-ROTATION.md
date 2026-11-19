@@ -3,8 +3,9 @@
 This milestone replaces the operators (block signers and treasury co-signers)
 and the audit guardians on one existing Elements chain. Genesis, asset IDs,
 customer addresses, balances and historical transactions remain on that chain.
-The local scenario moves from 7-of-10 audit guardians to a wholly new 11-of-15
-committee, and from one 3-of-5 block/treasury group to another 3-of-5 group.
+The local scenario moves from one group of seven operators at 5 of 7 to a
+wholly new group of seven at 5 of 7. The disclosure key moves with them: the
+outgoing operators re-share it to the incoming ones at the same threshold.
 
 Bank balances, payments, operator identities and credentials remain test
 fixtures. The protocol and Python key handling remain research software.
@@ -167,9 +168,10 @@ PYTHONPATH=contrib/threshold-audit:test/functional \
 
 This is a deliberately quiescent handover. Pausing block production preserves
 epoch-bound preparation while humans approve; an online production protocol
-needs a separate scheduling/renewal design. The 3-of-5 fixture demonstrates
-operation with two services offline. It does not establish Byzantine fork
-safety against an equivocating signer under a network partition. Production
+needs a separate scheduling/renewal design. The 5-of-7 fixture demonstrates
+operation with two services offline, and two quorums share at least three
+operators, so a fork needs three signing competing blocks. It does not
+establish Byzantine fork safety under a network partition. Production
 requires explicit quorum-intersection, finality and rollback assumptions.
 
 Only tracked settlement escrows and the complete known issuance authorities are

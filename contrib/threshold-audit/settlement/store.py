@@ -102,6 +102,8 @@ class Settlement:
         self.freezes = None
         # Set by the sandbox: what the chain recorded, and demo-only controls.
         self.ledger_view, self.demo_runtime = None, None
+        # A second node with its own copy of the chain, when the runtime runs one.
+        self.observer = None
         self.bank_signing_secret = bank_signing_secret
         self.min_confirmations = self.config.get("min_confirmations", 1)
         if type(self.min_confirmations) is not int or self.min_confirmations < 1:
@@ -300,6 +302,16 @@ class Settlement:
             item["known"] = known.get(item["txid"])
         return view
 
+    def independent_node(self, user):
+        """What the independent node, which checks every block itself, reports."""
+        self.require(user, "view_bank")
+        if self.observer is None:
+            return {"available": False}
+        try:
+            return {"available": True, **self.observer.status()}
+        except (OSError, RuntimeError, ValueError) as error:
+            return {"available": False, "error": str(error)[:200]}
+
     def unauthorized_attempt(self, user):
         self.require(user, "view_bank")
         if self.ledger_view is None:
@@ -330,6 +342,24 @@ class Settlement:
         with self.transaction():
             self.evidence(user["id"], "demo_institution_" + ("online" if online else "offline"), {"institution": guardian})
         return {"institutions": status}
+
+    def demo_theft(self, user, action=None, body=None):
+        """Demo only: the theft drill on the ledger page (see theft_drill.py)."""
+        self._demo()
+        self.require(user, "view_bank")
+        drill = getattr(self, "theft_drill", None)
+        if drill is None:
+            raise Problem("endpoint not found", 404)
+        if action is None:
+            return drill.view(user)
+        if action == "steal":
+            txid, vout = (body or {}).get("txid"), (body or {}).get("vout")
+            if not isinstance(txid, str) or type(vout) is not int:
+                raise Problem("choose an output to steal")
+            return drill.steal(user, txid, vout)
+        if action in ("broadcast", "replay", "reset"):
+            return getattr(drill, action)(user)
+        raise Problem("endpoint not found", 404)
 
     def demo_outside_address(self, user):
         """Demo only: an address no member bank has registered."""

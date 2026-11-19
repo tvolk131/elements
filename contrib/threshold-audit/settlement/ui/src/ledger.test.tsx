@@ -38,6 +38,9 @@ vi.mock("./api", () => ({
       return institutions();
     }
     if (path === "/api/ledger/unauthorized-attempt") return ATTEMPT;
+    if (path === "/api/independent-node") return { available: false };
+    if (path === "/api/demo/theft")
+      return { drill: null, targets: [], independent_node: false };
     throw new Error("unexpected " + path);
   },
 }));

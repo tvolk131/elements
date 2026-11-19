@@ -30,13 +30,16 @@ and **UNITED USD**; in the sandbox these are test tokens with simulated backing.
 | The federation, including the disclosure key, can be handed to new operators without a new ledger | DynaFed transitions, checked by consensus | |
 | A disclosure opens only the payment it names, after 5 of 7 operators approve, and the amount is checked against the chain in the recipient's browser | Guardian services and the browser | Approval is a guarantee of the guardians' software: 7 colluding guardians could decrypt without it |
 | A receiving bank's directory answer is signed and the sender's browser verifies it | Browser verification of a Schnorr signature | |
+| An independent node keeps its own copy of the ledger, checks every block itself and gives its own verdict on a transaction | Elements consensus, run by a second elementsd with its own data, connected to the demo node peer-to-peer | It has no wallet and no keys. In the recovery test it accepts the thief's bytes before the quarantine and rejects them after, because the output they spend is gone from its own chain. Checked live on the demo chain. See "simulated" for who runs it |
 
 ## Simulated: say so if asked
 
 | What the demo shows | What actually runs |
 |---|---|
 | Seven independent operators | Seven separate signing processes, each with its own keys, on one machine run by one party. All seven check blocks and transactions against **the same single node** |
-| A network of nodes | One elementsd with peer-to-peer networking off |
+| A network of nodes | Two elementsd on one machine: the demo node and the independent node, connected peer-to-peer. Every operator's service checks against the demo node; none runs a node of its own |
+| An independent node | A second process started by the sandbox itself, on the same machine and run by the same party. Independence of data and validation is real; independence of who runs it is not, until someone else runs one from a clean checkout |
+| A thief with a stolen key | The theft drill on the Ledger page, demo mode only. It signs with the customer's wallet in the central node (which a stolen key would allow) and pays a simulated customer of another member bank. The operators' authorization, the freeze, quarantine, restore and both nodes' verdicts are real |
 | Seven operators each holding a disclosure key piece | Seven separate key services on the same machine. Their key setup is a simulated ceremony, not a secure distributed key generation |
 | Banks: deposits, payouts, reserves | A simulated bank in the application's database |
 | Bank-signed directory answers and address registrations | Real signatures, but every bank's key is held by the central application |
@@ -52,9 +55,11 @@ and **UNITED USD**; in the sandbox these are test tokens with simulated backing.
   ledger allows the burn; there is no screen or order for it yet.
 - **Recovering funds the federation never froze in time:** if a theft confirms
   and moves on before a freeze, each later output has to be traced and frozen.
-- **Serial-numbered notes (M1Coin).**
-- **Validation by an independent node or an outside observer,** and behavior
-  across real network faults.
+- **Serial-numbered notes (M1Coin).** Dropped from this demo: the recovery
+  test runs on UNITED EUR. One asset per note would also run into the
+  256-asset registry limit of the recovery packets.
+- **Validation by a node someone else runs,** and behavior across real network
+  faults.
 - **Customer-held keys.**
 - **Independent reserve attestation** (a custodian or central bank signing what
   it holds).

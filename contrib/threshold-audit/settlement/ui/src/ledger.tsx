@@ -17,6 +17,7 @@ import { date, human, money, short, tokenName } from "./domain";
 import { memberName } from "./guardian";
 import { usePersonas } from "./demo";
 import { FreezeOrders } from "./freezes";
+import { IndependentNode, TheftDrill } from "./theft-drill";
 
 interface Authorization {
   expiry_height: number;
@@ -24,6 +25,8 @@ interface Authorization {
   threshold?: number;
   authorizers?: number;
   signers: string[];
+  /** Set when a quorum moved inputs without their owners' keys. */
+  recovery?: false | { inputs: number[] };
 }
 interface LedgerTransaction {
   txid: string;
@@ -35,6 +38,7 @@ interface LedgerTransaction {
   recovery_packets: number;
   issues_tokens: boolean;
   burns_tokens: boolean;
+  quarantine_outputs?: number;
   authorization: Authorization | null;
   block_signers: string[] | null;
   known: null | {
@@ -115,7 +119,7 @@ function whatItWas(item: LedgerTransaction) {
   }
 }
 
-function Institutions() {
+function Institutions({ needed }: { needed: number }) {
   const client = useQueryClient();
   const demo = !!usePersonas().data?.length;
   const query = useQuery({
@@ -143,7 +147,6 @@ function Institutions() {
   if (!demo || !query.data) return null;
   const list = query.data.institutions;
   const online = list.filter((i) => i.online).length;
-  const needed = 3;
   const halted = online < needed;
   return (
     <Panel
@@ -187,7 +190,7 @@ function Institutions() {
         role="status"
       >
         {halted
-          ? `Only ${online} online. No transaction can be authorized and no block can be confirmed, so nothing moves and nobody can force it through. It resumes when a third operator is back.`
+          ? `Only ${online} online. No transaction can be authorized and no block can be confirmed, so nothing moves and nobody can force it through. It resumes when ${needed - online} more ${needed - online === 1 ? "is" : "are"} back.`
           : online === list.length
             ? `Every transaction and every block needs ${needed} of them. Any ${list.length - needed} can be offline and payments still settle.`
             : `${list.length - online} offline. The remaining ${online} still authorize transactions and confirm blocks.`}
@@ -267,6 +270,7 @@ function TryWithout() {
 
 export function LedgerPage() {
   const app = useApp();
+  const demo = !!usePersonas().data?.length;
   const query = useQuery({
     queryKey: ["ledger"],
     queryFn: ({ signal }) => api<Ledger>("/api/ledger", undefined, signal),
@@ -323,8 +327,14 @@ export function LedgerPage() {
       )}
       <div className="ledger-controls">
         <TryWithout />
-        <Institutions />
+        <IndependentNode />
+        {l && (
+          <Institutions
+            needed={l.policy.threshold || l.policy.authorizers.length}
+          />
+        )}
       </div>
+      {demo && <TheftDrill />}
       <Panel
         title="Recent transactions"
         subtitle={
@@ -373,6 +383,8 @@ export function LedgerPage() {
                               `${t.recovery_packets} sealed recovery ${t.recovery_packets === 1 ? "record" : "records"}`,
                             t.issues_tokens && "issues tokens",
                             t.burns_tokens && "destroys tokens",
+                            t.quarantine_outputs &&
+                              "moves funds into quarantine",
                           ]
                             .filter(Boolean)
                             .join(" · ") || "No sealed recovery records"}
@@ -387,10 +399,13 @@ export function LedgerPage() {
                           <>
                             <Badge status={a.verified ? "success" : "error"}>
                               {a.verified
-                                ? signedBy(a.signers)
+                                ? `${a.recovery ? "Recovery · " : ""}${signedBy(a.signers)}`
                                 : "Signatures do not check out"}
                             </Badge>
                             <span className="cell-secondary">
+                              {a.recovery &&
+                                a.verified &&
+                                `Moves ${a.recovery.inputs.length === 1 ? "an input" : `${a.recovery.inputs.length} inputs`} without the owner’s key · `}
                               Valid until block {a.expiry_height}
                               {t.block_signers &&
                                 ` · block confirmed by ${names(t.block_signers)}`}

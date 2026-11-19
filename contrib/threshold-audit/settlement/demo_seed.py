@@ -152,6 +152,10 @@ def configure(directory, mesh):
         value['demo_autofill'] = True
         value['case_authority_keys'] = trusted
         save_config(service, value)
+    # A second node with its own copy of the chain gives independent verdicts.
+    adapter = load_config(directory / 'adapter.json')
+    adapter['independent_node'] = True
+    save_config(directory / 'adapter.json', adapter)
     if mesh:
         shutil.copyfile(mesh, directory / 'mesh.json')
         os.chmod(directory / 'mesh.json', 0o600)

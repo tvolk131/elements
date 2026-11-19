@@ -3532,6 +3532,123 @@ td,
   font-size: var(--text-sm);
   color: var(--ink-soft);
 }
+.node-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+.node-facts div {
+  display: grid;
+  gap: 2px;
+}
+.node-facts dt {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+.node-facts dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* Theft drill: a full-width panel of numbered steps. */
+.theft-drill > :not(.panel-header) {
+  margin-left: 21px;
+  margin-right: 21px;
+}
+.theft-drill {
+  padding-bottom: 20px;
+  margin-bottom: 18px;
+}
+.drill-start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 14px;
+}
+.drill-start label {
+  display: grid;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.drill-start select {
+  max-width: 100%;
+}
+.drill-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  counter-reset: drill;
+}
+.drill-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--white);
+  counter-increment: drill;
+}
+.drill-step > div {
+  min-width: 0;
+}
+.drill-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  background: var(--paper);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+}
+.drill-mark:empty::before {
+  content: counter(drill);
+}
+.drill-step.done {
+  background: var(--teal-wash);
+  border-color: #cfe5da;
+}
+.drill-step.done .drill-mark {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: var(--white);
+}
+.drill-step.current {
+  border-color: var(--gold);
+  background: var(--gold-wash);
+}
+.drill-step.failed {
+  background: var(--red-wash);
+}
+.drill-step.failed .drill-mark {
+  background: var(--red);
+  color: var(--white);
+}
+.drill-step.waiting {
+  color: var(--ink-soft);
+}
+.drill-step p {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.drill-step code {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+.drill-step .button {
+  margin-top: 8px;
+}
 .ledger-table td {
   vertical-align: top;
 }

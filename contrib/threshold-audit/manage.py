@@ -119,7 +119,7 @@ def app_ready(url):
 def status(directory):
     directory, ready, config = validate_runtime(directory)
     found, owner = processes(directory, ready)
-    roles = {'app': 0, 'node': 0, 'audit_guardians': 0, 'institution_signers': 0}
+    roles = {'app': 0, 'node': 0, 'independent_node': 0, 'audit_guardians': 0, 'institution_signers': 0}
     for pid in found:
         try:
             args = (Path('/proc') / str(pid) / 'cmdline').read_bytes().split(b'\0')
@@ -132,7 +132,8 @@ def status(directory):
         elif any(value.endswith(b'/guardian_service.py') for value in args):
             roles['audit_guardians'] += 1
         elif any(value.endswith(b'/elementsd') for value in args):
-            roles['node'] += 1
+            observer = any(value.startswith(b'-datadir=') and b'/observer/' in value for value in args)
+            roles['independent_node' if observer else 'node'] += 1
     return {'runtime': str(directory), 'state': 'running' if owner is not None else 'orphaned' if found else 'stopped',
             'app_ready': owner is not None and app_ready(ready['url']),
             'wallet': ready['url'] + 'wallet', 'guardian': ready['url'] + 'guardian',

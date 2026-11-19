@@ -11,7 +11,8 @@ import threading
 from test_framework import messages
 from test_framework.messages import CBlock, from_hex, ser_uint256
 from test_framework.script import CScript
-from .authorization import authorization_digest, decode_policy, policy_bytes
+from .authorization import (RECOVERY_BITMAP_BYTES, authorization_digest, decode_policy, is_quarantine_script,
+                            is_recovery, policy_bytes, recovery_digest)
 from .treasury import NativeECDSA
 
 
@@ -63,9 +64,13 @@ class LedgerView:
         return candidates
 
     def _authorization(self, transaction, genesis, policies, names):
-        body = transaction.wit.vchAuthorization
+        body = bytes(transaction.wit.vchAuthorization)
         if not body:
             return None
+        recovery, bitmap = is_recovery(transaction), None
+        if recovery:
+            # Recovery: marker, then which inputs move without their owners' keys.
+            bitmap, body = body[1:1 + RECOVERY_BITMAP_BYTES], body[1 + RECOVERY_BITMAP_BYTES:]
         expiry = int.from_bytes(body[:4], 'little')
         entries = [(body[offset], body[offset + 1:offset + SIGNATURE_SIZE])
                    for offset in range(4, len(body) - SIGNATURE_SIZE + 1, SIGNATURE_SIZE)]
@@ -73,11 +78,14 @@ class LedgerView:
             threshold, keys = decode_policy(policy)
             if len(entries) != threshold or any(index >= len(keys) for index, _ in entries):
                 continue
-            digest = authorization_digest(genesis, policy, transaction, expiry)
+            digest = (recovery_digest(genesis, policy, transaction, bitmap, expiry) if recovery
+                      else authorization_digest(genesis, policy, transaction, expiry))
             if all(self.adapter.curve.verify_signature(keys[index], digest, signature) for index, signature in entries):
                 return {'expiry_height': expiry, 'verified': True, 'threshold': threshold, 'authorizers': len(keys),
-                        'signers': [names.get(keys[index].hex(), f'authorizer {index + 1}') for index, _ in entries]}
-        return {'expiry_height': expiry, 'verified': False, 'signers': []}
+                        'signers': [names.get(keys[index].hex(), f'authorizer {index + 1}') for index, _ in entries],
+                        'recovery': recovery and {
+                            'inputs': [i for i in range(len(transaction.vin)) if bitmap[i // 8] >> (i % 8) & 1]}}
+        return {'expiry_height': expiry, 'verified': False, 'signers': [], 'recovery': recovery and {'inputs': []}}
 
     def _block_signers(self, block, names):
         stack = block.m_signblock_witness.stack
@@ -112,6 +120,7 @@ class LedgerView:
                 'recovery_packets': sum(1 for witness in witnesses if witness.vchAuditProof),
                 'issues_tokens': any(not inp.assetIssuance.isNull() for inp in transaction.vin),
                 'burns_tokens': any(bytes(output.scriptPubKey) == b'\x6a' for output in outputs),
+                'quarantine_outputs': sum(1 for output in outputs if is_quarantine_script(bytes(output.scriptPubKey))),
                 'authorization': self._authorization(transaction, genesis, policies, approval_names),
             })
         return {'hash': block_hash, 'previous': f'{block.hashPrevBlock:064x}', 'height': block.block_height,

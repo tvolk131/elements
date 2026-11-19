@@ -317,6 +317,15 @@ class Sandbox:
         history = [ApprovalVerifier(curve, value['public_keys'], value['threshold'], version)
                    for version, value in adapter_config.get('historical_approval_policies', {}).items()]
         verifier = ApprovalPolicies(ApprovalVerifier(curve, public_keys, adapter_config['threshold'], adapter_config.get('policy_version', 'sandbox-v1')), history)
+        self.observer = None
+        if adapter_config.get('independent_node'):
+            from .observer import Observer
+            try:
+                self.observer = Observer(self.directory, self.processes, free_port).start(
+                    node, load_config(self.directory / 'launcher.json')['daemon_args'])
+            except Exception as error:
+                # The demo runs without it; the ledger page says it is unavailable.
+                print('independent node unavailable:', str(error)[:300], flush=True)
         self.blocks = BlockFederation(node, curve, directory=self.directory / 'blocks')
         for policy in adapter_config.get('federation_manifests', []):
             self.blocks.register(policy)
@@ -348,9 +357,13 @@ class Sandbox:
         self.store.demo_runtime = self
         from .ledger import LedgerView
         self.store.ledger_view = LedgerView(adapter)
+        self.store.observer = self.observer
         from .capability_demo import enroll
         enroll(self, config, adapter_config)
         self.blocks.exclude = lambda block: self.store.freezes.excluded(block) if self.store.freezes else []
+        if config.get('demo_sign_in'):
+            from .theft_drill import TheftDrill
+            self.store.theft_drill = TheftDrill(self.store, self)
         self.server = create_server(self.store, port=port)
         self.server.start_worker()
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -377,7 +390,7 @@ class Sandbox:
                                                    'credentials_file': str(self.directory / 'credentials.json'),
                                                    **({'mesh': self.mesh.urls()} if self.mesh else {})})
         print(json.dumps({'url': url, 'credentials_file': str(self.directory / 'credentials.json'),
-                          'runtime': str(self.directory), 'bank': 'SIMULATED', 'currencies': ['TestEUR', 'TestUSD']}), flush=True)
+                          'runtime': str(self.directory), 'bank': 'SIMULATED', 'currencies': ['UNITED EUR', 'UNITED USD']}), flush=True)
         return self
 
     def resume(self, port=0):
@@ -634,6 +647,8 @@ class Sandbox:
         for thread in (getattr(self, 'miner', None), getattr(self.server, 'worker', None)):
             if thread is not None:
                 thread.join(timeout=10)
+        if getattr(self, 'observer', None) is not None:
+            self.observer.close()
         if self.node:
             try:
                 self.node.stop()
