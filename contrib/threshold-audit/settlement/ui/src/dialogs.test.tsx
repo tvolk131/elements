@@ -213,3 +213,81 @@ it("says a customer payment needs no sign-off but is still checked", async () =>
   );
   expect(screen.getByText("Declined automatically")).toBeVisible();
 });
+it("shows a regulator's quarantine and return in the holder's own history", async () => {
+  const { OperationPanel } = await import("./wallet");
+  const base = {
+    state: "settled",
+    account_id: "a",
+    currency: "EUR" as const,
+    amount_minor: 1275000,
+    user_approved: false,
+    guardian_approvals: 0,
+    guardian_threshold: 5,
+    allowed_actions: [],
+    authority: "Financial Regulator",
+    case_reference: "case-7",
+  };
+  const moved = {
+    ...base,
+    id: "moved",
+    kind: "quarantine" as const,
+    created_at: 2,
+    recovery_order: "q1",
+    source_name: "Operating",
+    reference: "Moved to quarantine by regulator order (case-7)",
+  };
+  const returned = {
+    ...base,
+    id: "returned",
+    kind: "receipt" as const,
+    created_at: 3,
+    recovery_order: "r1",
+    reference: "Returned from quarantine by regulator order (case-7)",
+  };
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <OperationPanel title="Transactions" operations={[moved, returned]} />
+    </QueryClientProvider>,
+  );
+  expect(
+    screen.getByText("Moved to quarantine · Financial Regulator order"),
+  ).toBeVisible();
+  expect(
+    screen.getByText("Returned from quarantine · Financial Regulator order"),
+  ).toBeVisible();
+  expect(screen.getByText("−12,750.00")).toBeVisible();
+  expect(screen.getByText("+12,750.00")).toBeVisible();
+  client.clear();
+
+  Object.assign(app.data, {
+    activity: [
+      {
+        id: 1,
+        created_at: 2,
+        operation_id: "moved",
+        actor: "federation",
+        actor_name: "The operators, automatically",
+        event: "funds_quarantined",
+        entry_hash: "x",
+      },
+    ],
+  });
+  vi.mocked(api).mockResolvedValue(moved);
+  app.dialog = { type: "operation", id: "moved" };
+  show();
+  expect(
+    await screen.findByText("Moved to quarantine", { selector: ".detail-type" }),
+  ).toBeVisible();
+  const record = screen.getByTestId("recovery-record");
+  expect(record).toHaveTextContent("moved out of this account without its key");
+  expect(record).toHaveTextContent("AuthorityFinancial Regulator");
+  expect(record).toHaveTextContent("Casecase-7");
+  expect(
+    screen.getByText("Moved to quarantine by the operators"),
+  ).toBeVisible();
+  expect(screen.getByText(/^Held in quarantine\./)).toBeVisible();
+  expect(screen.getByText("Not applicable")).toBeVisible();
+});

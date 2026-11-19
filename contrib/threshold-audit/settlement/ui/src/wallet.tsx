@@ -365,6 +365,8 @@ function Balances() {
   );
 }
 export function Quorum({ operation: op }: { operation: Operation }) {
+  if (op.recovery_order)
+    return <span className="small-note">Recovery by the operators</span>;
   if (op.kind === "receipt")
     return <span className="small-note">Not required</span>;
   if (op.guardian_threshold === 0)
@@ -430,6 +432,10 @@ export function OperationPanel({
     )
     .sort((a, b) => b.created_at - a.created_at);
   function titleFor(op: Operation) {
+    if (op.kind === "quarantine")
+      return `Moved to quarantine · ${op.authority || "regulator"} order`;
+    if (op.kind === "receipt" && op.recovery_order)
+      return `Returned from quarantine · ${op.authority || "regulator"} order`;
     if (op.kind === "receipt") return "Received from external wallet";
     if (app.guardian && op.kind === "transfer")
       return `${app.accountName(op.account_id)} → ${app.accountName(op.to_account_id)}`;
@@ -547,11 +553,15 @@ export function OperationPanel({
                       <span className={`type-icon ${op.kind}`}>
                         <Icon
                           name={
-                            op.kind === "deposit"
-                              ? "download"
-                              : op.kind === "redemption"
-                                ? "upload"
-                                : "send"
+                            op.kind === "quarantine"
+                              ? "lock"
+                              : op.recovery_order
+                                ? "shield"
+                                : op.kind === "deposit"
+                                  ? "download"
+                                  : op.kind === "redemption"
+                                    ? "upload"
+                                    : "send"
                           }
                         />
                       </span>

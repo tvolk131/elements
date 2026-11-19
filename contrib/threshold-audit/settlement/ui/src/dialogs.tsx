@@ -125,6 +125,7 @@ const ROTATION: Record<
   },
 };
 function sourceName(op: Operation, app: ReturnType<typeof useApp>): string {
+  if (op.kind === "receipt" && op.recovery_order) return "Quarantine";
   if (op.kind === "receipt") return "External wallet";
   if (op.kind === "deposit") return "Bank account (simulated)";
   return op.source_name || app.accountName(op.account_id);
@@ -135,6 +136,7 @@ function destinationName(
 ): string {
   if (op.kind === "transfer")
     return op.destination_name || app.accountName(op.to_account_id);
+  if (op.kind === "quarantine") return "Quarantine";
   if (["deposit", "refund", "receipt"].includes(op.kind))
     return app.accountName(op.account_id);
   return (
@@ -260,7 +262,11 @@ export function Dialogs() {
     );
   return <RotationForm action={d.action} />;
 }
-function CreateForm({ kind }: { kind: Exclude<Kind, "refund" | "receipt"> }) {
+function CreateForm({
+  kind,
+}: {
+  kind: Exclude<Kind, "refund" | "receipt" | "quarantine">;
+}) {
   const app = useApp();
   const [account, setAccount] = useState(app.account);
   const [currency, setCurrency] = useState<Currency>(
@@ -543,9 +549,13 @@ function OperationDetail({ id }: { id: string }) {
         {op && (
           <>
             <div className="detail-type">
-              {op.kind === "receipt"
-                ? "Confirmed on-chain receipt"
-                : human(op.kind) + " request"}
+              {op.kind === "quarantine"
+                ? "Moved to quarantine"
+                : op.kind === "receipt" && op.recovery_order
+                  ? "Returned from quarantine"
+                  : op.kind === "receipt"
+                    ? "Confirmed on-chain receipt"
+                    : human(op.kind) + " request"}
             </div>
             <div className="detail-amount number">
               {money(op.amount_minor)} <span>{tokenName(op.currency)}</span>
@@ -614,7 +624,19 @@ function OperationDetail({ id }: { id: string }) {
                 ))}
               </details>
             </div>
-            {op.kind === "receipt" ? (
+            {op.recovery_order ? (
+              <div className="detail-section" data-testid="recovery-record">
+                <h3>Regulator order</h3>
+                <p>
+                  {op.kind === "quarantine"
+                    ? "These funds were moved out of this account without its key, under an order signed by the authority below. The operators approved the move together, and the ledger lets only another such move take them out of quarantine."
+                    : "These funds came back to this account from quarantine, under an order signed by the authority below and approved by the operators together."}
+                </p>
+                <KV label="Authority">{op.authority || "Not recorded"}</KV>
+                <KV label="Case">{op.case_reference || "Not recorded"}</KV>
+                <CopyField label="Order" value={op.recovery_order} />
+              </div>
+            ) : op.kind === "receipt" ? (
               <div className="detail-section">
                 <h3>Observed receipt</h3>
                 <p>

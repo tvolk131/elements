@@ -229,44 +229,73 @@ class Freezes:
         final = self.adapter.authorize_recovery(record['rawtx'], plan['recovered'], order['id'], plan.get('registrations'))
         txid = node.sendrawtransaction(final, 0)
         with self.store.transaction():
+            # Each customer of ours sees the move in their own history.
             if order['kind'] == 'quarantine':
-                for index, item in enumerate(plan['inputs']):
-                    if item.get('account_id') and item.get('currency'):
-                        self.store.tokens({'id': f"quarantine-{order['id']}-{index}", 'currency': item['currency']},
-                                          'quarantined', item['account_id'], -item['amount_minor'])
+                shown = [self._record_quarantine(order, txid, index, item, plan['outputs'][index])
+                         for index, item in enumerate(plan['inputs'])]
             else:
-                for index, item in enumerate(plan['outputs']):
-                    self._record_return(order, txid, index, item)
+                shown = [self._record_return(order, txid, index, item) for index, item in enumerate(plan['outputs'])]
             record.update(state='broadcast', txid=txid, error=None)
             self.save(record)
-            self.store.evidence('federation', 'funds_quarantined' if order['kind'] == 'quarantine' else 'funds_restored',
-                                {'order_id': order['id'], 'txid': txid})
+            if not any(shown):  # held outside our customers' accounts: still on the bank's record
+                self.store.evidence('federation', 'funds_quarantined' if order['kind'] == 'quarantine' else 'funds_restored',
+                                    {'order_id': order['id'], 'txid': txid})
+
+    def _record_quarantine(self, order, txid, index, item, output):
+        """Debit a quarantined output once, with a record in the holder's own
+        history: which order moved it, on whose authority, and where."""
+        if not item.get('account_id') or not item.get('currency'):
+            return False
+        store = self.store
+        account = store.account(item['account_id'])
+        genesis = self.adapter.node.getblockhash(0)
+        operation_id = hashlib.sha256(f"{genesis}:quarantine:{account['id']}:{txid}:{index}".encode()).hexdigest()[:32]
+        if store.db.execute('SELECT 1 FROM operations WHERE id=?', (operation_id,)).fetchone():
+            return True
+        now = int(time.time())
+        operation = {'id': operation_id, 'kind': 'quarantine', 'state': 'settled', 'account_id': account['id'],
+                     'tenant': account['tenant'], 'currency': item['currency'], 'asset_id': item['asset'],
+                     'amount_minor': item['amount_minor'], 'created_at': now, 'updated_at': now,
+                     'maker': 'federation', 'txid': txid, 'output_index': index, 'stage': 'quarantine',
+                     'policy_version': store.verifier.policy_version, 'expires_at': 0,
+                     'reference': f"Moved to quarantine by regulator order ({order['case_reference']})",
+                     'destination': output['address'], 'destination_name': 'Quarantine', 'to_account_id': None,
+                     'recovery_order': order['id'], 'authority': order['authority'],
+                     'case_reference': order['case_reference'], 'source_output': f"{item['txid']}:{item['vout']}"}
+        store.db.execute('INSERT INTO operations VALUES(?,?,?,?,?)',
+                         (operation_id, 'quarantine', 'settled', account['tenant'], store.encode(operation)))
+        store.tokens(operation, 'quarantined', account['id'], -item['amount_minor'])
+        store.evidence('federation', 'funds_quarantined', {'order_id': order['id'], 'txid': txid}, operation_id)
+        return True
 
     def _record_return(self, order, txid, vout, item):
         """Credit a restored output once, as the receipt watcher would, so it
         neither credits it again nor leaves the customer without a record."""
         if not item.get('account_id') or not item.get('currency'):
-            return
+            return False
         store = self.store
         account = store.account(item['account_id'])
         genesis = self.adapter.node.getblockhash(0)
         operation_id = hashlib.sha256(f"{genesis}:{account['id']}:{txid}:{vout}".encode()).hexdigest()[:32]
         if store.db.execute('SELECT 1 FROM observed_receipts WHERE account_id=? AND txid=? AND vout=?',
                             (account['id'], txid, vout)).fetchone():
-            return
+            return True
         now = int(time.time())
         operation = {'id': operation_id, 'kind': 'receipt', 'state': 'settled', 'account_id': account['id'],
                      'tenant': account['tenant'], 'currency': item['currency'], 'asset_id': item['asset'],
                      'amount_minor': item['amount_minor'], 'created_at': now, 'updated_at': now,
                      'maker': 'federation', 'txid': txid, 'output_index': vout, 'stage': 'receipt',
                      'policy_version': store.verifier.policy_version, 'expires_at': 0,
-                     'reference': f"Returned by regulator order ({order['case_reference']})",
+                     'reference': f"Returned from quarantine by regulator order ({order['case_reference']})",
                      'destination': item['address'], 'destination_name': account['name'], 'to_account_id': None,
-                     'external_receipt': False, 'recovery_order': order['id']}
+                     'external_receipt': False, 'recovery_order': order['id'], 'authority': order['authority'],
+                     'case_reference': order['case_reference']}
         store.db.execute('INSERT INTO operations VALUES(?,?,?,?,?)',
                          (operation_id, 'receipt', 'settled', account['tenant'], store.encode(operation)))
         store.db.execute('INSERT INTO observed_receipts VALUES(?,?,?,?)', (account['id'], txid, vout, operation_id))
         store.tokens(operation, 'received', account['id'], item['amount_minor'])
+        store.evidence('federation', 'funds_restored', {'order_id': order['id'], 'txid': txid}, operation_id)
+        return True
 
     def _plan(self, order):
         sandbox = self.store.demo_runtime

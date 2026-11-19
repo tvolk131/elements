@@ -13,6 +13,7 @@ from test_framework.messages import CBlock, COutPoint, CTransaction, CTxIn
 from .approval import ApprovalVerifier
 from .freeze_orders import case_authority_secret, sign, validate, verify
 from .freezes import Freezes
+from .receipts import Receipts
 from .store import Problem, Settlement
 from .test_settlement import TestChain
 from .treasury import Institution, InstitutionRefused
@@ -219,6 +220,43 @@ class FreezeRelayTests(unittest.TestCase):
         self.assertEqual(self.freezes.frozen_balance('a', 'EUR'), 1_275_000)
         with self.assertRaisesRegex(Problem, 'bank reference'):
             self.submit(follow('restore', 'a6' * 16, quarantine=quarantine['id'], destination='not a reference'))
+
+    def test_quarantine_and_return_appear_in_the_holders_history(self):
+        Receipts(self.store)  # the receipt watcher's tables, which a return also records in
+        with self.store.transaction():
+            self.store.tokens({'id': 'seed', 'currency': 'EUR'}, 'seed', 'a', 1_275_000)
+        coin = {'asset': 'bb' * 32, 'account_id': 'a', 'currency': 'EUR', 'amount_minor': 1_275_000}
+        quarantine = {'id': 'a2' * 16, 'authority': 'Regulator', 'case_reference': 'case-7'}
+        for _ in range(2):  # a retried broadcast records and debits once
+            with self.store.transaction():
+                self.assertTrue(self.freezes._record_quarantine(quarantine, 'ee' * 32, 0,
+                                                                dict(coin, txid=FROZEN_TXID, vout=1),
+                                                                {'address': 'quarantine-address'}))
+        self.assertEqual(self.store.token_balance('a', 'EUR'), 0)
+        restore = {'id': 'a5' * 16, 'authority': 'Regulator', 'case_reference': 'case-7'}
+        with self.store.transaction():
+            self.assertTrue(self.freezes._record_return(restore, 'ff' * 32, 0, dict(coin, address='conf-a-2')))
+            # Funds held by no customer of ours leave no customer record.
+            self.assertFalse(self.freezes._record_quarantine(quarantine, 'ee' * 32, 1, {'amount_minor': 5},
+                                                             {'address': 'quarantine-address'}))
+        self.assertEqual(self.store.token_balance('a', 'EUR'), 1_275_000)
+
+        holder = self.store.dashboard({'user': self.users['maker']})
+        moved, returned = sorted((op for op in holder['operations'] if op.get('recovery_order')),
+                                 key=lambda op: op['kind'])
+        self.assertEqual((moved['kind'], moved['amount_minor'], moved['destination'], moved['recovery_order']),
+                         ('quarantine', 1_275_000, 'Quarantine', quarantine['id']))
+        self.assertEqual((moved['authority'], moved['case_reference']), ('Regulator', 'case-7'))
+        self.assertIn('case-7', moved['reference'])
+        self.assertEqual((returned['kind'], returned['recovery_order'], returned['amount_minor']),
+                         ('receipt', restore['id'], 1_275_000))
+        self.assertTrue(returned['reference'].startswith('Returned from quarantine'))
+        events = {(e['event'], e['operation_id']) for e in holder['activity']}
+        self.assertIn(('funds_quarantined', moved['id']), events)
+        self.assertIn(('funds_restored', returned['id']), events)
+        # Nobody outside the holder's own tenant sees the account's history.
+        regulator = self.store.dashboard({'user': self.users['regulator']})
+        self.assertFalse([op for op in regulator['operations'] if op.get('recovery_order')])
 
     def test_spent_outputs_and_reused_ids_are_refused(self):
         self.node.spent.add((FROZEN_TXID, 1))

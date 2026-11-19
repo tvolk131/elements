@@ -59,9 +59,8 @@ PERSONAS = [
     ('initech-maker', 'wallet', 'Initech (Bank B) · receives payments'),
     ('bank-compliance', 'wallet', 'Bank compliance · requests disclosures'),
     ('demo-recipient', 'wallet', 'Regulator · disclosures and freezes'),
-    ('institution-1', 'guardian', 'Operator 1 · signs approvals'),
-    ('institution-2', 'guardian', 'Operator 2 · signs approvals'),
-    ('institution-3', 'guardian', 'Operator 3 · signs approvals'),
+    # All seven operators, so any of them can be shown signing or applying an order.
+    *((f'institution-{n}', 'guardian', f'Operator {n} · signs approvals') for n in range(1, 8)),
     ('bank-admin', 'guardian', 'Bank · reserves and oversight'),
 ]
 

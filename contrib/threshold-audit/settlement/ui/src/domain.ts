@@ -13,6 +13,7 @@ export const human = (value?: string): string =>
     redemption: "Withdraw to bank",
     transfer: "On-chain transfer",
     receipt: "Received on-chain",
+    quarantine: "Moved to quarantine",
     bankcompliance: "Bank compliance",
     federationcompliance: "Federation compliance",
     auditguardian: "Disclosure guardian",
@@ -45,6 +46,8 @@ export const human = (value?: string): string =>
     execution_waiting: "Waiting to continue",
     payment_initiated: "Bank payout started",
     external_receipt_confirmed: "Payment received",
+    funds_quarantined: "Moved to quarantine by the operators",
+    funds_restored: "Returned from quarantine by the operators",
     login: "Signed in",
     disclosure_requested: "Disclosure requested",
     disclosure_approved: "Disclosure approved",
@@ -156,7 +159,7 @@ const BANK_STATUS: Record<string, string> = {
   settled: "Bank evidence recorded",
 };
 export function bankStatus(op: Operation) {
-  if (op.kind === "transfer") return "Not applicable";
+  if (op.kind === "transfer" || op.recovery_order) return "Not applicable";
   if (op.kind === "deposit" && op.cash_receipt_id && op.state !== "settled")
     return "Deposit received";
   return BANK_STATUS[op.state] || "Not confirmed";
@@ -305,6 +308,10 @@ export function nextStep(op: Operation): string {
     return "The bank payout failed. A new approved return request is required to unlock the tokens.";
   if (op.state === "refund_requested")
     return "Waiting for approval and execution of the return-to-wallet request.";
+  if (op.kind === "quarantine")
+    return "Held in quarantine. Only the operators can move these funds, and only under a further signed order from the regulator, normally to return them to you.";
+  if (op.kind === "receipt" && op.recovery_order)
+    return "Returned to this account. Nothing more is needed.";
   if (op.state === "settled")
     return op.kind === "redemption"
       ? "Complete: the simulated bank payout and on-chain token burn are confirmed."

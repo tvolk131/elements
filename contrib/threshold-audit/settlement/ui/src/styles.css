@@ -594,6 +594,10 @@ tbody tr:hover {
   background: #f1edf7;
   color: #8a6aa5;
 }
+.type-icon.quarantine {
+  background: var(--gold-wash);
+  color: var(--gold);
+}
 .currency-flag {
   width: 29px;
   height: 29px;

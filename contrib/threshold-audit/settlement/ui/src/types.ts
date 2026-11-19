@@ -1,5 +1,11 @@
 export type Currency = "EUR" | "USD";
-export type Kind = "deposit" | "transfer" | "redemption" | "refund" | "receipt";
+export type Kind =
+  | "deposit"
+  | "transfer"
+  | "redemption"
+  | "refund"
+  | "receipt"
+  | "quarantine";
 export interface User {
   id: string;
   name: string;
@@ -100,6 +106,11 @@ export interface Operation {
   transaction_template_hash?: string;
   request_hash?: string;
   approval_request?: ApprovalRequest;
+  /** Set when a regulator's order moved the funds (quarantine or return):
+   * the order, the authority that signed it and its case. */
+  recovery_order?: string;
+  authority?: string;
+  case_reference?: string;
 }
 /** One hash-chained evidence entry. */
 export interface Activity {
@@ -258,7 +269,7 @@ export type Page =
   | "ledger"
   | "federation";
 export type DialogState =
-  | { type: "create"; kind: Exclude<Kind, "refund" | "receipt"> }
+  | { type: "create"; kind: Exclude<Kind, "refund" | "receipt" | "quarantine"> }
   | { type: "receive" }
   | { type: "operation"; id: string }
   | { type: "review"; operation: Operation; action: string }
