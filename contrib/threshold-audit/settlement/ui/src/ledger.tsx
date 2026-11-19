@@ -443,8 +443,9 @@ export function LedgerPage() {
                           </button>
                         ) : (
                           <span className="cell-secondary">
-                            Not one of this bank’s requests (network set-up or
-                            fees)
+                            {t.authorization?.recovery
+                              ? "A regulator-ordered recovery of funds this bank does not hold"
+                              : "Not this bank’s: another bank’s customers, network set-up or fees"}
                           </span>
                         )}
                       </td>

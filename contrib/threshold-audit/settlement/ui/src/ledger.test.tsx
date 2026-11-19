@@ -165,7 +165,9 @@ it("shows what the ledger recorded beside what only the bank knows", async () =>
   expect(second.getByText(/1 of 2 amounts hidden/)).toBeVisible();
   expect(second.getByText("No authorization")).toBeVisible();
   expect(second.getByText("Before the rule was turned on")).toBeVisible();
-  expect(second.getByText(/Not one of this bank’s requests/)).toBeVisible();
+  expect(
+    second.getByText(/Not this bank’s: another bank’s customers/),
+  ).toBeVisible();
 });
 
 it("shows the ledger refusing a transaction sent without the operators", async () => {
