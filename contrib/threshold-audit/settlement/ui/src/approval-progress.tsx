@@ -264,9 +264,10 @@ export function ApprovalProgress({ operation: op }: { operation: Operation }) {
                 </Badge>
               </div>
               <p>
-                Tokens are issued automatically once {earlier}{" "}
-                {institutionsNeeded ? "are" : "is"} complete. Nobody needs to
-                press Send.
+                {open.length
+                  ? `Tokens are issued automatically once ${waitingFor} ${open.length > 1 ? "are" : "is"} complete.`
+                  : "Tokens are issued automatically now that the approvals are complete."}{" "}
+                Nobody needs to press Send.
               </p>
               {ready && op.allowed_actions.includes("execute") && (
                 <Button

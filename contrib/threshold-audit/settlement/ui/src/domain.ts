@@ -205,6 +205,8 @@ export function requestBadge(op: Operation): {
   return { status: op.state };
 }
 export function requestSummary(op: Operation): string {
+  if (op.kind === "quarantine") return "Held in quarantine";
+  if (op.kind === "receipt" && op.recovery_order) return "Back in this account";
   if (op.declined_by === "institutions") return "Declined by the operators";
   if (waitingForInstitutions(op)) return "Waiting for the operators";
   if (op.state === "awaiting_approval")

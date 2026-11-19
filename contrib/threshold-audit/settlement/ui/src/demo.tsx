@@ -86,7 +86,7 @@ function PersonaList({
                     aria-current={p.username === current ? "true" : undefined}
                     disabled={!!pending || p.username === current}
                     onClick={() => onPick(p)}
-                    data-testid={`persona-${p.username}`}
+                    data-testid={`persona-${p.workspace}-${p.username}`}
                   >
                     <strong>{p.label}</strong>
                     <span>{p.name}</span>

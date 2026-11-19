@@ -305,7 +305,7 @@ function ActionForm({
         >
           <input
             required
-            pattern="[a-z0-9._-]+@[a-z0-9._-]+"
+            pattern="[a-z0-9._\-]+@[a-z0-9._\-]+"
             value={destination}
             onChange={(e) =>
               setDestination(e.target.value.trim().toLowerCase())
